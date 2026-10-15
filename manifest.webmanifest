@@ -1,9 +1,13 @@
 {
   "name": "AFE-CI Ferme et Boutique",
   "short_name": "AFE-CI",
+  "description": "Application de gestion de la ferme et de la boutique AGRO FERME ELÉLY - Côte d'Ivoire.",
   "start_url": "./index.html",
+  "scope": "./",
+  "id": "./",
   "display": "standalone",
   "background_color": "#f4f7f5",
   "theme_color": "#176b45",
-  "lang": "fr"
+  "lang": "fr",
+  "dir": "ltr"
 }
