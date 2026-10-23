@@ -1,45 +1,53 @@
 # AFE-CI Debate Engine
 
-Moteur d'orchestration qui transforme une question stratégique en décision progressivement testée, contradictoire, traçable et révisable.
+Adversarial strategic decision engine for AFE-CI.
 
-## Pipeline
+## Flow
 
-1. **Architecte — OpenAI** : construit une proposition structurée.
-2. **Red Team — Gemini** : tente de falsifier la proposition.
-3. **Arbitre — configurable** : compare les deux, accepte/rejette les claims et décide s'il faut converger ou lancer un nouveau round.
-4. L'orchestrateur répète jusqu'à convergence ou limite de rounds.
+`Question -> Architect (OpenAI) -> Red Team (Gemini) -> Independent Judge -> next round -> convergence/unresolved`
 
-Chaque round conserve la proposition, les attaques, la décision de l'arbitre et les désaccords critiques.
+The orchestrator is deterministic: it controls rounds, persistence and convergence instead of delegating the loop to an LLM.
 
-## Démarrage
+## V0.2 memory
 
-Node.js 22+ est requis. Les clés API doivent rester côté serveur et ne doivent jamais être exposées au navigateur.
+If `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured, completed debates are persisted to Supabase in:
+
+- `debates`
+- `debate_rounds`
+- `debate_events`
+- `debate_hypotheses`
+- `debate_evidence`
+- `debate_decisions`
+
+Without those variables, the engine falls back to the local JSON store under `data/`.
+
+The service-role key is server-side only and must never be exposed to a browser/client or committed to GitHub.
+
+## Install
 
 ```bash
-cp .env.example .env
 npm install
+cp .env.example .env
+```
+
+## Run
+
+```bash
 npm run typecheck
 npm run dev
 ```
 
-Puis :
+POST `/debates/run` with:
 
-```bash
-curl -X POST http://localhost:8787/debates/run \
-  -H 'content-type: application/json' \
-  -d '{"question":"Quel segment doit être le premier marché d’AFE-CI en Côte d’Ivoire ?"}'
+```json
+{
+  "question": "Quel est le meilleur wedge pour lancer la marketplace avicole AFE-CI ?",
+  "context": "Contexte complémentaire"
+}
 ```
 
-Ou :
+GET `/debates` returns stored debates.
 
-```bash
-npm run debate -- "Faut-il lancer AFE-CI en B2B ou en B2C ?"
-```
+## Database
 
-## Important
-
-Une persistance locale JSON est fournie pour le prototype. Elle pourra être remplacée par Supabase/Postgres sans changer le contrat du moteur. Les clés OpenAI/Gemini sont lues depuis les variables d'environnement serveur.
-
-## Versioning
-
-Les modèles sont configurables par variables d'environnement afin de pouvoir les pinner et les changer sans modifier le code. Les sorties des trois rôles sont validées par JSON Schema avant d'être acceptées dans le graphe de débat.
+The production Supabase project is `afe-ci-production`. The migration is also committed under `supabase/migrations/` so the database model remains versioned with the engine.
