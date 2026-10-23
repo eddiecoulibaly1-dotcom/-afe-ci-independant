@@ -2,21 +2,23 @@ import OpenAI from "openai";
 import { GoogleGenAI } from "@google/genai";
 import type { Provider } from "./types.js";
 
-type JsonSchema = Record<string, unknown>;
+type JsonSchema = { [key: string]: unknown };
 
-export async function callModel<T>(args: {
+type ModelArgs = {
   provider: Provider;
   model: string;
   system: string;
   prompt: string;
   schemaName: string;
   schema: JsonSchema;
-}): Promise<T> {
+};
+
+export async function callModel<T>(args: ModelArgs): Promise<T> {
   if (args.provider === "openai") return callOpenAI<T>(args);
   return callGemini<T>(args);
 }
 
-async function callOpenAI<T>(args: Parameters<typeof callModel>[0]): Promise<T> {
+async function callOpenAI<T>(args: ModelArgs): Promise<T> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY is missing");
   const client = new OpenAI({ apiKey: key });
@@ -36,7 +38,7 @@ async function callOpenAI<T>(args: Parameters<typeof callModel>[0]): Promise<T> 
   return JSON.parse(response.output_text) as T;
 }
 
-async function callGemini<T>(args: Parameters<typeof callModel>[0]): Promise<T> {
+async function callGemini<T>(args: ModelArgs): Promise<T> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY is missing");
   const ai = new GoogleGenAI({ apiKey: key });
