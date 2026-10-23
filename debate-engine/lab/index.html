@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>AFE-CI · Debate Lab</title>
+  <style>
+    :root{--bg:#07101d;--panel:#0d1828;--panel2:#101f33;--line:#20324a;--text:#edf4ff;--muted:#8ea1bb;--accent:#62d9a4;--warn:#ffd166;--danger:#ff7b8a;--blue:#75a9ff;--shadow:0 18px 50px rgba(0,0,0,.28)}
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 15% 0%,#12243b 0,#07101d 40%);color:var(--text);font:15px/1.5 Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    button,input,textarea{font:inherit} button{cursor:pointer;border:0} .shell{max-width:1200px;margin:auto;padding:28px 18px 60px}
+    header{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:26px}.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:800}.title{font-size:34px;line-height:1.05;margin:7px 0}.subtitle{color:var(--muted);max-width:720px}.badge{border:1px solid var(--line);background:#0b1727;padding:8px 11px;border-radius:999px;color:var(--muted);font-size:12px}
+    .grid{display:grid;grid-template-columns:360px 1fr;gap:18px}.card{background:linear-gradient(180deg,var(--panel),#0a1524);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}.composer{padding:18px;position:sticky;top:16px;height:max-content}.card h2{font-size:16px;margin:0 0 13px}.label{font-size:12px;color:var(--muted);margin:13px 0 7px;display:block}.input,.textarea{width:100%;background:#081321;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;outline:none}.textarea{min-height:145px;resize:vertical}.input:focus,.textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(117,169,255,.1)}.primary{width:100%;padding:12px 16px;border-radius:12px;background:var(--accent);color:#04130c;font-weight:900;margin-top:14px}.primary:disabled{opacity:.45;cursor:wait}.hint{font-size:12px;color:var(--muted);margin-top:10px}
+    .history{padding:18px}.history-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:9px;padding:7px 10px}.list{display:grid;gap:9px}.item{width:100%;text-align:left;background:#0a1625;border:1px solid var(--line);color:var(--text);border-radius:12px;padding:11px}.item:hover{border-color:#365173}.item-title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.item-meta{color:var(--muted);font-size:11px;margin-top:4px}.empty{padding:28px 8px;color:var(--muted);text-align:center;border:1px dashed var(--line);border-radius:12px}
+    .workspace{min-height:500px}.placeholder{padding:55px 25px;text-align:center;color:var(--muted)}.placeholder strong{display:block;color:var(--text);font-size:20px;margin-bottom:8px}
+    .debate{padding:18px}.debate-top{display:flex;justify-content:space-between;gap:15px;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:17px}.question{font-size:21px;font-weight:800;line-height:1.25}.status{padding:7px 10px;border-radius:999px;font-size:11px;font-weight:800;text-transform:uppercase;white-space:nowrap}.status.converged{background:rgba(98,217,164,.12);color:var(--accent)}.status.unresolved{background:rgba(255,123,138,.12);color:var(--danger)}.status.running{background:rgba(117,169,255,.12);color:var(--blue)}
+    .final{margin:16px 0;padding:16px;border:1px solid rgba(98,217,164,.35);background:rgba(98,217,164,.055);border-radius:14px}.final.unresolved{border-color:rgba(255,123,138,.35);background:rgba(255,123,138,.04)}.final-label{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:800}.final-decision{font-size:18px;font-weight:800;margin:5px 0 10px}.scores{display:flex;gap:8px;flex-wrap:wrap}.score{padding:5px 8px;background:#0a1725;border:1px solid var(--line);border-radius:8px;font-size:11px;color:var(--muted)}
+    .round{margin-top:15px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#091422}.round-head{padding:12px 14px;background:#0c1929;display:flex;justify-content:space-between}.round-number{font-weight:800}.round-body{padding:14px;display:grid;gap:12px}.actor{border-left:3px solid var(--line);padding:1px 0 1px 12px}.actor.architect{border-color:var(--blue)}.actor.red{border-color:var(--danger)}.actor.judge{border-color:var(--accent)}.actor h3{font-size:12px;margin:0 0 6px;text-transform:uppercase;letter-spacing:.08em}.actor p{margin:4px 0;color:#c9d5e5}.actor ul{margin:5px 0;padding-left:20px;color:#c9d5e5}.judge-box{background:#0b1928;border-radius:10px;padding:10px}.next{margin-top:8px;padding:9px 10px;border-radius:9px;background:rgba(255,209,102,.06);border:1px solid rgba(255,209,102,.2);color:#ffe2a0;font-size:12px}.error{color:var(--danger);background:rgba(255,123,138,.07);border:1px solid rgba(255,123,138,.25);padding:10px;border-radius:10px;margin-top:10px}
+    @media(max-width:850px){.grid{grid-template-columns:1fr}.composer{position:static}.title{font-size:28px}header{flex-direction:column}.debate-top{flex-direction:column}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div><div class="eyebrow">AFE-CI · V0.3</div><div class="title">Debate Lab</div><div class="subtitle">Transforme une question stratégique en décision contradictoire, testée par plusieurs rôles et conservée dans la mémoire du moteur.</div></div>
+      <div class="badge">OpenAI · Gemini · Arbiter · Supabase</div>
+    </header>
+
+    <section class="grid">
+      <aside class="card composer">
+        <h2>Nouveau débat</h2>
+        <label class="label" for="question">Question stratégique</label>
+        <textarea id="question" class="textarea" placeholder="Ex. Quel segment de marché avicole devons-nous attaquer en premier en Côte d’Ivoire ?"></textarea>
+        <label class="label" for="context">Contexte <span>(optionnel)</span></label>
+        <textarea id="context" class="textarea" style="min-height:95px" placeholder="Contraintes, données connues, budget, cible, échéance…"></textarea>
+        <button id="run" class="primary">Lancer le débat</button>
+        <div id="error" class="error" hidden></div>
+        <div class="hint">Le moteur peut poursuivre plusieurs rounds jusqu'à convergence ou déclarer la question non résolue.</div>
+      </aside>
+
+      <section>
+        <div class="card history">
+          <div class="history-head"><h2>Débats précédents</h2><button id="refresh" class="ghost">Actualiser</button></div>
+          <div id="history" class="list"><div class="empty">Chargement…</div></div>
+        </div>
+        <div id="workspace" class="card workspace" style="margin-top:18px"><div class="placeholder"><strong>Prêt à challenger une décision.</strong>Choisis un débat à gauche ou lance une nouvelle question.</div></div>
+      </section>
+    </section>
+  </main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const state = { debates: [] };
+  const esc = (value) => String(value ?? '');
+  const list = (items) => (items || []).map(x => `<li>${esc(x)}</li>`).join('');
+  const date = (value) => value ? new Date(value).toLocaleString('fr-FR',{dateStyle:'medium',timeStyle:'short'}) : '';
+
+  function renderHistory() {
+    const root = $('history');
+    if (!state.debates.length) { root.innerHTML = '<div class="empty">Aucun débat enregistré.</div>'; return; }
+    root.innerHTML = state.debates.map(d => `<button class="item" data-id="${esc(d.id)}"><div class="item-title">${esc(d.question)}</div><div class="item-meta">${esc(d.status)} · ${d.rounds?.length || 0} round(s)${d.rounds?.at(-1)?.createdAt ? ' · '+date(d.rounds.at(-1).createdAt) : ''}</div></button>`).join('');
+    root.querySelectorAll('.item').forEach(b => b.addEventListener('click', () => loadDebate(b.dataset.id)));
+  }
+
+  function actor(title, cls, body) { return `<article class="actor ${cls}"><h3>${title}</h3>${body}</article>`; }
+
+  function renderDebate(d) {
+    const final = d.finalDecision;
+    const finalClass = d.status === 'unresolved' ? 'unresolved' : '';
+    $('workspace').innerHTML = `<div class="debate">
+      <div class="debate-top"><div><div class="question">${esc(d.question)}</div>${d.context ? `<div class="hint">${esc(d.context)}</div>` : ''}</div><span class="status ${esc(d.status)}">${esc(d.status)}</span></div>
+      ${final ? `<section class="final ${finalClass}"><div class="final-label">Décision ${d.status === 'converged' ? 'finale' : 'à valider'}</div><div class="final-decision">${esc(final.decision)}</div><div class="scores"><span class="score">Architecte ${final.architectScore}/100</span><span class="score">Red Team ${final.redTeamScore}/100</span><span class="score">Rounds ${d.rounds.length}</span></div><div class="hint">${list(final.rationale).replaceAll('<li>','• ').replaceAll('</li>',' ')}</div></section>` : ''}
+      ${(d.rounds || []).map(r => `<section class="round"><div class="round-head"><span class="round-number">ROUND ${r.round}</span><span class="item-meta">${date(r.createdAt)}</span></div><div class="round-body">
+        ${actor('🧠 Architecte','architect',`<p><strong>${esc(r.architect.position)}</strong></p><div class="hint">Hypothèses</div><ul>${list(r.architect.assumptions)}</ul><div class="hint">Risques</div><ul>${list(r.architect.risks)}</ul>`)}
+        ${actor('⚔️ Red Team','red',`<p>Verdict : <strong>${esc(r.redTeam.verdict)}</strong></p><ul>${(r.redTeam.attacks||[]).map(a=>`<li><strong>${esc(a.severity)}</strong> — ${esc(a.argument)}</li>`).join('')}</ul>${r.redTeam.unresolvedQuestions?.length ? `<div class="hint">Questions non résolues</div><ul>${list(r.redTeam.unresolvedQuestions)}</ul>` : ''}`)}
+        ${actor('⚖️ Arbitre','judge',`<div class="judge-box"><p><strong>${esc(r.judge.status)}</strong> · ${esc(r.judge.winner)}</p><div class="scores"><span class="score">Architecte ${r.judge.architectScore}/100</span><span class="score">Red Team ${r.judge.redTeamScore}/100</span></div><p>${esc(r.judge.decision)}</p>${r.judge.criticalDisagreements?.length ? `<div class="hint">Désaccords critiques</div><ul>${list(r.judge.criticalDisagreements)}</ul>` : ''}${r.judge.nextRoundObjective ? `<div class="next"><strong>Prochain test :</strong> ${esc(r.judge.nextRoundObjective)}</div>` : ''}</div>`)}
+      </div></section>`).join('')}
+    </div>`;
+  }
+
+  async function loadHistory() {
+    const res = await fetch('/debates');
+    if (!res.ok) throw new Error('Impossible de charger les débats.');
+    state.debates = await res.json();
+    renderHistory();
+  }
+
+  async function loadDebate(id) {
+    $('error').hidden = true;
+    $('workspace').innerHTML = '<div class="placeholder"><strong>Chargement du débat…</strong>Récupération de la mémoire.</div>';
+    try { const res = await fetch('/debates/'+encodeURIComponent(id)); if(!res.ok) throw new Error('Débat introuvable.'); renderDebate(await res.json()); }
+    catch(e){ showError(e.message); }
+  }
+
+  function showError(message) { const e=$('error'); e.textContent=message; e.hidden=false; }
+
+  $('run').addEventListener('click', async () => {
+    const question=$('question').value.trim(), context=$('context').value.trim();
+    if(!question){showError('Écris une question stratégique avant de lancer le débat.');return;}
+    $('error').hidden=true; $('run').disabled=true; $('run').textContent='Débat en cours…';
+    $('workspace').innerHTML='<div class="placeholder"><strong>Les agents travaillent…</strong>Architecte → Red Team → Arbitre. Les rounds peuvent prendre un peu de temps.</div>';
+    try {
+      const res=await fetch('/debates/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question,context})});
+      const data=await res.json(); if(!res.ok) throw new Error(data.error || 'Le débat a échoué.');
+      renderDebate(data); $('question').value=''; $('context').value=''; await loadHistory();
+    } catch(e){showError(e.message); $('workspace').innerHTML='<div class="placeholder"><strong>Le débat n’a pas pu aboutir.</strong>Vérifie la configuration du moteur et réessaie.</div>';}
+    finally{$('run').disabled=false;$('run').textContent='Lancer le débat';}
+  });
+
+  $('refresh').addEventListener('click',()=>loadHistory().catch(e=>showError(e.message)));
+  loadHistory().catch(e=>showError(e.message));
+</script>
+</body>
+</html>
