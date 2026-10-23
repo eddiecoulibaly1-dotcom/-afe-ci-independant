@@ -1,15 +1,15 @@
 import "node:process";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { runDebate } from "./engine.js";
 import { getDebate, listDebates, saveDebate } from "./store.js";
 import type { DebateConfig, Provider } from "./types.js";
 
-const VERSION = "0.6.0";
+const VERSION = "0.6.2";
 const port = Number(process.env.PORT ?? 8787);
 const json = (value: unknown) => JSON.stringify(value, null, 2);
-const labFile = resolve(process.cwd(), "lab/v06.html");
+const labFile = new URL("../lab/v06.html", import.meta.url);
+const manifestFile = new URL("../lab/manifest.webmanifest", import.meta.url);
 
 function config(): DebateConfig {
   const provider = (value: string | undefined, fallback: Provider): Provider => value === "gemini" ? "gemini" : value === "openai" ? "openai" : fallback;
@@ -37,7 +37,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && pathname === "/lab/manifest.webmanifest") {
-      const manifest = await readFile(resolve(process.cwd(), "lab/manifest.webmanifest"), "utf8");
+      const manifest = await readFile(manifestFile, "utf8");
       res.writeHead(200, { "Content-Type": "application/manifest+json; charset=utf-8", "Cache-Control": "public, max-age=3600" });
       res.end(manifest);
       return;
