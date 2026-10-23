@@ -1,15 +1,13 @@
 import "node:process";
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
 import { runDebate } from "./engine.js";
 import { getDebate, listDebates, saveDebate } from "./store.js";
+import { LAB_HTML, LAB_MANIFEST } from "./lab.js";
 import type { DebateConfig, Provider } from "./types.js";
 
-const VERSION = "0.6.2";
+const VERSION = "0.6.3";
 const port = Number(process.env.PORT ?? 8787);
 const json = (value: unknown) => JSON.stringify(value, null, 2);
-const labFile = new URL("../lab/v06.html", import.meta.url);
-const manifestFile = new URL("../lab/manifest.webmanifest", import.meta.url);
 
 function config(): DebateConfig {
   const provider = (value: string | undefined, fallback: Provider): Provider => value === "gemini" ? "gemini" : value === "openai" ? "openai" : fallback;
@@ -31,15 +29,13 @@ const server = createServer(async (req, res) => {
   try {
     const pathname = req.url?.split("?")[0];
     if (req.method === "GET" && (pathname === "/" || pathname === "/lab" || pathname === "/lab/")) {
-      const html = await readFile(labFile, "utf8");
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-      res.end(html);
+      res.end(LAB_HTML);
       return;
     }
     if (req.method === "GET" && pathname === "/lab/manifest.webmanifest") {
-      const manifest = await readFile(manifestFile, "utf8");
       res.writeHead(200, { "Content-Type": "application/manifest+json; charset=utf-8", "Cache-Control": "public, max-age=3600" });
-      res.end(manifest);
+      res.end(LAB_MANIFEST);
       return;
     }
     if (req.method === "GET" && pathname === "/health") {
