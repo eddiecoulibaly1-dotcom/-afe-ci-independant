@@ -16,8 +16,10 @@ Always provide a stronger alternative when one exists.`;
 export const JUDGE_SYSTEM = `You are the INDEPENDENT JUDGE of a strategic decision engine.
 Do not reward eloquence. Evaluate claims, assumptions, evidence, objections and alternatives.
 You may declare BOTH SIDES WRONG.
-A decision can converge only if critical disagreements are resolved and the surviving solution is testable.
-Do not invent evidence. If evidence is insufficient, mark the decision unresolved or require a targeted next test.
+The numeric score is NOT your total score: provide only raw 0-100 assessments for each required dimension.
+The orchestrator computes the weighted total and convergence policy deterministically.
+Do not invent evidence. If evidence is insufficient, mark the decision for revision and define the smallest next test.
+A decision can converge only when the surviving architect proposal is strong enough, critical disagreements are resolved, and hostile attacks have been addressed.
 The final decision must be auditable and reversible.`;
 
 export function architectPrompt(question: string, context: string | undefined, history: DebateRound[], nextObjective?: string) {
@@ -25,9 +27,9 @@ export function architectPrompt(question: string, context: string | undefined, h
 }
 
 export function redTeamPrompt(question: string, context: string | undefined, round: DebateRound) {
-  return `STRATEGIC QUESTION:\n${question}\n\nCONTEXT:\n${context ?? "None supplied."}\n\nARCHITECT PROPOSAL:\n${JSON.stringify(round.architect, null, 2)}\n\nTry to falsify it. Identify the most dangerous errors first.`;
+  return `STRATEGIC QUESTION:\n${question}\n\nCONTEXT:\n${context ?? "None supplied."}\n\nARCHITECT PROPOSAL:\n${JSON.stringify(round.architect, null, 2)}\n\nTry to falsify it. Identify the most dangerous errors first. Prioritize critical attacks and state the evidence or experiment that would settle each dispute.`;
 }
 
 export function judgePrompt(question: string, context: string | undefined, round: DebateRound, threshold: number) {
-  return `STRATEGIC QUESTION:\n${question}\n\nCONTEXT:\n${context ?? "None supplied."}\n\nARCHITECT:\n${JSON.stringify(round.architect, null, 2)}\n\nRED TEAM:\n${JSON.stringify(round.redTeam, null, 2)}\n\nCONVERGENCE THRESHOLD: ${threshold}\n\nJudge the round independently. If neither side has enough support, choose neither and require a focused next test.`;
+  return `STRATEGIC QUESTION:\n${question}\n\nCONTEXT:\n${context ?? "None supplied."}\n\nARCHITECT:\n${JSON.stringify(round.architect, null, 2)}\n\nRED TEAM:\n${JSON.stringify(round.redTeam, null, 2)}\n\nCONVERGENCE THRESHOLD: ${threshold}\n\nScore both the architect proposal and the strongest red-team alternative independently on these dimensions (0-100 raw ratings; do not calculate the weighted total yourself):\n- buyerValue (15)\n- sellerValue (15)\n- coteDIvoireFit (15)\n- marketplaceLiquidity (15)\n- differentiation (10)\n- trustFraud (10)\n- technicalFeasibility (10)\n- acquisition (5)\n- monetization (5)\n\nThen identify accepted/rejected claims, critical disagreements, a decision, rationale, and the smallest next-round objective that could resolve remaining uncertainty. The orchestrator will calculate final scores and decide whether convergence is allowed.`;
 }
