@@ -8,100 +8,69 @@ Adversarial strategic decision engine for AFE-CI.
 
 The orchestrator is deterministic: it controls rounds, evidence auditing, persistence, scoring and convergence instead of delegating the loop to an LLM.
 
+## V0.8 Accounts + private decision memory
+
+V0.8 converts the mobile application shell into a personal application.
+
+Phone flow:
+
+`Phone -> Supabase Auth -> AFE-CI Debate Engine -> OpenAI/Gemini -> Evidence Engine -> Arbiter -> private Supabase history`
+
+V0.8 includes:
+
+- email/password account creation and sign-in;
+- Supabase Auth session stored on the phone;
+- automatic access-token refresh;
+- authenticated debate creation;
+- debate history scoped to the signed-in user;
+- server-side bearer-token validation;
+- `debates.user_id` ownership and index;
+- RLS policies for authenticated ownership;
+- public Supabase publishable key only in the browser;
+- `SUPABASE_SERVICE_ROLE_KEY` remains server-side only;
+- mobile account screen and sign-out;
+- V0.8 mobile/PWA lab.
+
+The V0.8 migration is `supabase/migrations/20261023_v08_debate_user_ownership.sql`.
+
 ## V0.7 Mobile Application / PWA
 
 V0.7 turns the mobile-first Lab into an installable application shell while keeping the decision engine server-side.
 
-Phone flow:
+V0.7 includes mobile navigation, PWA manifest/icon, service worker, local draft persistence and native share/copy support.
 
-`Phone -> AFE-CI Debate Engine App -> Debate Engine -> OpenAI/Gemini -> Evidence Engine -> Arbiter -> Supabase`
+## Production environment
 
-V0.7 includes:
-
-- application-style mobile navigation: Accueil, Historique, Nouveau, Aide;
-- install prompt when the browser supports PWA installation;
-- Android home-screen friendly manifest and application icon;
-- service worker and cached application shell for degraded-network access;
-- local draft persistence for a question and its context;
-- decision copy/share actions using native phone capabilities when available;
-- debate history and replay;
-- Evidence Engine and Arbiter views from V0.6;
-- `/health` reporting `pwa: true`;
-- Node.js 24 production runtime;
-- no API key exposed to the browser.
-
-The PWA is an application layer, not a replacement for the debate orchestrator. Actual debates still require the server and configured provider APIs.
-
-## V0.6 Deployment
-
-The Lab is self-contained inside the Node server so the production deployment does not depend on filesystem access to static Lab files.
-
-The production runtime uses Node.js 24 and Vercel's zero-configuration Node server detection.
-
-Set these server-side environment variables in Vercel:
+Required server-side variables:
 
 - `OPENAI_API_KEY`
 - `GEMINI_API_KEY`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_PUBLISHABLE_KEY`
 - optional model/provider settings from `.env.example`
 
-Secrets must remain server-side. After changing environment variables, redeploy.
-
-## V0.5 Evidence Intelligence
-
-V0.5 adds an epistemic gate between debate generation and convergence.
-
-Rules:
-
-- `fact` requires evidence references;
-- `hypothesis` is explicitly treated as a testable hypothesis;
-- `opinion` does not require external evidence;
-- a claim with no evidence reference is `unsupported`;
-- unsupported high-impact claims block convergence;
-- evidence references declared by a model are recorded as declared references, not silently treated as independently verified sources.
-
-## V0.4 Decision Intelligence
-
-V0.4 introduced a deterministic 100-point decision scorecard.
-
-| Dimension | Weight |
-|---|---:|
-| Buyer value | 15 |
-| Seller value | 15 |
-| Côte d'Ivoire fit | 15 |
-| Marketplace liquidity | 15 |
-| Differentiation | 10 |
-| Trust/fraud | 10 |
-| Technical feasibility | 10 |
-| Acquisition | 5 |
-| Monetization | 5 |
-
-The LLMs provide raw dimension evaluations; the code computes the weighted score.
+`SUPABASE_PUBLISHABLE_KEY` is safe for browser authentication. Service-role and model API keys must never be sent to the browser.
 
 ## API
 
-The Lab exposes:
+Public:
 
 - `GET /lab`
 - `GET /lab/manifest.webmanifest`
 - `GET /lab/sw.js`
 - `GET /lab/icon.svg`
 - `GET /health`
+- `GET /auth/config`
+
+Authenticated:
+
+- `GET /me`
 - `GET /debates`
 - `GET /debates/:id`
 - `POST /debates/run`
 - `POST /api/debates/run`
 
-## V0.2 Supabase memory
+## Decision intelligence
 
-The server can persist completed debates to Supabase in:
-
-- `debates`
-- `debate_rounds`
-- `debate_events`
-- `debate_hypotheses`
-- `debate_evidence`
-- `debate_decisions`
-
-RLS is enabled and server-side persistence uses `SUPABASE_SERVICE_ROLE_KEY` only.
+V0.4 introduced a deterministic 100-point scorecard. V0.5 added evidence intelligence. V0.8 adds identity and private ownership around that decision memory.
