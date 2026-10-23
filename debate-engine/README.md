@@ -4,9 +4,30 @@ Adversarial strategic decision engine for AFE-CI.
 
 ## Flow
 
-`Question -> Architect (OpenAI) -> Red Team (Gemini) -> Independent Judge -> next round -> convergence/unresolved`
+`Question -> Architect (OpenAI) -> Red Team (Gemini) -> Independent Judge -> deterministic score -> next round -> convergence/unresolved`
 
-The orchestrator is deterministic: it controls rounds, persistence and convergence instead of delegating the loop to an LLM.
+The orchestrator is deterministic: it controls rounds, persistence, scoring and convergence instead of delegating the loop to an LLM.
+
+## V0.4 Decision Intelligence
+
+V0.4 introduces a deterministic 100-point decision scorecard. The Judge supplies raw 0-100 assessments for each dimension; the engine applies the weights and convergence policy in code.
+
+| Dimension | Weight |
+|---|---:|
+| Buyer value | 15 |
+| Seller value | 15 |
+| Côte d'Ivoire fit | 15 |
+| Marketplace liquidity | 15 |
+| Differentiation | 10 |
+| Trust / fraud | 10 |
+| Technical feasibility | 10 |
+| Acquisition | 5 |
+| Monetization | 5 |
+| **Total** | **100** |
+
+The engine also applies deterministic penalties for unresolved questions, critical disagreements and critical Red Team attacks. A model cannot force convergence by returning a high total score.
+
+Convergence requires the architect proposal to reach the configured threshold, have no critical disagreements, have at most one unresolved question, and have no critical attacks remaining. Otherwise the engine forces another revision round or returns `unresolved` after the maximum number of rounds.
 
 ## V0.3 Debate Lab
 
@@ -68,7 +89,7 @@ API:
 - `POST /debates/run` starts a debate.
 - `GET /debates` returns stored debates.
 - `GET /debates/:id` returns one complete debate.
-- `GET /health` exposes the service health/version.
+- `GET /health` exposes service health.
 
 Example:
 
