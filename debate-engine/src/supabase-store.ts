@@ -65,10 +65,31 @@ export async function saveDebateToSupabase(debate: Debate): Promise<void> {
       headers: { Prefer: "return=minimal" },
       body: JSON.stringify([
         { debate_id: debate.id, round_id: roundId, event_type: "architect_proposal", actor: "architect", payload: round.architect },
+        { debate_id: debate.id, round_id: roundId, event_type: "evidence_audit", actor: "evidence_engine", payload: round.evidenceAudit ?? {} },
         { debate_id: debate.id, round_id: roundId, event_type: "red_team_critique", actor: "red_team", payload: round.redTeam },
         { debate_id: debate.id, round_id: roundId, event_type: "judge_decision", actor: "judge", payload: round.judge }
       ])
     });
+
+    if (round.evidenceAudit?.records.length) {
+      const evidenceRows = round.evidenceAudit.records.flatMap((record) => record.evidenceRefs.map((ref) => ({
+        debate_id: debate.id,
+        round_id: roundId,
+        kind: "source",
+        title: `${record.claimId} evidence reference`,
+        url: ref.startsWith("http://") || ref.startsWith("https://") ? ref : null,
+        excerpt: null,
+        strength: Math.round(record.confidence * 100),
+        metadata: { claim_id: record.claimId, classification: record.classification, status: record.status, rationale: record.rationale }
+      })));
+      if (evidenceRows.length) {
+        await request("debate_evidence", {
+          method: "POST",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify(evidenceRows)
+        });
+      }
+    }
 
     const hypotheses = round.architect.claims
       .filter((claim) => claim.type === "hypothesis")
