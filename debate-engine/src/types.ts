@@ -2,6 +2,29 @@ export type Provider = "openai" | "gemini";
 export type AgentRole = "architect" | "red_team" | "judge";
 export type DecisionStatus = "revise" | "converged" | "unresolved";
 
+export type ScoreDimension =
+  | "buyerValue"
+  | "sellerValue"
+  | "coteDIvoireFit"
+  | "marketplaceLiquidity"
+  | "differentiation"
+  | "trustFraud"
+  | "technicalFeasibility"
+  | "acquisition"
+  | "monetization";
+
+export interface Scorecard {
+  buyerValue: number;
+  sellerValue: number;
+  coteDIvoireFit: number;
+  marketplaceLiquidity: number;
+  differentiation: number;
+  trustFraud: number;
+  technicalFeasibility: number;
+  acquisition: number;
+  monetization: number;
+}
+
 export interface Claim {
   id: string;
   statement: string;
@@ -41,6 +64,8 @@ export interface JudgeDecision {
   winner: "architect" | "red_team" | "neither";
   architectScore: number;
   redTeamScore: number;
+  architectScorecard: Scorecard;
+  redTeamScorecard: Scorecard;
   acceptedClaims: string[];
   rejectedClaims: string[];
   criticalDisagreements: string[];
