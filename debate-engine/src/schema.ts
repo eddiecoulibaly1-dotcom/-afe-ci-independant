@@ -15,6 +15,31 @@ const scorecardSchema = {
   required: ["buyerValue", "sellerValue", "coteDIvoireFit", "marketplaceLiquidity", "differentiation", "trustFraud", "technicalFeasibility", "acquisition", "monetization"]
 } as const;
 
+const evidenceAuditSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    records: { type: "array", items: {
+      type: "object", additionalProperties: false,
+      properties: {
+        claimId: { type: "string" },
+        classification: { type: "string", enum: ["fact", "hypothesis", "opinion"] },
+        status: { type: "string", enum: ["supported", "unsupported", "not_required"] },
+        evidenceRefs: { type: "array", items: { type: "string" } },
+        rationale: { type: "string" },
+        confidence: { type: "number", minimum: 0, maximum: 1 },
+        impact: { type: "string", enum: ["low", "medium", "high", "critical"] }
+      }, required: ["claimId", "classification", "status", "evidenceRefs", "rationale", "confidence", "impact"]
+    }},
+    unsupportedCriticalClaims: { type: "array", items: { type: "string" } },
+    unsupportedHighImpactClaims: { type: "array", items: { type: "string" } },
+    confidence: { type: "number", minimum: 0, maximum: 1 },
+    blocking: { type: "boolean" },
+    nextTests: { type: "array", items: { type: "string" } }
+  },
+  required: ["records", "unsupportedCriticalClaims", "unsupportedHighImpactClaims", "confidence", "blocking", "nextTests"]
+} as const;
+
 export const proposalSchema = {
   type: "object", additionalProperties: false,
   properties: {
@@ -25,8 +50,9 @@ export const proposalSchema = {
         id: { type: "string" }, statement: { type: "string" },
         type: { type: "string", enum: ["fact", "hypothesis", "opinion"] },
         confidence: { type: "number", minimum: 0, maximum: 1 },
-        evidenceRequired: { type: "boolean" }
-      }, required: ["id", "statement", "type", "confidence", "evidenceRequired"]
+        evidenceRequired: { type: "boolean" },
+        evidenceRefs: { type: "array", items: { type: "string" } }
+      }, required: ["id", "statement", "type", "confidence", "evidenceRequired", "evidenceRefs"]
     }},
     assumptions: { type: "array", items: { type: "string" } },
     risks: { type: "array", items: { type: "string" } },
@@ -72,7 +98,8 @@ export const judgeSchema = {
     criticalDisagreements: { type: "array", items: { type: "string" } },
     decision: { type: "string" },
     rationale: { type: "array", items: { type: "string" } },
-    nextRoundObjective: { type: "string" }
+    nextRoundObjective: { type: "string" },
+    evidenceAudit: evidenceAuditSchema
   },
-  required: ["status", "winner", "architectScore", "redTeamScore", "architectScorecard", "redTeamScorecard", "acceptedClaims", "rejectedClaims", "criticalDisagreements", "decision", "rationale", "nextRoundObjective"]
+  required: ["status", "winner", "architectScore", "redTeamScore", "architectScorecard", "redTeamScorecard", "acceptedClaims", "rejectedClaims", "criticalDisagreements", "decision", "rationale", "nextRoundObjective", "evidenceAudit"]
 } as const;
