@@ -8,30 +8,35 @@ Adversarial strategic decision engine for AFE-CI.
 
 The orchestrator is deterministic: it controls rounds, evidence auditing, persistence, scoring and convergence instead of delegating the loop to an LLM.
 
-## V0.6.3 Mobile + Deployment
+## V0.7 Mobile Application / PWA
 
-V0.6.3 keeps the mobile-first Lab self-contained inside the Node server so the production deployment does not depend on filesystem access to static Lab files.
+V0.7 turns the mobile-first Lab into an installable application shell while keeping the decision engine server-side.
 
-The phone flow is:
+Phone flow:
 
-`Phone browser -> Debate Lab -> Debate Engine -> OpenAI/Gemini -> Evidence Engine -> Arbiter -> Supabase`
+`Phone -> AFE-CI Debate Engine App -> Debate Engine -> OpenAI/Gemini -> Evidence Engine -> Arbiter -> Supabase`
 
-The Lab is served at `/lab`. The production runtime uses Node.js 24 from `package.json` and Vercel's zero-configuration Node server detection.
+V0.7 includes:
 
-V0.6.3 includes:
-
-- mobile-first Debate Lab;
-- embedded Lab HTML and manifest for reliable Vercel deployment;
-- evidence-aware round display;
+- application-style mobile navigation: Accueil, Historique, Nouveau, Aide;
+- install prompt when the browser supports PWA installation;
+- Android home-screen friendly manifest and application icon;
+- service worker and cached application shell for degraded-network access;
+- local draft persistence for a question and its context;
+- decision copy/share actions using native phone capabilities when available;
 - debate history and replay;
-- installable web-app manifest;
-- `/health` reporting version, Evidence Engine and mobile Lab status;
+- Evidence Engine and Arbiter views from V0.6;
+- `/health` reporting `pwa: true`;
 - Node.js 24 production runtime;
 - no API key exposed to the browser.
 
-### Production deployment
+The PWA is an application layer, not a replacement for the debate orchestrator. Actual debates still require the server and configured provider APIs.
 
-Import the repository into Vercel and set the project root to `debate-engine`.
+## V0.6 Deployment
+
+The Lab is self-contained inside the Node server so the production deployment does not depend on filesystem access to static Lab files.
+
+The production runtime uses Node.js 24 and Vercel's zero-configuration Node server detection.
 
 Set these server-side environment variables in Vercel:
 
@@ -42,8 +47,6 @@ Set these server-side environment variables in Vercel:
 - optional model/provider settings from `.env.example`
 
 Secrets must remain server-side. After changing environment variables, redeploy.
-
-Vercel provides the public HTTPS URL. That URL is the address to open from the phone; GitHub remains the source-code repository, while Supabase remains the persistent memory.
 
 ## V0.5 Evidence Intelligence
 
@@ -57,16 +60,6 @@ Rules:
 - a claim with no evidence reference is `unsupported`;
 - unsupported high-impact claims block convergence;
 - evidence references declared by a model are recorded as declared references, not silently treated as independently verified sources.
-
-The deterministic Evidence Engine produces, per round:
-
-- claim classification;
-- support status;
-- evidence references;
-- confidence;
-- impact;
-- blocking state;
-- next tests required to reduce uncertainty.
 
 ## V0.4 Decision Intelligence
 
@@ -86,11 +79,14 @@ V0.4 introduced a deterministic 100-point decision scorecard.
 
 The LLMs provide raw dimension evaluations; the code computes the weighted score.
 
-## V0.3 Lab
+## API
 
 The Lab exposes:
 
 - `GET /lab`
+- `GET /lab/manifest.webmanifest`
+- `GET /lab/sw.js`
+- `GET /lab/icon.svg`
 - `GET /health`
 - `GET /debates`
 - `GET /debates/:id`
