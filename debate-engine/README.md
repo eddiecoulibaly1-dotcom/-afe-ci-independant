@@ -8,24 +8,25 @@ Adversarial strategic decision engine for AFE-CI.
 
 The orchestrator is deterministic: it controls rounds, evidence auditing, persistence, scoring and convergence instead of delegating the loop to an LLM.
 
-## V0.6 Mobile + Deployment Ready
+## V0.6.3 Mobile + Deployment
 
-V0.6 turns the Lab into a mobile-first web cockpit and prepares the engine for public deployment.
+V0.6.3 keeps the mobile-first Lab self-contained inside the Node server so the production deployment does not depend on filesystem access to static Lab files.
 
 The phone flow is:
 
 `Phone browser -> Debate Lab -> Debate Engine -> OpenAI/Gemini -> Evidence Engine -> Arbiter -> Supabase`
 
-The Lab is served at `/lab` and the production runtime is configured for Node.js 24 through `vercel.json`. Vercel can deploy the Node server directly and keeps API/database secrets server-side.
+The Lab is served at `/lab`. The production runtime uses Node.js 24 from `package.json` and Vercel's zero-configuration Node server detection.
 
-V0.6 includes:
+V0.6.3 includes:
 
 - mobile-first Debate Lab;
+- embedded Lab HTML and manifest for reliable Vercel deployment;
 - evidence-aware round display;
 - debate history and replay;
 - installable web-app manifest;
 - `/health` reporting version, Evidence Engine and mobile Lab status;
-- Node.js 24 production runtime configuration;
+- Node.js 24 production runtime;
 - no API key exposed to the browser.
 
 ### Production deployment
@@ -42,7 +43,7 @@ Set these server-side environment variables in Vercel:
 
 Secrets must remain server-side. After changing environment variables, redeploy.
 
-Vercel will provide the public HTTPS URL. That URL is the address to open from the phone; GitHub remains the source-code repository, while Supabase remains the persistent memory.
+Vercel provides the public HTTPS URL. That URL is the address to open from the phone; GitHub remains the source-code repository, while Supabase remains the persistent memory.
 
 ## V0.5 Evidence Intelligence
 
@@ -78,15 +79,27 @@ V0.4 introduced a deterministic 100-point decision scorecard.
 | Côte d'Ivoire fit | 15 |
 | Marketplace liquidity | 15 |
 | Differentiation | 10 |
-| Trust / fraud | 10 |
+| Trust/fraud | 10 |
 | Technical feasibility | 10 |
 | Acquisition | 5 |
 | Monetization | 5 |
-| **Total** | **100** |
 
-## Memory
+The LLMs provide raw dimension evaluations; the code computes the weighted score.
 
-If `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured, completed debates are persisted to Supabase in:
+## V0.3 Lab
+
+The Lab exposes:
+
+- `GET /lab`
+- `GET /health`
+- `GET /debates`
+- `GET /debates/:id`
+- `POST /debates/run`
+- `POST /api/debates/run`
+
+## V0.2 Supabase memory
+
+The server can persist completed debates to Supabase in:
 
 - `debates`
 - `debate_rounds`
@@ -95,32 +108,4 @@ If `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured, completed deba
 - `debate_evidence`
 - `debate_decisions`
 
-Without those variables, the engine falls back to the local JSON store under `data/`.
-
-The service-role key is server-side only and must never be exposed to a browser/client or committed to GitHub.
-
-## Install / run
-
-```bash
-npm install
-cp .env.example .env
-npm run typecheck
-npm run dev
-```
-
-Then open:
-
-```text
-http://localhost:8787/lab
-```
-
-API:
-
-- `POST /debates/run` starts a debate.
-- `GET /debates` returns stored debates.
-- `GET /debates/:id` returns one complete debate.
-- `GET /health` exposes deployment health.
-
-## Database
-
-The production Supabase project is `afe-ci-production`. The migration is committed under `supabase/migrations/` so the database model remains versioned with the engine.
+RLS is enabled and server-side persistence uses `SUPABASE_SERVICE_ROLE_KEY` only.
