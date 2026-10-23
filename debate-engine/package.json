@@ -1,0 +1,22 @@
+{
+  "name": "afe-ci-debate-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "debate": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@google/genai": "2.30.0",
+    "openai": "7.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}
