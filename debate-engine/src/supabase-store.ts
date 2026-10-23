@@ -114,9 +114,8 @@ interface DebateRow extends Omit<Debate, "rounds"> {
   }>;
 }
 
-export async function listDebatesFromSupabase(): Promise<Debate[]> {
-  const rows = await request<DebateRow[]>("debates?select=*,debate_rounds(*)&order=created_at.desc");
-  return rows.map((row) => ({
+function normalizeRow(row: DebateRow): Debate {
+  return {
     id: row.id,
     question: row.question,
     context: row.context,
@@ -132,5 +131,15 @@ export async function listDebatesFromSupabase(): Promise<Debate[]> {
         judge: round.judge_decision,
         createdAt: round.created_at
       }))
-  }));
+  };
+}
+
+export async function listDebatesFromSupabase(): Promise<Debate[]> {
+  const rows = await request<DebateRow[]>("debates?select=*,debate_rounds(*)&order=created_at.desc");
+  return rows.map(normalizeRow);
+}
+
+export async function getDebateFromSupabase(id: string): Promise<Debate | null> {
+  const rows = await request<DebateRow[]>(`debates?select=*,debate_rounds(*)&id=eq.${encodeURIComponent(id)}&limit=1`);
+  return rows[0] ? normalizeRow(rows[0]) : null;
 }
