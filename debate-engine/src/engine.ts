@@ -5,12 +5,12 @@ import { callModel } from "./providers.js";
 import { ARCHITECT_SYSTEM, RED_TEAM_SYSTEM, JUDGE_SYSTEM, architectPrompt, redTeamPrompt, judgePrompt } from "./prompts.js";
 
 export async function runDebate(question: string, context: string | undefined, config: DebateConfig): Promise<Debate> {
-  const debate: Debate = { id: randomUUID(), question, context, status: "running", rounds: [] };
+  const debate: Debate = { id: randomUUID(), question, context, status: "running", rounds: [], config };
 
   for (let roundNo = 1; roundNo <= config.maxRounds; roundNo++) {
     const architect = await callModel<Proposal>({
       ...config.architect, system: ARCHITECT_SYSTEM,
-      prompt: architectPrompt(question, context, debate.rounds),
+      prompt: architectPrompt(question, context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective),
       schemaName: "architect_proposal", schema: proposalSchema
     });
 
