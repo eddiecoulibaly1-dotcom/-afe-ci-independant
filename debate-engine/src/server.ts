@@ -1,11 +1,14 @@
 import "node:process";
 import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { runDebate } from "./engine.js";
-import { listDebates, saveDebate } from "./store.js";
+import { getDebate, listDebates, saveDebate } from "./store.js";
 import type { DebateConfig, Provider } from "./types.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const json = (value: unknown) => JSON.stringify(value, null, 2);
+const labFile = resolve(process.cwd(), "lab/index.html");
 
 function config(): DebateConfig {
   const provider = (value: string | undefined, fallback: Provider): Provider => value === "gemini" ? "gemini" : value === "openai" ? "openai" : fallback;
@@ -18,27 +21,53 @@ function config(): DebateConfig {
   };
 }
 
+function send(res: import("node:http").ServerResponse, status: number, value: unknown) {
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  res.end(json(value));
+}
+
 const server = createServer(async (req, res) => {
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  if (req.method === "GET" && req.url === "/health") {
-    res.writeHead(200); res.end(json({ ok: true, service: "afe-ci-debate-engine" })); return;
-  }
-  if (req.method === "GET" && req.url === "/debates") {
-    res.writeHead(200); res.end(json(await listDebates())); return;
-  }
-  if (req.method !== "POST" || req.url !== "/debates/run") {
-    res.writeHead(404); res.end(json({ error: "Not found" })); return;
-  }
   try {
+    if (req.method === "GET" && (req.url === "/" || req.url === "/lab" || req.url === "/lab/")) {
+      const html = await readFile(labFile, "utf8");
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(html);
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/health") {
+      send(res, 200, { ok: true, service: "afe-ci-debate-engine", version: "0.3.0" });
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/debates") {
+      send(res, 200, await listDebates());
+      return;
+    }
+
+    if (req.method === "GET" && req.url?.startsWith("/debates/")) {
+      const id = decodeURIComponent(req.url.slice("/debates/".length));
+      const debate = await getDebate(id);
+      if (!debate) { send(res, 404, { error: "Debate not found" }); return; }
+      send(res, 200, debate);
+      return;
+    }
+
+    if (req.method !== "POST" || (req.url !== "/debates/run" && req.url !== "/api/debates/run")) {
+      send(res, 404, { error: "Not found" });
+      return;
+    }
+
     let body = "";
     for await (const chunk of req) body += chunk;
     const input = JSON.parse(body) as { question?: string; context?: string };
     if (!input.question?.trim()) throw new Error("question is required");
+
     const result = await runDebate(input.question.trim(), input.context, config());
     await saveDebate(result);
-    res.writeHead(200); res.end(json(result));
+    send(res, 200, result);
   } catch (error) {
-    res.writeHead(400); res.end(json({ error: error instanceof Error ? error.message : "Unknown error" }));
+    send(res, 400, { error: error instanceof Error ? error.message : "Unknown error" });
   }
 });
 
