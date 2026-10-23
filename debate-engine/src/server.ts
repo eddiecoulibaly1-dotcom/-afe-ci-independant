@@ -2,53 +2,30 @@ import "node:process";
 import { createServer } from "node:http";
 import { runDebate } from "./engine.js";
 import { getDebate, listDebates, saveDebate } from "./store.js";
-import { LAB_HTML, LAB_MANIFEST, LAB_SW, LAB_ICON } from "./lab-v09.js";
+import { LAB_HTML, LAB_MANIFEST, LAB_SW, LAB_ICON } from "./lab-v10.js";
 import { authenticateRequest, publicAuthConfig } from "./auth.js";
 import { addWorkspaceMember, createWorkspace, getMe, getWorkspace, listDebateShares, listWorkspaces, removeDebateShare, removeWorkspaceMember, setDebateWorkspace, shareDebate, updateProfile, updateWorkspaceMember } from "./workspace-store.js";
+import { inviteWorkspaceUser, createNotification, listNotifications, markNotificationRead, markAllNotificationsRead, listAudit, createShareLink, revokeShareLink } from "./v1-store.js";
 import type { DebateConfig, Provider } from "./types.js";
-
-const VERSION="0.9.0";
-const port=Number(process.env.PORT??8787);
-const json=(value:unknown)=>JSON.stringify(value,null,2);
-function config():DebateConfig{const provider=(v:string|undefined,f:Provider):Provider=>v==="gemini"?"gemini":v==="openai"?"openai":f;return{maxRounds:Number(process.env.MAX_ROUNDS??6),convergenceScore:Number(process.env.CONVERGENCE_SCORE??85),architect:{provider:provider(process.env.ARCHITECT_PROVIDER,"openai"),model:process.env.OPENAI_MODEL??"gpt-5.5"},redTeam:{provider:provider(process.env.RED_TEAM_PROVIDER,"gemini"),model:process.env.GEMINI_MODEL??"gemini-3.8-flash"},judge:{provider:provider(process.env.JUDGE_PROVIDER,"openai"),model:process.env.JUDGE_MODEL??"gpt-5.5"}};}
-function send(res:import("node:http").ServerResponse,status:number,value:unknown){res.writeHead(status,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"});res.end(json(value));}
-async function body(req:import("node:http").IncomingMessage){let text="";for await(const chunk of req)text+=chunk;return JSON.parse(text||"{}");}
-const server=createServer(async(req,res)=>{try{const pathname=req.url?.split("?")[0]??"/";
-if(req.method==="GET"&&(pathname==="/"||pathname==="/lab"||pathname==="/lab/")){res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"});res.end(LAB_HTML);return;}
-if(req.method==="GET"&&pathname==="/lab/manifest.webmanifest"){res.writeHead(200,{"Content-Type":"application/manifest+json; charset=utf-8","Cache-Control":"public,max-age=3600"});res.end(LAB_MANIFEST);return;}
-if(req.method==="GET"&&pathname==="/lab/sw.js"){res.writeHead(200,{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"no-cache"});res.end(LAB_SW);return;}
-if(req.method==="GET"&&pathname==="/lab/icon.svg"){res.writeHead(200,{"Content-Type":"image/svg+xml; charset=utf-8","Cache-Control":"public,max-age=86400"});res.end(LAB_ICON);return;}
-if(req.method==="GET"&&pathname==="/health"){send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,evidenceEngine:true,mobileLab:true,pwa:true,auth:true,privateHistory:true,workspaces:true,roles:true,controlledSharing:true,deployment:"ready"});return;}
-if(req.method==="GET"&&pathname==="/auth/config"){const auth=publicAuthConfig();if(!auth){send(res,503,{error:"Supabase public auth is not configured"});return;}send(res,200,auth);return;}
+const VERSION="1.0.1",port=Number(process.env.PORT??8787);const json=(v:unknown)=>JSON.stringify(v,null,2);
+function config():DebateConfig{const p=(v:string|undefined,f:Provider):Provider=>v==="gemini"?"gemini":v==="openai"?"openai":f;return{maxRounds:Number(process.env.MAX_ROUNDS??6),convergenceScore:Number(process.env.CONVERGENCE_SCORE??85),architect:{provider:p(process.env.ARCHITECT_PROVIDER,"openai"),model:process.env.OPENAI_MODEL??"gpt-5.5"},redTeam:{provider:p(process.env.RED_TEAM_PROVIDER,"gemini"),model:process.env.GEMINI_MODEL??"gemini-3.8-flash"},judge:{provider:p(process.env.JUDGE_PROVIDER,"openai"),model:process.env.JUDGE_MODEL??"gpt-5.5"}};}
+function send(res:import("node:http").ServerResponse,s:number,v:unknown){res.writeHead(s,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"});res.end(json(v));}
+async function body(req:import("node:http").IncomingMessage){let t="";for await(const c of req)t+=c;return JSON.parse(t||"{}");}
+const server=createServer(async(req,res)=>{try{const path=req.url?.split("?")[0]??"/";
+if(req.method==="GET"&&(path==="/"||path==="/lab"||path==="/lab/")){res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"});res.end(LAB_HTML);return;}
+if(req.method==="GET"&&path==="/lab/manifest.webmanifest"){res.writeHead(200,{"Content-Type":"application/manifest+json; charset=utf-8"});res.end(LAB_MANIFEST);return;}if(req.method==="GET"&&path==="/lab/sw.js"){res.writeHead(200,{"Content-Type":"application/javascript; charset=utf-8"});res.end(LAB_SW);return;}if(req.method==="GET"&&path==="/lab/icon.svg"){res.writeHead(200,{"Content-Type":"image/svg+xml; charset=utf-8"});res.end(LAB_ICON);return;}
+if(req.method==="GET"&&path==="/health"){send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,evidenceEngine:true,mobileLab:true,pwa:true,auth:true,privateHistory:true,workspaces:true,roles:true,controlledSharing:true,v1_0_1:true,notifications:true,audit:true,secureShareLinks:true,invitations:true,deployment:"ready"});return;}
+if(req.method==="GET"&&path==="/auth/config"){const a=publicAuthConfig();if(!a){send(res,503,{error:"Supabase public auth is not configured"});return;}send(res,200,a);return;}
 const user=await authenticateRequest(req);if(!user){send(res,401,{error:"Authentication required"});return;}
-
-if(req.method==="GET"&&pathname==="/me"){send(res,200,await getMe(user.id,user.email));return;}
-if(req.method==="PATCH"&&pathname==="/me"){const input=await body(req) as {displayName?:string;phone?:string};send(res,200,{profile:await updateProfile(user.id,input)});return;}
-if(req.method==="GET"&&pathname==="/workspaces"){send(res,200,await listWorkspaces(user.id));return;}
-if(req.method==="POST"&&pathname==="/workspaces"){const input=await body(req) as {name?:string};if(!input.name?.trim())throw new Error("workspace name is required");send(res,201,await createWorkspace(user.id,input.name));return;}
-const workspaceMatch=pathname.match(/^\/workspaces\/([^/]+)(?:\/members(?:\/([^/]+))?)?$/);
-if(workspaceMatch){const workspaceId=decodeURIComponent(workspaceMatch[1]);const targetId=workspaceMatch[2]?decodeURIComponent(workspaceMatch[2]):null;
-  if(req.method==="GET"&&!targetId){const workspace=await getWorkspace(workspaceId,user.id);if(!workspace){send(res,404,{error:"Workspace not found"});return;}send(res,200,workspace);return;}
-  if(req.method==="POST"&&targetId===null){const input=await body(req) as {email?:string;role?:"admin"|"editor"|"viewer"};send(res,201,await addWorkspaceMember(workspaceId,user.id,input.email??"",input.role??"viewer"));return;}
-  if(req.method==="PATCH"&&targetId){const input=await body(req) as {role?:"admin"|"editor"|"viewer"};await updateWorkspaceMember(workspaceId,user.id,targetId,input.role??"viewer");send(res,200,{ok:true});return;}
-  if(req.method==="DELETE"&&targetId){await removeWorkspaceMember(workspaceId,user.id,targetId);send(res,200,{ok:true});return;}
-}
-
-const debateShareMatch=pathname.match(/^\/debates\/([^/]+)\/shares(?:\/([^/]+))?$/);
-if(debateShareMatch){const debateId=decodeURIComponent(debateShareMatch[1]);const targetId=debateShareMatch[2]?decodeURIComponent(debateShareMatch[2]):null;
-  if(req.method==="GET"&&!targetId){send(res,200,await listDebateShares(debateId,user.id));return;}
-  if(req.method==="POST"&&targetId===null){const input=await body(req) as {email?:string;permission?:"viewer"|"editor"};send(res,201,await shareDebate(debateId,user.id,input.email??"",input.permission??"viewer"));return;}
-  if(req.method==="DELETE"&&targetId){await removeDebateShare(debateId,user.id,targetId);send(res,200,{ok:true});return;}
-}
-
-const debateWorkspaceMatch=pathname.match(/^\/debates\/([^/]+)\/workspace$/);
-if(debateWorkspaceMatch&&req.method==="POST"){const debateId=decodeURIComponent(debateWorkspaceMatch[1]);const input=await body(req) as {workspaceId?:string|null};await setDebateWorkspace(debateId,user.id,input.workspaceId??null);const debate=await getDebate(debateId,user.id);send(res,200,debate);return;}
-
-if(req.method==="GET"&&pathname==="/debates"){send(res,200,await listDebates(user.id));return;}
-if(req.method==="GET"&&/^\/debates\/[^/]+$/.test(pathname)){const id=decodeURIComponent(pathname.slice("/debates/".length));const debate=await getDebate(id,user.id);if(!debate){send(res,404,{error:"Debate not found"});return;}send(res,200,debate);return;}
-if(req.method!=="POST"||(pathname!=="/debates/run"&&pathname!=="/api/debates/run")){send(res,404,{error:"Not found"});return;}
-const input=await body(req) as {question?:string;context?:string;workspaceId?:string|null};if(!input.question?.trim())throw new Error("question is required");
-if(input.workspaceId){const workspaces=await listWorkspaces(user.id);const workspace=workspaces.find(w=>w.id===input.workspaceId);if(!workspace||!["owner","admin","editor"].includes(workspace.role))throw new Error("Tu n'as pas le droit d'utiliser cet espace");}
-const result=await runDebate(input.question.trim(),input.context,config());result.userId=user.id;result.workspaceId=input.workspaceId??null;await saveDebate(result);send(res,200,result);
-}catch(error){const message=error instanceof Error?error.message:"Unknown error";send(res,message==="Authentication required"?401:400,{error:message});}});
-server.listen(port,()=>console.log(`AFE-CI Debate Engine v${VERSION} listening on port ${port}`));
+if(req.method==="GET"&&path==="/me"){send(res,200,await getMe(user.id,user.email));return;}if(req.method==="PATCH"&&path==="/me"){send(res,200,{profile:await updateProfile(user.id,await body(req) as {displayName?:string;phone?:string})});return;}
+if(req.method==="GET"&&path==="/notifications"){send(res,200,await listNotifications(user.id));return;}const nm=path.match(/^\/notifications\/([^/]+)$/);if(nm&&req.method==="PATCH"){await markNotificationRead(user.id,decodeURIComponent(nm[1]));send(res,200,{ok:true});return;}if(req.method==="POST"&&path==="/notifications/read-all"){await markAllNotificationsRead(user.id);send(res,200,{ok:true});return;}if(req.method==="GET"&&path==="/audit"){send(res,200,await listAudit(user.id));return;}
+if(req.method==="GET"&&path==="/workspaces"){send(res,200,await listWorkspaces(user.id));return;}if(req.method==="POST"&&path==="/workspaces"){const i=await body(req) as {name?:string};if(!i.name?.trim())throw new Error("workspace name is required");send(res,201,await createWorkspace(user.id,i.name));return;}
+const wi=path.match(/^\/workspaces\/([^/]+)\/invitations$/);if(wi&&req.method==="POST"){const wid=decodeURIComponent(wi[1]),w=await getWorkspace(wid,user.id);if(!w||!["owner","admin"].includes(w.role))throw new Error("Droits insuffisants pour inviter dans cet espace");const i=await body(req) as {email?:string;role?:"admin"|"editor"|"viewer"};if(!i.email?.trim())throw new Error("email is required");const invited=await inviteWorkspaceUser(wid,user.id,i.email,i.role??"viewer");if(invited.status==="existing"){await addWorkspaceMember(wid,user.id,i.email,i.role??"viewer");}send(res,201,invited);return;}
+const wm=path.match(/^\/workspaces\/([^/]+)(?:\/members(?:\/([^/]+))?)?$/);if(wm){const wid=decodeURIComponent(wm[1]),tid=wm[2]?decodeURIComponent(wm[2]):null;if(req.method==="GET"&&!tid){const w=await getWorkspace(wid,user.id);if(!w){send(res,404,{error:"Workspace not found"});return;}send(res,200,w);return;}if(req.method==="POST"&&!tid){const i=await body(req) as {email?:string;role?:"admin"|"editor"|"viewer"};send(res,201,await addWorkspaceMember(wid,user.id,i.email??"",i.role??"viewer"));return;}if(req.method==="PATCH"&&tid){const i=await body(req) as {role?:"admin"|"editor"|"viewer"};await updateWorkspaceMember(wid,user.id,tid,i.role??"viewer");send(res,200,{ok:true});return;}if(req.method==="DELETE"&&tid){await removeWorkspaceMember(wid,user.id,tid);send(res,200,{ok:true});return;}}
+const ds=path.match(/^\/debates\/([^/]+)\/shares(?:\/([^/]+))?$/);if(ds){const id=decodeURIComponent(ds[1]),tid=ds[2]?decodeURIComponent(ds[2]):null;if(req.method==="GET"&&!tid){send(res,200,await listDebateShares(id,user.id));return;}if(req.method==="POST"&&!tid){const i=await body(req) as {email?:string;permission?:"viewer"|"editor"};send(res,201,await shareDebate(id,user.id,i.email??"",i.permission??"viewer"));return;}if(req.method==="DELETE"&&tid){await removeDebateShare(id,user.id,tid);send(res,200,{ok:true});return;}}
+const sl=path.match(/^\/debates\/([^/]+)\/share-links$/);if(sl&&req.method==="POST"){const id=decodeURIComponent(sl[1]);if(!await getDebate(id,user.id))throw new Error("Débat introuvable ou accès refusé");const i=await body(req) as {permission?:"viewer"|"editor";expiresInHours?:number};send(res,201,await createShareLink(id,user.id,i.permission??"viewer",i.expiresInHours));return;}
+const slr=path.match(/^\/debates\/([^/]+)\/share-links\/([^/]+)$/);if(slr&&req.method==="DELETE"){const id=decodeURIComponent(slr[1]);if(!await getDebate(id,user.id))throw new Error("Débat introuvable ou accès refusé");await revokeShareLink(id,user.id,decodeURIComponent(slr[2]));send(res,200,{ok:true});return;}
+const dw=path.match(/^\/debates\/([^/]+)\/workspace$/);if(dw&&req.method==="POST"){const id=decodeURIComponent(dw[1]),i=await body(req) as {workspaceId?:string|null};await setDebateWorkspace(id,user.id,i.workspaceId??null);send(res,200,await getDebate(id,user.id));return;}
+if(req.method==="GET"&&path==="/debates"){send(res,200,await listDebates(user.id));return;}if(req.method==="GET"&&/^\/debates\/[^/]+$/.test(path)){const id=decodeURIComponent(path.slice(9)),d=await getDebate(id,user.id);if(!d){send(res,404,{error:"Debate not found"});return;}send(res,200,d);return;}
+if(req.method!=="POST"||(path!=="/debates/run"&&path!=="/api/debates/run")){send(res,404,{error:"Not found"});return;}const i=await body(req) as {question?:string;context?:string;workspaceId?:string|null};if(!i.question?.trim())throw new Error("question is required");if(i.workspaceId){const ws=(await listWorkspaces(user.id)).find(w=>w.id===i.workspaceId);if(!ws||!["owner","admin","editor"].includes(ws.role))throw new Error("Tu n'as pas le droit d'utiliser cet espace");}const r=await runDebate(i.question.trim(),i.context,config());r.userId=user.id;r.workspaceId=i.workspaceId??null;await saveDebate(r);send(res,200,r);
+}catch(e){const m=e instanceof Error?e.message:"Unknown error";send(res,m==="Authentication required"?401:400,{error:m});}});server.listen(port,()=>console.log(`AFE-CI Debate Engine v${VERSION} listening on port ${port}`));
