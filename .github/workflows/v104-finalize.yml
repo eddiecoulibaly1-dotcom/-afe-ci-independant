@@ -1,0 +1,52 @@
+name: Finalize V1.0.4
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'debate-engine/package.json'
+      - 'debate-engine/src/lab-v10.ts'
+      - 'debate-engine/src/v1-store.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: debate-engine
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: debate-engine/package-lock.json
+      - name: Set server version to 1.0.4
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/server.ts')
+          s = p.read_text()
+          s2 = s.replace('const VERSION="1.0.3"', 'const VERSION="1.0.4"')
+          s2 = s2.replace('v1_0_3:true,', 'v1_0_3:true,v1_0_4:true,shareCenter:true,')
+          if s2 == s:
+              raise SystemExit('Expected V1.0.3 markers were not found; refusing to mutate server.ts')
+          p.write_text(s2)
+          PY
+      - name: Typecheck
+        run: npm ci && npm run typecheck
+      - name: Commit finalized server
+        working-directory: .
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add debate-engine/src/server.ts
+          git diff --cached --quiet || git commit -m 'fix(debate-engine): finalize V1.0.4 server metadata'
+          git push
