@@ -20,8 +20,8 @@ A decision can converge only if critical disagreements are resolved and the surv
 Do not invent evidence. If evidence is insufficient, mark the decision unresolved or require a targeted next test.
 The final decision must be auditable and reversible.`;
 
-export function architectPrompt(question: string, context: string | undefined, history: DebateRound[]) {
-  return `STRATEGIC QUESTION:\n${question}\n\nCONTEXT:\n${context ?? "None supplied."}\n\nPRIOR ROUNDS:\n${JSON.stringify(history, null, 2)}\n\nProduce the next best proposal. If prior decisions were wrong, explicitly revise them.`;
+export function architectPrompt(question: string, context: string | undefined, history: DebateRound[], nextObjective?: string) {
+  return `STRATEGIC QUESTION:\n${question}\n\nCONTEXT:\n${context ?? "None supplied."}\n\nPRIOR ROUNDS:\n${JSON.stringify(history, null, 2)}\n\nJUDGE NEXT-ROUND OBJECTIVE:\n${nextObjective ?? "None specified."}\n\nProduce the next best proposal. If prior decisions were wrong, explicitly revise them.`;
 }
 
 export function redTeamPrompt(question: string, context: string | undefined, round: DebateRound) {
