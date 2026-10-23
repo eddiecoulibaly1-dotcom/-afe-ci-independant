@@ -8,36 +8,37 @@ Adversarial strategic decision engine for AFE-CI.
 
 The orchestrator is deterministic: it controls rounds, evidence auditing, persistence, scoring and convergence instead of delegating the loop to an LLM.
 
-## V0.8 Accounts + private decision memory
+## V0.9 Teams, roles and controlled sharing
 
-V0.8 converts the mobile application shell into a personal application.
+V0.9 turns the personal application into a collaborative decision workspace without making every debate public.
 
 Phone flow:
 
-`Phone -> Supabase Auth -> AFE-CI Debate Engine -> OpenAI/Gemini -> Evidence Engine -> Arbiter -> private Supabase history`
+`Phone -> Supabase Auth -> Profile -> Workspace/Role -> Debate -> OpenAI/Gemini -> Evidence Engine -> Arbiter -> controlled Supabase memory`
 
-V0.8 includes:
+V0.9 includes:
 
-- email/password account creation and sign-in;
-- Supabase Auth session stored on the phone;
-- automatic access-token refresh;
-- authenticated debate creation;
-- debate history scoped to the signed-in user;
-- server-side bearer-token validation;
-- `debates.user_id` ownership and index;
-- RLS policies for authenticated ownership;
-- public Supabase publishable key only in the browser;
-- `SUPABASE_SERVICE_ROLE_KEY` remains server-side only;
-- mobile account screen and sign-out;
-- V0.8 mobile/PWA lab.
+- debate-specific user profiles, isolated from unrelated application profile tables;
+- workspaces owned by a user;
+- roles: `owner`, `admin`, `editor`, `viewer`;
+- workspace membership and access control;
+- debate ownership plus optional workspace ownership;
+- direct debate sharing with `viewer` or `editor` permission;
+- workspace assignment when creating or editing a debate;
+- mobile workspace management and member administration;
+- server-side authorization before workspace/share mutations;
+- RLS on the V0.9 collaboration tables;
+- no service-role key exposed to the browser.
 
-The V0.8 migration is `supabase/migrations/20261023_v08_debate_user_ownership.sql`.
+The V0.9 migration is `supabase/migrations/20261023_v09_workspaces_roles_sharing.sql`.
+
+## V0.8 Accounts + private decision memory
+
+V0.8 converts the mobile application shell into a personal application with Supabase Auth, private history and server-side bearer-token validation.
 
 ## V0.7 Mobile Application / PWA
 
 V0.7 turns the mobile-first Lab into an installable application shell while keeping the decision engine server-side.
-
-V0.7 includes mobile navigation, PWA manifest/icon, service worker, local draft persistence and native share/copy support.
 
 ## Production environment
 
@@ -66,11 +67,22 @@ Public:
 Authenticated:
 
 - `GET /me`
+- `PATCH /me`
+- `GET /workspaces`
+- `POST /workspaces`
+- `GET /workspaces/:id`
+- `POST /workspaces/:id/members`
+- `PATCH /workspaces/:id/members/:userId`
+- `DELETE /workspaces/:id/members/:userId`
 - `GET /debates`
 - `GET /debates/:id`
 - `POST /debates/run`
 - `POST /api/debates/run`
+- `POST /debates/:id/workspace`
+- `GET /debates/:id/shares`
+- `POST /debates/:id/shares`
+- `DELETE /debates/:id/shares/:userId`
 
 ## Decision intelligence
 
-V0.4 introduced a deterministic 100-point scorecard. V0.5 added evidence intelligence. V0.8 adds identity and private ownership around that decision memory.
+V0.4 introduced a deterministic 100-point scorecard. V0.5 added evidence intelligence. V0.8 added identity and private ownership. V0.9 adds collaboration while preserving controlled access.
