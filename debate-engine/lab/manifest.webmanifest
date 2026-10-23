@@ -1,0 +1,11 @@
+{
+  "name": "AFE-CI Debate Engine",
+  "short_name": "AFE Debate",
+  "lang": "fr",
+  "start_url": "/lab",
+  "scope": "/lab",
+  "display": "standalone",
+  "background_color": "#07101d",
+  "theme_color": "#07101d",
+  "description": "Cockpit mobile de décision contradictoire AFE-CI"
+}
