@@ -1,4 +1,4 @@
-import type { Debate } from "./types.js";
+import type { Debate, DebateRound } from "./types.js";
 
 function getConfig() {
   const url = process.env.SUPABASE_URL?.replace(/\/$/, "");
@@ -104,6 +104,33 @@ export async function saveDebateToSupabase(debate: Debate): Promise<void> {
   }
 }
 
+interface DebateRow extends Omit<Debate, "rounds"> {
+  debate_rounds: Array<{
+    round_number: number;
+    architect_proposal: DebateRound["architect"];
+    red_team_critique: DebateRound["redTeam"];
+    judge_decision: DebateRound["judge"];
+    created_at: string;
+  }>;
+}
+
 export async function listDebatesFromSupabase(): Promise<Debate[]> {
-  return request<Debate[]>("debates?select=*&order=created_at.desc");
+  const rows = await request<DebateRow[]>("debates?select=*,debate_rounds(*)&order=created_at.desc");
+  return rows.map((row) => ({
+    id: row.id,
+    question: row.question,
+    context: row.context,
+    status: row.status,
+    config: row.config,
+    finalDecision: row.final_decision,
+    rounds: (row.debate_rounds ?? [])
+      .sort((a, b) => a.round_number - b.round_number)
+      .map((round) => ({
+        round: round.round_number,
+        architect: round.architect_proposal,
+        redTeam: round.red_team_critique,
+        judge: round.judge_decision,
+        createdAt: round.created_at
+      }))
+  }));
 }
