@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { Debate } from "./types.js";
-import { listDebatesFromSupabase, saveDebateToSupabase, supabasePersistenceEnabled } from "./supabase-store.js";
+import { getDebateFromSupabase, listDebatesFromSupabase, saveDebateToSupabase, supabasePersistenceEnabled } from "./supabase-store.js";
 
 const DB_FILE = resolve(process.env.DEBATE_STORE_FILE ?? "./data/debates.json");
 
@@ -25,4 +25,10 @@ export async function listDebates(): Promise<Debate[]> {
   } catch {
     return [];
   }
+}
+
+export async function getDebate(id: string): Promise<Debate | null> {
+  if (supabasePersistenceEnabled()) return getDebateFromSupabase(id);
+  const debates = await listDebates();
+  return debates.find((debate) => debate.id === id) ?? null;
 }
