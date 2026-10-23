@@ -16,7 +16,7 @@ The phone flow is:
 
 `Phone browser -> Debate Lab -> Debate Engine -> OpenAI/Gemini -> Evidence Engine -> Arbiter -> Supabase`
 
-The Lab is served at `/lab` and the production runtime is configured for Node.js 24 through `vercel.json`. Vercel can deploy the Node server directly and keeps API/database secrets server-side. citeturn0search1turn0search0
+The Lab is served at `/lab` and the production runtime is configured for Node.js 24 through `vercel.json`. Vercel can deploy the Node server directly and keeps API/database secrets server-side.
 
 V0.6 includes:
 
@@ -30,7 +30,7 @@ V0.6 includes:
 
 ### Production deployment
 
-Import the repository into Vercel and set the project root to `debate-engine`. Vercel supports importing a Git repository and automatically deploying from the connected branch. citeturn0search7
+Import the repository into Vercel and set the project root to `debate-engine`.
 
 Set these server-side environment variables in Vercel:
 
@@ -40,7 +40,7 @@ Set these server-side environment variables in Vercel:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - optional model/provider settings from `.env.example`
 
-Secrets should be configured as server-side Secret environment variables, never in client-exposed variables. After changing environment variables, redeploy. citeturn0search0turn0search2
+Secrets must remain server-side. After changing environment variables, redeploy.
 
 Vercel will provide the public HTTPS URL. That URL is the address to open from the phone; GitHub remains the source-code repository, while Supabase remains the persistent memory.
 
