@@ -8,6 +8,42 @@ Adversarial strategic decision engine for AFE-CI.
 
 The orchestrator is deterministic: it controls rounds, evidence auditing, persistence, scoring and convergence instead of delegating the loop to an LLM.
 
+## V0.6 Mobile + Deployment Ready
+
+V0.6 turns the Lab into a mobile-first web cockpit and prepares the engine for public deployment.
+
+The phone flow is:
+
+`Phone browser -> Debate Lab -> Debate Engine -> OpenAI/Gemini -> Evidence Engine -> Arbiter -> Supabase`
+
+The Lab is served at `/lab` and the production runtime is configured for Node.js 24 through `vercel.json`. Vercel can deploy the Node server directly and keeps API/database secrets server-side. citeturn0search1turn0search0
+
+V0.6 includes:
+
+- mobile-first Debate Lab;
+- evidence-aware round display;
+- debate history and replay;
+- installable web-app manifest;
+- `/health` reporting version, Evidence Engine and mobile Lab status;
+- Node.js 24 production runtime configuration;
+- no API key exposed to the browser.
+
+### Production deployment
+
+Import the repository into Vercel and set the project root to `debate-engine`. Vercel supports importing a Git repository and automatically deploying from the connected branch. citeturn0search7
+
+Set these server-side environment variables in Vercel:
+
+- `OPENAI_API_KEY`
+- `GEMINI_API_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- optional model/provider settings from `.env.example`
+
+Secrets should be configured as server-side Secret environment variables, never in client-exposed variables. After changing environment variables, redeploy. citeturn0search0turn0search2
+
+Vercel will provide the public HTTPS URL. That URL is the address to open from the phone; GitHub remains the source-code repository, while Supabase remains the persistent memory.
+
 ## V0.5 Evidence Intelligence
 
 V0.5 adds an epistemic gate between debate generation and convergence.
@@ -31,11 +67,9 @@ The deterministic Evidence Engine produces, per round:
 - blocking state;
 - next tests required to reduce uncertainty.
 
-The Arbiter receives this state, but the final evidence gate is enforced in code. A model cannot bypass it by returning `converged`.
-
 ## V0.4 Decision Intelligence
 
-V0.4 introduced a deterministic 100-point decision scorecard. The Judge supplies raw 0-100 assessments for each dimension; the engine applies the weights and convergence policy in code.
+V0.4 introduced a deterministic 100-point decision scorecard.
 
 | Dimension | Weight |
 |---|---:|
@@ -50,25 +84,6 @@ V0.4 introduced a deterministic 100-point decision scorecard. The Judge supplies
 | Monetization | 5 |
 | **Total** | **100** |
 
-## V0.5 Mobile Debate Lab
-
-The V0.5 browser interface is served by the engine itself and is designed to work on a phone browser:
-
-```text
-http://localhost:8787/lab
-```
-
-It provides:
-
-- strategic question + context input;
-- launch of a complete adversarial debate;
-- round-by-round Architect / Red Team / Evidence / Judge view;
-- evidence blocking and next tests;
-- final convergence or unresolved decision;
-- history and debate replay.
-
-The UI never receives the Supabase service-role key. Persistence stays server-side.
-
 ## Memory
 
 If `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured, completed debates are persisted to Supabase in:
@@ -80,22 +95,15 @@ If `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured, completed deba
 - `debate_evidence`
 - `debate_decisions`
 
-V0.5 records the evidence audit as a `debate_events` entry and stores declared evidence references in `debate_evidence`.
-
 Without those variables, the engine falls back to the local JSON store under `data/`.
 
 The service-role key is server-side only and must never be exposed to a browser/client or committed to GitHub.
 
-## Install
+## Install / run
 
 ```bash
 npm install
 cp .env.example .env
-```
-
-## Run
-
-```bash
 npm run typecheck
 npm run dev
 ```
@@ -111,16 +119,7 @@ API:
 - `POST /debates/run` starts a debate.
 - `GET /debates` returns stored debates.
 - `GET /debates/:id` returns one complete debate.
-- `GET /health` exposes service health and V0.5 evidence status.
-
-Example:
-
-```json
-{
-  "question": "Quel est le meilleur wedge pour lancer la marketplace avicole AFE-CI ?",
-  "context": "Contexte complémentaire"
-}
-```
+- `GET /health` exposes deployment health.
 
 ## Database
 
