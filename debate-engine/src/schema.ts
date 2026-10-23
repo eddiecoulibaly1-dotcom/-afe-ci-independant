@@ -1,6 +1,22 @@
-export const proposalSchema = {
+const scorecardSchema = {
   type: "object",
   additionalProperties: false,
+  properties: {
+    buyerValue: { type: "number", minimum: 0, maximum: 100 },
+    sellerValue: { type: "number", minimum: 0, maximum: 100 },
+    coteDIvoireFit: { type: "number", minimum: 0, maximum: 100 },
+    marketplaceLiquidity: { type: "number", minimum: 0, maximum: 100 },
+    differentiation: { type: "number", minimum: 0, maximum: 100 },
+    trustFraud: { type: "number", minimum: 0, maximum: 100 },
+    technicalFeasibility: { type: "number", minimum: 0, maximum: 100 },
+    acquisition: { type: "number", minimum: 0, maximum: 100 },
+    monetization: { type: "number", minimum: 0, maximum: 100 }
+  },
+  required: ["buyerValue", "sellerValue", "coteDIvoireFit", "marketplaceLiquidity", "differentiation", "trustFraud", "technicalFeasibility", "acquisition", "monetization"]
+} as const;
+
+export const proposalSchema = {
+  type: "object", additionalProperties: false,
   properties: {
     position: { type: "string" },
     claims: { type: "array", items: {
@@ -49,6 +65,8 @@ export const judgeSchema = {
     winner: { type: "string", enum: ["architect", "red_team", "neither"] },
     architectScore: { type: "number", minimum: 0, maximum: 100 },
     redTeamScore: { type: "number", minimum: 0, maximum: 100 },
+    architectScorecard: scorecardSchema,
+    redTeamScorecard: scorecardSchema,
     acceptedClaims: { type: "array", items: { type: "string" } },
     rejectedClaims: { type: "array", items: { type: "string" } },
     criticalDisagreements: { type: "array", items: { type: "string" } },
@@ -56,5 +74,5 @@ export const judgeSchema = {
     rationale: { type: "array", items: { type: "string" } },
     nextRoundObjective: { type: "string" }
   },
-  required: ["status", "winner", "architectScore", "redTeamScore", "acceptedClaims", "rejectedClaims", "criticalDisagreements", "decision", "rationale", "nextRoundObjective"]
+  required: ["status", "winner", "architectScore", "redTeamScore", "architectScorecard", "redTeamScorecard", "acceptedClaims", "rejectedClaims", "criticalDisagreements", "decision", "rationale", "nextRoundObjective"]
 } as const;
