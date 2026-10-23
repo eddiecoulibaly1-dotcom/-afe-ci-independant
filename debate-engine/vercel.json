@@ -1,4 +1,3 @@
 {
-  "runtime": "nodejs24.x",
-  "regions": ["cdg1"]
+  "runtime": "nodejs24.x"
 }
