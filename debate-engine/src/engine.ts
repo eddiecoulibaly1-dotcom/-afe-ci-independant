@@ -4,6 +4,7 @@ import { proposalSchema, critiqueSchema, judgeSchema } from "./schema.js";
 import { callModel } from "./providers.js";
 import { ARCHITECT_SYSTEM, RED_TEAM_SYSTEM, JUDGE_SYSTEM, architectPrompt, redTeamPrompt, judgePrompt } from "./prompts.js";
 import { finalizeJudgeScore } from "./scoring.js";
+import { auditClaims } from "./evidence.js";
 
 const emptyScorecard = (): Scorecard => ({
   buyerValue: 0,
@@ -24,11 +25,13 @@ function applyConvergencePolicy(
   criticalAttacks: number
 ): JudgeDecision {
   const scored = finalizeJudgeScore(judge, unresolvedQuestions, criticalAttacks);
+  const evidenceBlocking = Boolean(scored.evidenceAudit?.blocking);
   const architectReady =
     scored.architectScore >= threshold &&
     scored.criticalDisagreements.length === 0 &&
     unresolvedQuestions <= 1 &&
-    criticalAttacks === 0;
+    criticalAttacks === 0 &&
+    !evidenceBlocking;
 
   if (architectReady) {
     return { ...scored, status: "converged", winner: "architect" };
@@ -53,9 +56,12 @@ export async function runDebate(question: string, context: string | undefined, c
       schema: proposalSchema
     });
 
+    const evidenceAudit = auditClaims(architect.claims);
+
     const partial: DebateRound = {
       round: roundNo,
       architect,
+      evidenceAudit,
       redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] },
       judge: {
         status: "revise",
@@ -68,7 +74,8 @@ export async function runDebate(question: string, context: string | undefined, c
         rejectedClaims: [],
         criticalDisagreements: [],
         decision: "",
-        rationale: []
+        rationale: [],
+        evidenceAudit
       },
       createdAt: new Date().toISOString()
     };
@@ -90,7 +97,7 @@ export async function runDebate(question: string, context: string | undefined, c
     });
 
     partial.judge = applyConvergencePolicy(
-      rawJudge,
+      { ...rawJudge, evidenceAudit },
       config.convergenceScore,
       partial.redTeam.unresolvedQuestions.length,
       partial.redTeam.attacks.filter((attack) => attack.severity === "critical").length
