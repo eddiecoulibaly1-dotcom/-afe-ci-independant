@@ -8,6 +8,30 @@ Adversarial strategic decision engine for AFE-CI.
 
 The orchestrator is deterministic: it controls rounds, evidence auditing, persistence, scoring and convergence instead of delegating the loop to an LLM.
 
+## V1.0 Product foundation
+
+V1.0 hardens the collaborative product layer around the decision engine.
+
+It adds a production-ready Supabase foundation for:
+
+- email invitations for workspace members using the server-side Supabase Auth Admin API;
+- in-app notifications with read/unread state;
+- an audit trail for profile, workspace, sharing and debate actions;
+- secure share links using 256-bit random tokens stored only as SHA-256 hashes;
+- optional share-link expiration and server-side revocation;
+- `viewer` / `editor` share permissions;
+- indexed notification and audit history for mobile use;
+- RLS on secure share links;
+- server-only use of the Supabase secret/service-role credential.
+
+The V1.0 database migration is `supabase/migrations/v1_0_secure_sharing_notifications_audit.sql`.
+
+### V1.0 security model
+
+A share link never stores its raw token in Supabase. The application generates a high-entropy token, stores only its SHA-256 hash, and returns the raw token once to the authorized creator. Expired or revoked links are rejected server-side.
+
+The notification and audit tables remain user-scoped. The audit layer records who performed an action, what entity was affected, when it happened, and structured details.
+
 ## V0.9 Teams, roles and controlled sharing
 
 V0.9 turns the personal application into a collaborative decision workspace without making every debate public.
@@ -18,7 +42,7 @@ Phone flow:
 
 V0.9 includes:
 
-- debate-specific user profiles, isolated from unrelated application profile tables;
+- debate-specific user profiles;
 - workspaces owned by a user;
 - roles: `owner`, `admin`, `editor`, `viewer`;
 - workspace membership and access control;
@@ -27,10 +51,8 @@ V0.9 includes:
 - workspace assignment when creating or editing a debate;
 - mobile workspace management and member administration;
 - server-side authorization before workspace/share mutations;
-- RLS on the V0.9 collaboration tables;
+- RLS on collaboration tables;
 - no service-role key exposed to the browser.
-
-The V0.9 migration is `supabase/migrations/20261023_v09_workspaces_roles_sharing.sql`.
 
 ## V0.8 Accounts + private decision memory
 
@@ -51,38 +73,20 @@ Required server-side variables:
 - `SUPABASE_PUBLISHABLE_KEY`
 - optional model/provider settings from `.env.example`
 
-`SUPABASE_PUBLISHABLE_KEY` is safe for browser authentication. Service-role and model API keys must never be sent to the browser.
+`SUPABASE_PUBLISHABLE_KEY` is safe for browser authentication. Service-role/secret and model API keys must never be sent to the browser.
 
-## API
+## V1.0 backend API foundation
 
-Public:
+New authenticated capabilities are implemented in `src/v1-store.ts` for integration into the application server:
 
-- `GET /lab`
-- `GET /lab/manifest.webmanifest`
-- `GET /lab/sw.js`
-- `GET /lab/icon.svg`
-- `GET /health`
-- `GET /auth/config`
+- notifications: list, mark one read, mark all read;
+- audit log: retrieve the user's own audit trail;
+- secure share links: create, revoke, resolve and expire;
+- workspace invitation through Supabase Auth Admin;
+- server-side notification and audit creation.
 
-Authenticated:
-
-- `GET /me`
-- `PATCH /me`
-- `GET /workspaces`
-- `POST /workspaces`
-- `GET /workspaces/:id`
-- `POST /workspaces/:id/members`
-- `PATCH /workspaces/:id/members/:userId`
-- `DELETE /workspaces/:id/members/:userId`
-- `GET /debates`
-- `GET /debates/:id`
-- `POST /debates/run`
-- `POST /api/debates/run`
-- `POST /debates/:id/workspace`
-- `GET /debates/:id/shares`
-- `POST /debates/:id/shares`
-- `DELETE /debates/:id/shares/:userId`
+Public share resolution is deliberately limited to a signed high-entropy token; the raw token is never persisted.
 
 ## Decision intelligence
 
-V0.4 introduced a deterministic 100-point scorecard. V0.5 added evidence intelligence. V0.8 added identity and private ownership. V0.9 adds collaboration while preserving controlled access.
+V0.4 introduced a deterministic 100-point scorecard. V0.5 added evidence intelligence. V0.8 added identity and private ownership. V0.9 added collaboration. V1.0 adds the product trust layer: invitations, notifications, auditability and secure sharing.
