@@ -125,7 +125,7 @@ export async function saveDebateToSupabase(debate: Debate): Promise<void> {
   }
 }
 
-interface DebateRow extends Omit<Debate, "rounds" | "finalDecision"> {
+type DebateRow = Omit<Debate, "rounds" | "finalDecision"> & {
   final_decision?: JudgeDecision | null;
   debate_rounds: Array<{
     round_number: number;
@@ -134,7 +134,7 @@ interface DebateRow extends Omit<Debate, "rounds" | "finalDecision"> {
     judge_decision: DebateRound["judge"];
     created_at: string;
   }>;
-}
+};
 
 function normalizeRow(row: DebateRow): Debate {
   return {
