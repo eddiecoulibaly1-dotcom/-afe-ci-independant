@@ -6,9 +6,10 @@ import { runDebate } from "./engine.js";
 import { getDebate, listDebates, saveDebate } from "./store.js";
 import type { DebateConfig, Provider } from "./types.js";
 
+const VERSION = "0.5.0";
 const port = Number(process.env.PORT ?? 8787);
 const json = (value: unknown) => JSON.stringify(value, null, 2);
-const labFile = resolve(process.cwd(), "lab/v04.html");
+const labFile = resolve(process.cwd(), "lab/v05.html");
 
 function config(): DebateConfig {
   const provider = (value: string | undefined, fallback: Provider): Provider => value === "gemini" ? "gemini" : value === "openai" ? "openai" : fallback;
@@ -36,7 +37,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && req.url === "/health") {
-      send(res, 200, { ok: true, service: "afe-ci-debate-engine", version: "0.4.0" });
+      send(res, 200, { ok: true, service: "afe-ci-debate-engine", version: VERSION, evidenceEngine: true });
       return;
     }
 
@@ -71,4 +72,4 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(port, () => console.log(`AFE-CI Debate Engine v0.4 listening on http://localhost:${port}`));
+server.listen(port, () => console.log(`AFE-CI Debate Engine v${VERSION} listening on http://localhost:${port}`));
