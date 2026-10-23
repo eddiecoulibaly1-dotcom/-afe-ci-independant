@@ -64,6 +64,7 @@ export interface Debate {
   status: "running" | "converged" | "unresolved";
   rounds: DebateRound[];
   finalDecision?: JudgeDecision;
+  config?: DebateConfig;
 }
 
 export interface DebateConfig {
