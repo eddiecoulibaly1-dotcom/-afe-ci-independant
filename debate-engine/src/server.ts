@@ -2,10 +2,10 @@ import "node:process";
 import { createServer } from "node:http";
 import { runDebate } from "./engine.js";
 import { getDebate, listDebates, saveDebate } from "./store.js";
-import { LAB_HTML, LAB_MANIFEST } from "./lab.js";
+import { LAB_HTML, LAB_MANIFEST, LAB_SW, LAB_ICON } from "./lab.js";
 import type { DebateConfig, Provider } from "./types.js";
 
-const VERSION = "0.6.3";
+const VERSION = "0.7.0";
 const port = Number(process.env.PORT ?? 8787);
 const json = (value: unknown) => JSON.stringify(value, null, 2);
 
@@ -38,8 +38,18 @@ const server = createServer(async (req, res) => {
       res.end(LAB_MANIFEST);
       return;
     }
+    if (req.method === "GET" && pathname === "/lab/sw.js") {
+      res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "no-cache" });
+      res.end(LAB_SW);
+      return;
+    }
+    if (req.method === "GET" && pathname === "/lab/icon.svg") {
+      res.writeHead(200, { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": "public, max-age=86400" });
+      res.end(LAB_ICON);
+      return;
+    }
     if (req.method === "GET" && pathname === "/health") {
-      send(res, 200, { ok: true, service: "afe-ci-debate-engine", version: VERSION, evidenceEngine: true, mobileLab: true, deployment: "ready" });
+      send(res, 200, { ok: true, service: "afe-ci-debate-engine", version: VERSION, evidenceEngine: true, mobileLab: true, pwa: true, deployment: "ready" });
       return;
     }
     if (req.method === "GET" && pathname === "/debates") {
