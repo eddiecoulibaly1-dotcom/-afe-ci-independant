@@ -1,7 +1,7 @@
 import "node:process";
 import { createServer } from "node:http";
 import { runDebate } from "./engine.js";
-import { saveDebate } from "./store.js";
+import { listDebates, saveDebate } from "./store.js";
 import type { DebateConfig, Provider } from "./types.js";
 
 const port = Number(process.env.PORT ?? 8787);
@@ -22,6 +22,9 @@ const server = createServer(async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   if (req.method === "GET" && req.url === "/health") {
     res.writeHead(200); res.end(json({ ok: true, service: "afe-ci-debate-engine" })); return;
+  }
+  if (req.method === "GET" && req.url === "/debates") {
+    res.writeHead(200); res.end(json(await listDebates())); return;
   }
   if (req.method !== "POST" || req.url !== "/debates/run") {
     res.writeHead(404); res.end(json({ error: "Not found" })); return;
