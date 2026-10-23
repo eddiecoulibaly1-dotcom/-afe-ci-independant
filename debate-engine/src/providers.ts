@@ -2,13 +2,15 @@ import OpenAI from "openai";
 import { GoogleGenAI } from "@google/genai";
 import type { Provider } from "./types.js";
 
+type JsonSchema = Record<string, unknown>;
+
 export async function callModel<T>(args: {
   provider: Provider;
   model: string;
   system: string;
   prompt: string;
   schemaName: string;
-  schema: object;
+  schema: JsonSchema;
 }): Promise<T> {
   if (args.provider === "openai") return callOpenAI<T>(args);
   return callGemini<T>(args);
@@ -22,7 +24,14 @@ async function callOpenAI<T>(args: Parameters<typeof callModel>[0]): Promise<T> 
     model: args.model,
     instructions: args.system,
     input: args.prompt,
-    text: { format: { type: "json_schema", name: args.schemaName, strict: true, schema: args.schema } }
+    text: {
+      format: {
+        type: "json_schema",
+        name: args.schemaName,
+        strict: true,
+        schema: args.schema
+      }
+    }
   });
   return JSON.parse(response.output_text) as T;
 }
