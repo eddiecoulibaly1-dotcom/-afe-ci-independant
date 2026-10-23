@@ -31,6 +31,7 @@ export interface Claim {
   type: "fact" | "hypothesis" | "opinion";
   confidence: number;
   evidenceRequired: boolean;
+  evidenceRefs?: string[];
 }
 
 export interface Proposal {
@@ -59,6 +60,25 @@ export interface Critique {
   unresolvedQuestions: string[];
 }
 
+export interface EvidenceRecord {
+  claimId: string;
+  classification: "fact" | "hypothesis" | "opinion";
+  status: "supported" | "unsupported" | "not_required";
+  evidenceRefs: string[];
+  rationale: string;
+  confidence: number;
+  impact: "low" | "medium" | "high" | "critical";
+}
+
+export interface EvidenceAudit {
+  records: EvidenceRecord[];
+  unsupportedCriticalClaims: string[];
+  unsupportedHighImpactClaims: string[];
+  confidence: number;
+  blocking: boolean;
+  nextTests: string[];
+}
+
 export interface JudgeDecision {
   status: DecisionStatus;
   winner: "architect" | "red_team" | "neither";
@@ -72,6 +92,7 @@ export interface JudgeDecision {
   decision: string;
   rationale: string[];
   nextRoundObjective?: string;
+  evidenceAudit?: EvidenceAudit;
 }
 
 export interface DebateRound {
@@ -79,6 +100,7 @@ export interface DebateRound {
   architect: Proposal;
   redTeam: Critique;
   judge: JudgeDecision;
+  evidenceAudit?: EvidenceAudit;
   createdAt: string;
 }
 
