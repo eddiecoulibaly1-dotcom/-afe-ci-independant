@@ -6,10 +6,10 @@ import { runDebate } from "./engine.js";
 import { getDebate, listDebates, saveDebate } from "./store.js";
 import type { DebateConfig, Provider } from "./types.js";
 
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 const port = Number(process.env.PORT ?? 8787);
 const json = (value: unknown) => JSON.stringify(value, null, 2);
-const labFile = resolve(process.cwd(), "lab/v05.html");
+const labFile = resolve(process.cwd(), "lab/v06.html");
 
 function config(): DebateConfig {
   const provider = (value: string | undefined, fallback: Provider): Provider => value === "gemini" ? "gemini" : value === "openai" ? "openai" : fallback;
@@ -29,41 +29,42 @@ function send(res: import("node:http").ServerResponse, status: number, value: un
 
 const server = createServer(async (req, res) => {
   try {
-    if (req.method === "GET" && (req.url === "/" || req.url === "/lab" || req.url === "/lab/")) {
+    const pathname = req.url?.split("?")[0];
+    if (req.method === "GET" && (pathname === "/" || pathname === "/lab" || pathname === "/lab/")) {
       const html = await readFile(labFile, "utf8");
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       res.end(html);
       return;
     }
-
-    if (req.method === "GET" && req.url === "/health") {
-      send(res, 200, { ok: true, service: "afe-ci-debate-engine", version: VERSION, evidenceEngine: true });
+    if (req.method === "GET" && pathname === "/lab/manifest.webmanifest") {
+      const manifest = await readFile(resolve(process.cwd(), "lab/manifest.webmanifest"), "utf8");
+      res.writeHead(200, { "Content-Type": "application/manifest+json; charset=utf-8", "Cache-Control": "public, max-age=3600" });
+      res.end(manifest);
       return;
     }
-
-    if (req.method === "GET" && req.url === "/debates") {
+    if (req.method === "GET" && pathname === "/health") {
+      send(res, 200, { ok: true, service: "afe-ci-debate-engine", version: VERSION, evidenceEngine: true, mobileLab: true, deployment: "ready" });
+      return;
+    }
+    if (req.method === "GET" && pathname === "/debates") {
       send(res, 200, await listDebates());
       return;
     }
-
-    if (req.method === "GET" && req.url?.startsWith("/debates/")) {
-      const id = decodeURIComponent(req.url.slice("/debates/".length));
+    if (req.method === "GET" && pathname?.startsWith("/debates/")) {
+      const id = decodeURIComponent(pathname.slice("/debates/".length));
       const debate = await getDebate(id);
       if (!debate) { send(res, 404, { error: "Debate not found" }); return; }
       send(res, 200, debate);
       return;
     }
-
-    if (req.method !== "POST" || (req.url !== "/debates/run" && req.url !== "/api/debates/run")) {
+    if (req.method !== "POST" || (pathname !== "/debates/run" && pathname !== "/api/debates/run")) {
       send(res, 404, { error: "Not found" });
       return;
     }
-
     let body = "";
     for await (const chunk of req) body += chunk;
     const input = JSON.parse(body) as { question?: string; context?: string };
     if (!input.question?.trim()) throw new Error("question is required");
-
     const result = await runDebate(input.question.trim(), input.context, config());
     await saveDebate(result);
     send(res, 200, result);
@@ -72,4 +73,4 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(port, () => console.log(`AFE-CI Debate Engine v${VERSION} listening on http://localhost:${port}`));
+server.listen(port, () => console.log(`AFE-CI Debate Engine v${VERSION} listening on port ${port}`));
