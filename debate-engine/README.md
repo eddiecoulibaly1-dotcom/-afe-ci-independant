@@ -4,13 +4,38 @@ Adversarial strategic decision engine for AFE-CI.
 
 ## Flow
 
-`Question -> Architect (OpenAI) -> Red Team (Gemini) -> Independent Judge -> deterministic score -> next round -> convergence/unresolved`
+`Question -> Architect (OpenAI) -> Red Team (Gemini) -> Evidence Engine -> Independent Judge -> deterministic score -> next round -> convergence/unresolved`
 
-The orchestrator is deterministic: it controls rounds, persistence, scoring and convergence instead of delegating the loop to an LLM.
+The orchestrator is deterministic: it controls rounds, evidence auditing, persistence, scoring and convergence instead of delegating the loop to an LLM.
+
+## V0.5 Evidence Intelligence
+
+V0.5 adds an epistemic gate between debate generation and convergence.
+
+Rules:
+
+- `fact` requires evidence references;
+- `hypothesis` is explicitly treated as a testable hypothesis;
+- `opinion` does not require external evidence;
+- a claim with no evidence reference is `unsupported`;
+- unsupported high-impact claims block convergence;
+- evidence references declared by a model are recorded as declared references, not silently treated as independently verified sources.
+
+The deterministic Evidence Engine produces, per round:
+
+- claim classification;
+- support status;
+- evidence references;
+- confidence;
+- impact;
+- blocking state;
+- next tests required to reduce uncertainty.
+
+The Arbiter receives this state, but the final evidence gate is enforced in code. A model cannot bypass it by returning `converged`.
 
 ## V0.4 Decision Intelligence
 
-V0.4 introduces a deterministic 100-point decision scorecard. The Judge supplies raw 0-100 assessments for each dimension; the engine applies the weights and convergence policy in code.
+V0.4 introduced a deterministic 100-point decision scorecard. The Judge supplies raw 0-100 assessments for each dimension; the engine applies the weights and convergence policy in code.
 
 | Dimension | Weight |
 |---|---:|
@@ -25,13 +50,9 @@ V0.4 introduces a deterministic 100-point decision scorecard. The Judge supplies
 | Monetization | 5 |
 | **Total** | **100** |
 
-The engine also applies deterministic penalties for unresolved questions, critical disagreements and critical Red Team attacks. A model cannot force convergence by returning a high total score.
+## V0.5 Mobile Debate Lab
 
-Convergence requires the architect proposal to reach the configured threshold, have no critical disagreements, have at most one unresolved question, and have no critical attacks remaining. Otherwise the engine forces another revision round or returns `unresolved` after the maximum number of rounds.
-
-## V0.3 Debate Lab
-
-The browser interface is served by the engine itself:
+The V0.5 browser interface is served by the engine itself and is designed to work on a phone browser:
 
 ```text
 http://localhost:8787/lab
@@ -41,15 +62,14 @@ It provides:
 
 - strategic question + context input;
 - launch of a complete adversarial debate;
-- round-by-round Architect / Red Team / Judge view;
-- scores, critical disagreements and next-round objective;
+- round-by-round Architect / Red Team / Evidence / Judge view;
+- evidence blocking and next tests;
 - final convergence or unresolved decision;
-- history loaded from the persistent store;
-- individual debate replay from `/debates/:id`.
+- history and debate replay.
 
 The UI never receives the Supabase service-role key. Persistence stays server-side.
 
-## V0.2 memory
+## Memory
 
 If `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured, completed debates are persisted to Supabase in:
 
@@ -59,6 +79,8 @@ If `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured, completed deba
 - `debate_hypotheses`
 - `debate_evidence`
 - `debate_decisions`
+
+V0.5 records the evidence audit as a `debate_events` entry and stores declared evidence references in `debate_evidence`.
 
 Without those variables, the engine falls back to the local JSON store under `data/`.
 
@@ -89,7 +111,7 @@ API:
 - `POST /debates/run` starts a debate.
 - `GET /debates` returns stored debates.
 - `GET /debates/:id` returns one complete debate.
-- `GET /health` exposes service health.
+- `GET /health` exposes service health and V0.5 evidence status.
 
 Example:
 
