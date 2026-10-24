@@ -1,0 +1,42 @@
+import { LAB_HTML as BASE_HTML, LAB_MANIFEST, LAB_SW, LAB_ICON } from "./lab-v10.js";
+
+const V106 = String.raw`<div class="card" id="v106RealtimeCard"><div class="section">⚡ Collaboration temps réel</div><div id="v106RealtimeStatus" class="muted">Connexion…</div><div id="v106RealtimeEvents" class="muted" style="margin-top:6px">Les changements de notifications, audit et partage actualiseront automatiquement le centre.</div></div>`;
+
+const V106JS = String.raw`<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script>(function(){
+const q=id=>document.getElementById(id), E=x=>String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+const session=()=>{try{return JSON.parse(localStorage.getItem('afe-v09-session')||'null')}catch{return null}};
+let client=null, channels=[], refreshTimer=0;
+function status(text,kind){const el=q('v106RealtimeStatus');if(!el)return;el.textContent=text;el.dataset.state=kind||'';}
+function refresh(){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>{const b=q('v10LoadLinks');if(b)b.click();const r=q('v10Refresh');if(r)r.click();},300)}
+async function boot(){
+ try{
+  const s=session();
+  if(!s?.access_token||!s?.user?.id){status('Connecte-toi pour activer le temps réel','offline');return;}
+  if(!window.supabase?.createClient){status('Client temps réel indisponible','error');return;}
+  const cfg=await fetch('/auth/config',{cache:'no-store'}).then(r=>r.json());
+  if(!cfg?.supabaseUrl||!cfg?.publishableKey)throw new Error('Configuration Supabase publique indisponible');
+  client=window.supabase.createClient(cfg.supabaseUrl,cfg.publishableKey,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+  if(client.realtime?.setAuth)client.realtime.setAuth(s.access_token);
+  const uid=s.user.id;
+  const add=(name,table,filter)=>{
+   let ch=client.channel(name).on('postgres_changes',{event:'*',schema:'public',table,filter},()=>refresh());
+   ch.subscribe((st)=>{if(st==='SUBSCRIBED')status('● Temps réel connecté','online');else if(st==='CHANNEL_ERROR'||st==='TIMED_OUT')status('Connexion temps réel à rétablir…','error')});
+   channels.push(ch);
+  };
+  add('afe-notifications-'+uid,'notifications','user_id=eq.'+uid);
+  add('afe-audit-'+uid,'admin_audit_log','actor_id=eq.'+uid);
+  add('afe-share-links-'+uid,'debate_share_links','created_by=eq.'+uid);
+  window.addEventListener('online',()=>{status('Réseau rétabli · reconnexion…','connecting');refresh();boot()});
+  window.addEventListener('offline',()=>status('Hors ligne','offline'));
+  window.addEventListener('beforeunload',()=>channels.forEach(ch=>client.removeChannel(ch)));
+ }catch(e){status(E(e.message||e),'error')}
+}
+async function api(path,options){const s=session();if(!s?.access_token)throw new Error('Connecte-toi d’abord');const r=await fetch(path,{...options,headers:{Authorization:'Bearer '+s.access_token,'Content-Type':'application/json',...(options?.headers||{})}});const t=await r.text();let d={};try{d=JSON.parse(t||'{}')}catch{}if(!r.ok)throw new Error(d.error||d.message||'Erreur serveur');return d}
+async function loadServerLinks(){const id=q('v10DebateId')?.value.trim();const box=q('v10Links');if(!box)return;if(!id){box.innerHTML='<span class="muted">Saisis l’ID du débat.</span>';return}try{const rows=await api('/debates/'+encodeURIComponent(id)+'/share-links');box.innerHTML=Array.isArray(rows)&&rows.length?rows.slice().reverse().map(x=>{const dead=!!x.revoked_at||(x.expires_at&&new Date(x.expires_at)<=new Date());return '<div class="member"><span><b>'+E(x.permission)+'</b> · '+(dead?'<span class="error">inactif</span>':'<span class="muted">actif</span>')+'<br><small class="muted">'+(x.expires_at?'Expire le '+E(new Date(x.expires_at).toLocaleString('fr-FR')):'Sans expiration')+'</small></span><span>'+(dead?'':'<button class="small" data-revoke-v106="'+E(x.id)+'">Révoquer</button>')+'</span></div>'}).join(''):'<span class="muted">Aucun lien serveur pour ce débat.</span>';box.querySelectorAll('[data-revoke-v106]').forEach(b=>b.onclick=async()=>{if(!confirm('Révoquer ce lien ?'))return;await api('/debates/'+encodeURIComponent(id)+'/share-links/'+encodeURIComponent(b.dataset.revokeV106),{method:'DELETE'});loadServerLinks()})}catch(e){box.innerHTML='<span class="error">'+E(e.message)+'</span>'}}
+function patchShare(){const share=q('v10Share'),load=q('v10LoadLinks');if(!share||!load)return;share.onclick=async()=>{try{const id=q('v10DebateId').value.trim();if(!id)throw new Error('ID du débat requis');const h=Number(q('v10ShareExpiry').value);const d=await api('/debates/'+encodeURIComponent(id)+'/share-links',{method:'POST',body:JSON.stringify({permission:q('v10SharePermission').value,expiresInHours:h||undefined})});const link=location.origin+'/share?token='+encodeURIComponent(d.token);q('v10ShareMsg').innerHTML='<b>Lien serveur créé.</b><br><span style="word-break:break-all">'+E(link)+'</span><br><button class="small" id="v106Copy">Copier</button> <button class="small" id="v106Native">Partager</button>';q('v106Copy').onclick=async()=>{await navigator.clipboard.writeText(link);q('v106Copy').textContent='Copié'};q('v106Native').onclick=async()=>{if(navigator.share)await navigator.share({title:'Décision AFE-CI',text:'Décision stratégique',url:link});else await navigator.clipboard.writeText(link)};loadServerLinks()}catch(e){q('v10ShareMsg').innerHTML='<span class="error">'+E(e.message)+'</span>'}};load.onclick=loadServerLinks;q('v10DebateId')?.addEventListener('change',loadServerLinks)}
+function init(){const v=q('v10');if(v&&!q('v106RealtimeCard'))v.insertAdjacentHTML('afterbegin',V106);patchShare();boot()}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();</script>`;
+
+export const LAB_HTML = BASE_HTML.replace('Centre V1.0.4','Centre V1.0.6 · Temps réel').replace('<section id="v10" class="view">','<section id="v10" class="view">'+V106).replace('</body>',V106JS+'</body>');
+export { LAB_MANIFEST, LAB_SW, LAB_ICON };
