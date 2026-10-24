@@ -52,7 +52,7 @@ export async function listDebatesFromSupabase(userId:string){
   const sharedRows=shareIds.length?await request<DebateRow[]>(`debates?select=*,debate_rounds(*)&id=in.(${shareIds.join(",")})&order=created_at.desc`):[];
   const map=new Map<string,Debate>();
   for(const row of [...own,...workspaceRows,...sharedRows])map.set(row.id,normalizeRow(row));
-  return [...map.values()].sort((a,b)=>b.id.localeCompare(a.id));
+  return [...map.values()];
 }
 
 export async function getDebateFromSupabase(id:string,userId:string){
