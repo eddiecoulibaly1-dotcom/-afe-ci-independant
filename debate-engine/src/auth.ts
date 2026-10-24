@@ -8,16 +8,16 @@ export interface AuthUser {
 
 function config() {
   const url = process.env.SUPABASE_URL?.replace(/\/$/, "");
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceRoleKey) return null;
-  return { url, serviceRoleKey };
+  const secretKey = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !secretKey) return null;
+  return { url, secretKey };
 }
 
 export function publicAuthConfig() {
   const cfg = config();
   const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
   if (!cfg?.url || !publishableKey) return null;
-  return { url: cfg.url, publishableKey };
+  return { supabaseUrl: cfg.url, publishableKey };
 }
 
 export async function authenticateRequest(req: IncomingMessage): Promise<AuthUser | null> {
@@ -29,7 +29,7 @@ export async function authenticateRequest(req: IncomingMessage): Promise<AuthUse
 
   const response = await fetch(`${cfg.url}/auth/v1/user`, {
     headers: {
-      apikey: cfg.serviceRoleKey,
+      apikey: cfg.secretKey,
       Authorization: `Bearer ${accessToken}`
     }
   });
