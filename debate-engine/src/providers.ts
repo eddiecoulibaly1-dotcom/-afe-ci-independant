@@ -12,6 +12,8 @@ type ModelArgs = {
   schema: JsonSchema;
 };
 
+const PROVIDER_TIMEOUT_MS = 60_000;
+
 export async function callModel<T>(args: ModelArgs): Promise<T> {
   if (args.provider === "openai") return callOpenAI<T>(args);
   return callGemini<T>(args);
@@ -20,7 +22,7 @@ export async function callModel<T>(args: ModelArgs): Promise<T> {
 async function callOpenAI<T>(args: ModelArgs): Promise<T> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY is missing");
-  const client = new OpenAI({ apiKey: key });
+  const client = new OpenAI({ apiKey: key, timeout: PROVIDER_TIMEOUT_MS, maxRetries: 1 });
   try {
     const response = await client.responses.create({
       model: args.model,
@@ -62,38 +64,54 @@ async function geminiGenerate(
   prompt: string,
   schema?: JsonSchema
 ): Promise<string> {
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: {
-        parts: [{ text: system }]
-      },
-      contents: [{
-        role: "user",
-        parts: [{
-          text: `${prompt}\n\nReturn ONLY one valid JSON object matching the requested structure. Do not use markdown fences, commentary, or extra text.`
-        }]
-      }],
-      ...(schema ? {
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseJsonSchema: schema
-        }
-      } : {
-        generationConfig: {
-          responseMimeType: "application/json"
-        }
-      })
-    })
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail = payload?.error?.message || payload?.error?.status || `HTTP ${response.status}`;
-    throw new Error(`${response.status} ${detail}`);
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-goog-api-key": key
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: system }]
+        },
+        contents: [{
+          role: "user",
+          parts: [{
+            text: `${prompt}\n\nReturn ONLY one valid JSON object matching the requested structure. Do not use markdown fences, commentary, or extra text.`
+          }]
+        }],
+        ...(schema ? {
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseJsonSchema: schema
+          }
+        } : {
+          generationConfig: {
+            responseMimeType: "application/json"
+          }
+        })
+      })
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = payload?.error?.message || payload?.error?.status || `HTTP ${response.status}`;
+      throw new Error(`${response.status} ${detail}`);
+    }
+    return extractGeminiText(payload);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Gemini request timed out after ${PROVIDER_TIMEOUT_MS / 1000}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-  return extractGeminiText(payload);
 }
 
 async function callGemini<T>(args: ModelArgs): Promise<T> {
@@ -106,12 +124,11 @@ async function callGemini<T>(args: ModelArgs): Promise<T> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    // Gemini's structured-output validator supports a subset of JSON Schema.
-    // If a complex schema is rejected, retry with JSON MIME mode and let the
-    // application parse the model output. This preserves the debate engine's
-    // own deterministic validation/convergence rules without depending on a
-    // brittle provider-side schema feature.
-    if (/\b400\b|INVALID_ARGUMENT|schema/i.test(message)) {
+    // Gemini structured-output validation supports a subset of JSON Schema.
+    // If a complex schema is rejected, retry once in JSON MIME mode and let
+    // the application parse the model output. Provider authentication errors
+    // are not retried because a second request cannot repair a bad key.
+    if (/\b400\b|INVALID_ARGUMENT|schema/i.test(message) && !/API key not valid|API_KEY_INVALID|\b401\b|\b403\b/i.test(message)) {
       try {
         const text = await geminiGenerate(key, args.model, args.system, args.prompt);
         return JSON.parse(text) as T;
