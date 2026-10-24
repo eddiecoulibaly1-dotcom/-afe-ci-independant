@@ -12,7 +12,8 @@ type ModelArgs = {
   schema: JsonSchema;
 };
 
-const PROVIDER_TIMEOUT_MS = 60_000;
+const PROVIDER_TIMEOUT_MS = 50_000;
+const GEMINI_THINKING_LEVEL = process.env.GEMINI_THINKING_LEVEL ?? "low";
 
 export async function callModel<T>(args: ModelArgs): Promise<T> {
   if (args.provider === "openai") return callOpenAI<T>(args);
@@ -85,16 +86,17 @@ async function geminiGenerate(
             text: `${prompt}\n\nReturn ONLY one valid JSON object matching the requested structure. Do not use markdown fences, commentary, or extra text.`
           }]
         }],
-        ...(schema ? {
-          generationConfig: {
+        generationConfig: {
+          thinkingConfig: {
+            thinkingLevel: GEMINI_THINKING_LEVEL
+          },
+          ...(schema ? {
             responseMimeType: "application/json",
             responseJsonSchema: schema
-          }
-        } : {
-          generationConfig: {
+          } : {
             responseMimeType: "application/json"
-          }
-        })
+          })
+        }
       })
     });
 
@@ -123,11 +125,6 @@ async function callGemini<T>(args: ModelArgs): Promise<T> {
     return JSON.parse(text) as T;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-
-    // Gemini structured-output validation supports a subset of JSON Schema.
-    // If a complex schema is rejected, retry once in JSON MIME mode and let
-    // the application parse the model output. Provider authentication errors
-    // are not retried because a second request cannot repair a bad key.
     if (/\b400\b|INVALID_ARGUMENT|schema/i.test(message) && !/API key not valid|API_KEY_INVALID|\b401\b|\b403\b/i.test(message)) {
       try {
         const text = await geminiGenerate(key, args.model, args.system, args.prompt);
@@ -137,7 +134,6 @@ async function callGemini<T>(args: ModelArgs): Promise<T> {
         throw new Error(`Gemini ${args.model}: structured JSON failed (${message}); plain JSON retry failed (${fallbackMessage})`);
       }
     }
-
     throw new Error(`Gemini ${args.model}: ${message}`);
   }
 }
