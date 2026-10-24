@@ -1,0 +1,80 @@
+name: AFE-CI V1.0.6 finalize
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'debate-engine/src/lab-v106.ts'
+      - '.github/workflows/v106-finalize.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: debate-engine
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: debate-engine/package-lock.json
+
+      - name: Wire V1.0.6 server
+        shell: python
+        run: |
+          from pathlib import Path
+          import json
+          p = Path('src/server.ts')
+          s = p.read_text()
+          s = s.replace('from "./lab-v10.js"', 'from "./lab-v106.js"')
+          s = s.replace('const VERSION="1.0.5"', 'const VERSION="1.0.6"')
+          s = s.replace("script-src 'unsafe-inline';", "script-src 'unsafe-inline' https://cdn.jsdelivr.net;")
+          s = s.replace('serverBackedShareLinks:true,invitations:true,', 'serverBackedShareLinks:true,v1_0_6:true,realtime:true,invitations:true,')
+          p.write_text(s)
+
+      - name: Pin package version
+        shell: python
+        run: |
+          from pathlib import Path
+          import json
+          p=Path('package.json')
+          d=json.loads(p.read_text())
+          d['version']='1.0.6'
+          p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+
+      - name: Improve provider diagnostics
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('src/providers.ts')
+          s=p.read_text()
+          old='''  const response = await client.responses.create({\n    model: args.model,\n    instructions: args.system,\n    input: args.prompt,\n    text: {\n      format: {\n        type: "json_schema",\n        name: args.schemaName,\n        strict: true,\n        schema: args.schema\n      }\n    }\n  });\n  return JSON.parse(response.output_text) as T;'''
+          new='''  try {\n    const response = await client.responses.create({\n      model: args.model,\n      instructions: args.system,\n      input: args.prompt,\n      text: {\n        format: {\n          type: "json_schema",\n          name: args.schemaName,\n          strict: true,\n          schema: args.schema\n        }\n      }\n    });\n    return JSON.parse(response.output_text) as T;\n  } catch (error) {\n    const message = error instanceof Error ? error.message : String(error);\n    throw new Error(`OpenAI ${args.model}: ${message}`);\n  }'''
+          if old in s: s=s.replace(old,new)
+          old2='''  const interaction = await ai.interactions.create({\n    model: args.model,\n    system_instruction: args.system,\n    input: args.prompt,\n    response_format: {\n      type: "text",\n      mime_type: "application/json",\n      schema: args.schema\n    }\n  });\n  if (!interaction.output_text) throw new Error("Gemini returned no output_text");\n  return JSON.parse(interaction.output_text) as T;'''
+          new2='''  try {\n    const interaction = await ai.interactions.create({\n      model: args.model,\n      system_instruction: args.system,\n      input: args.prompt,\n      response_format: {\n        type: "text",\n        mime_type: "application/json",\n        schema: args.schema\n      }\n    });\n    if (!interaction.output_text) throw new Error("Gemini returned no output_text");\n    return JSON.parse(interaction.output_text) as T;\n  } catch (error) {\n    const message = error instanceof Error ? error.message : String(error);\n    throw new Error(`Gemini ${args.model}: ${message}`);\n  }'''
+          if old2 in s: s=s.replace(old2,new2)
+          p.write_text(s)
+
+      - name: Typecheck
+        run: npm ci && npm run typecheck
+
+      - name: Commit finalized V1.0.6
+        working-directory: .
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add debate-engine/src/server.ts debate-engine/src/providers.ts debate-engine/package.json debate-engine/package-lock.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'feat(debate-engine): finalize V1.0.6 realtime and diagnostics'
+          git push origin main
