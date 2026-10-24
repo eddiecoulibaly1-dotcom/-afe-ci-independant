@@ -12,10 +12,12 @@ type ModelArgs = {
   schema: JsonSchema;
 };
 
-// Keep individual calls short enough for a complete multi-agent debate while
-// allowing the engine to use a fast fallback model when a provider is unavailable.
-const PROVIDER_TIMEOUT_MS = Number(process.env.PROVIDER_TIMEOUT_MS ?? 12_000);
-const FALLBACK_MODEL = process.env.OPENAI_FALLBACK_MODEL ?? "gpt-6-luna";
+// The debate endpoint has a generous Vercel execution budget, so provider calls
+// must be allowed enough time to complete. A short, separate fallback timeout
+// prevents a slow primary model from making the whole debate feel stuck.
+const PROVIDER_TIMEOUT_MS = Number(process.env.PROVIDER_TIMEOUT_MS ?? 20_000);
+const FALLBACK_TIMEOUT_MS = Number(process.env.FALLBACK_TIMEOUT_MS ?? 9_000);
+const FALLBACK_MODEL = process.env.OPENAI_FALLBACK_MODEL ?? "gpt-4.1-mini";
 const GEMINI_THINKING_LEVEL = process.env.GEMINI_THINKING_LEVEL ?? "low";
 
 export async function callModel<T>(args: ModelArgs): Promise<T> {
@@ -27,10 +29,10 @@ function isTransientProviderError(message: string): boolean {
   return /\b408\b|\b409\b|\b429\b|\b500\b|\b502\b|\b503\b|\b504\b|timeout|timed out|overloaded|temporar|quota|resource.?exhausted/i.test(message);
 }
 
-async function callOpenAIRequest<T>(args: ModelArgs, model: string): Promise<T> {
+async function callOpenAIRequest<T>(args: ModelArgs, model: string, timeoutMs: number): Promise<T> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY is missing");
-  const client = new OpenAI({ apiKey: key, timeout: PROVIDER_TIMEOUT_MS, maxRetries: 0 });
+  const client = new OpenAI({ apiKey: key, timeout: timeoutMs, maxRetries: 0 });
   const response = await client.responses.create({
     model,
     instructions: args.system,
@@ -49,14 +51,15 @@ async function callOpenAIRequest<T>(args: ModelArgs, model: string): Promise<T> 
 
 async function callOpenAI<T>(args: ModelArgs): Promise<T> {
   try {
-    return await callOpenAIRequest<T>(args, args.model);
+    return await callOpenAIRequest<T>(args, args.model, PROVIDER_TIMEOUT_MS);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    // If the configured OpenAI model is slow, unavailable, or rate-limited,
-    // immediately switch to the low-cost fast fallback model instead of aborting.
+
+    // Never retry the same model with the same timeout. The previous production
+    // configuration did exactly that and could fail twice for the same reason.
     if (args.model !== FALLBACK_MODEL && isTransientProviderError(message)) {
       try {
-        return await callOpenAIRequest<T>(args, FALLBACK_MODEL);
+        return await callOpenAIRequest<T>(args, FALLBACK_MODEL, FALLBACK_TIMEOUT_MS);
       } catch (fallbackError) {
         const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
         throw new Error(`OpenAI ${args.model} failed (${message}); fallback ${FALLBACK_MODEL} failed (${fallbackMessage})`);
@@ -132,7 +135,6 @@ async function geminiGenerate(
 async function callGemini<T>(args: ModelArgs): Promise<T> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
-    // Gemini is optional: use OpenAI immediately when no Gemini key is configured.
     return callOpenAI<T>({ ...args, provider: "openai", model: FALLBACK_MODEL });
   }
 
@@ -142,8 +144,8 @@ async function callGemini<T>(args: ModelArgs): Promise<T> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    // Gemini's free tier can hard-stop at its daily quota. Do not make the user
-    // wait for a reset: switch the role to OpenAI immediately on transient/quota errors.
+    // Gemini is never allowed to block a debate. On quota/availability errors,
+    // immediately use the independent OpenAI fallback.
     if (isTransientProviderError(message)) {
       try {
         return await callOpenAI<T>({ ...args, provider: "openai", model: FALLBACK_MODEL });
@@ -153,7 +155,6 @@ async function callGemini<T>(args: ModelArgs): Promise<T> {
       }
     }
 
-    // Schema incompatibility gets one fast plain-JSON fallback.
     if (/\b400\b|INVALID_ARGUMENT|schema/i.test(message) && !/API key not valid|API_KEY_INVALID|\b401\b|\b403\b/i.test(message)) {
       try {
         const text = await geminiGenerate(key, args.model, args.system, args.prompt);
