@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "runtime": "nodejs24.x",
+  "functions": {
+    "src/server.js": {
+      "maxDuration": 300
+    }
+  }
+}
