@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 
 function getConfig(){
   const url=process.env.SUPABASE_URL?.replace(/\/$/,"");
-  const serviceRoleKey=process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if(!url||!serviceRoleKey) return null;
-  return {url,serviceRoleKey};
+  const secretKey=process.env.SUPABASE_SECRET_KEY??process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if(!url||!secretKey) return null;
+  return {url,secretKey};
 }
 
 async function request<T>(path:string,init:RequestInit={}):Promise<T>{
@@ -12,7 +12,7 @@ async function request<T>(path:string,init:RequestInit={}):Promise<T>{
   if(!config) throw new Error("Supabase persistence is not configured");
   const response=await fetch(`${config.url}/rest/v1/${path}`,{
     ...init,
-    headers:{apikey:config.serviceRoleKey,Authorization:`Bearer ${config.serviceRoleKey}`,"Content-Type":"application/json",...(init.headers??{})}
+    headers:{apikey:config.secretKey,Authorization:`Bearer ${config.secretKey}`,"Content-Type":"application/json",...(init.headers??{})}
   });
   const text=await response.text();
   if(!response.ok) throw new Error(`Supabase ${response.status}: ${text}`);
@@ -22,7 +22,7 @@ async function request<T>(path:string,init:RequestInit={}):Promise<T>{
 async function adminUsers(){
   const config=getConfig();
   if(!config) throw new Error("Supabase persistence is not configured");
-  const response=await fetch(`${config.url}/auth/v1/admin/users?page=1&per_page=1000`,{headers:{apikey:config.serviceRoleKey,Authorization:`Bearer ${config.serviceRoleKey}`}});
+  const response=await fetch(`${config.url}/auth/v1/admin/users?page=1&per_page=1000`,{headers:{apikey:config.secretKey,Authorization:`Bearer ${config.secretKey}`}});
   const text=await response.text();
   if(!response.ok) throw new Error(`Supabase Auth ${response.status}: ${text}`);
   return (JSON.parse(text||"{}").users??[]) as Array<{id:string;email?:string}>;
