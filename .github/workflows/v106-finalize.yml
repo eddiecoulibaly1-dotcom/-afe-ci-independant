@@ -33,7 +33,6 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-          import json
           p = Path('src/server.ts')
           s = p.read_text()
           s = s.replace('from "./lab-v10.js"', 'from "./lab-v106.js"')
@@ -78,3 +77,5 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m 'feat(debate-engine): finalize V1.0.6 realtime and diagnostics'
           git push origin main
+
+# V1.0.6 finalization: wire realtime client, diagnostics, and server metadata.
