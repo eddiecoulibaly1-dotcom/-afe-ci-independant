@@ -12,7 +12,9 @@ type ModelArgs = {
   schema: JsonSchema;
 };
 
-const PROVIDER_TIMEOUT_MS = 50_000;
+// A debate is a synchronous multi-agent workflow. Keep every model call bounded so
+// three rounds can finish comfortably inside Vercel's HTTP execution window.
+const PROVIDER_TIMEOUT_MS = Number(process.env.PROVIDER_TIMEOUT_MS ?? 22_000);
 const GEMINI_THINKING_LEVEL = process.env.GEMINI_THINKING_LEVEL ?? "low";
 
 export async function callModel<T>(args: ModelArgs): Promise<T> {
@@ -23,7 +25,8 @@ export async function callModel<T>(args: ModelArgs): Promise<T> {
 async function callOpenAI<T>(args: ModelArgs): Promise<T> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY is missing");
-  const client = new OpenAI({ apiKey: key, timeout: PROVIDER_TIMEOUT_MS, maxRetries: 1 });
+  // Do not let the SDK silently retry: the engine owns the debate time budget.
+  const client = new OpenAI({ apiKey: key, timeout: PROVIDER_TIMEOUT_MS, maxRetries: 0 });
   try {
     const response = await client.responses.create({
       model: args.model,
@@ -56,6 +59,10 @@ function extractGeminiText(payload: any): string {
     throw new Error(`Gemini returned no text${blockReason ? `; blockReason=${blockReason}` : ""}${finishReason ? `; finishReason=${finishReason}` : ""}`);
   }
   return text;
+}
+
+function isTransientProviderError(message: string): boolean {
+  return /\b408\b|\b409\b|\b429\b|\b500\b|\b502\b|\b503\b|\b504\b|timeout|timed out|overloaded|temporar/i.test(message);
 }
 
 async function geminiGenerate(
@@ -125,6 +132,8 @@ async function callGemini<T>(args: ModelArgs): Promise<T> {
     return JSON.parse(text) as T;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    // Schema incompatibility gets one fast plain-JSON fallback. Do not retry transient
+    // failures here because doing so would multiply the total debate duration.
     if (/\b400\b|INVALID_ARGUMENT|schema/i.test(message) && !/API key not valid|API_KEY_INVALID|\b401\b|\b403\b/i.test(message)) {
       try {
         const text = await geminiGenerate(key, args.model, args.system, args.prompt);
@@ -134,6 +143,7 @@ async function callGemini<T>(args: ModelArgs): Promise<T> {
         throw new Error(`Gemini ${args.model}: structured JSON failed (${message}); plain JSON retry failed (${fallbackMessage})`);
       }
     }
+    if (isTransientProviderError(message)) throw new Error(`Gemini ${args.model}: transient provider failure: ${message}`);
     throw new Error(`Gemini ${args.model}: ${message}`);
   }
 }
