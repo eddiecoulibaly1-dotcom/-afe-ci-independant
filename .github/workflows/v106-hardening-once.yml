@@ -1,0 +1,41 @@
+name: V1.0.6 hardening
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Harden auth bootstrap and CSP
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('debate-engine/src/lab-v106.ts')
+          s = p.read_text()
+          old = "async function init(){try{cfg=await(await fetch('/auth/config')).json()}catch{}session=getSession();"
+          new = "async function fetchAuthConfig(){for(let i=0;i<3;i++){try{const r=await fetch('/auth/config',{cache:'no-store',headers:{Accept:'application/json'}});if(r.ok){const d=await r.json();if(d?.supabaseUrl&&d?.publishableKey)return d}}catch{}await new Promise(r=>setTimeout(r,250*(i+1)))}return null}async function init(){try{cfg=await fetchAuthConfig()}catch{cfg=null}session=getSession();"
+          if old not in s:
+            raise SystemExit('auth bootstrap pattern not found')
+          p.write_text(s.replace(old,new,1))
+          p = Path('debate-engine/src/server.ts')
+          s = p.read_text()
+          duplicate = "connect-src 'self' https://*.supabase.co wss://*.supabase.co; "
+          while s.count(duplicate) > 1:
+            s = s.replace(duplicate + duplicate, duplicate, 1)
+          p.write_text(s)
+          PY
+          cd debate-engine
+          npm ci --ignore-scripts
+          npm run typecheck
+          cd ..
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add debate-engine/src/lab-v106.ts debate-engine/src/server.ts .github/workflows/v106-hardening-once.yml
+          git commit -m 'fix(debate-engine): harden auth bootstrap and CSP' || exit 0
+          git push
+          git rm .github/workflows/v106-hardening-once.yml
+          git commit -m 'chore(ci): remove one-time hardening workflow'
+          git push
