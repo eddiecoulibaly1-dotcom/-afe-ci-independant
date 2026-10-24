@@ -12,9 +12,10 @@ type ModelArgs = {
   schema: JsonSchema;
 };
 
-// A debate is a synchronous multi-agent workflow. Keep every model call bounded so
-// three rounds can finish comfortably inside Vercel's HTTP execution window.
-const PROVIDER_TIMEOUT_MS = Number(process.env.PROVIDER_TIMEOUT_MS ?? 22_000);
+// Keep individual calls short enough for a complete multi-agent debate while
+// allowing the engine to use a fast fallback model when a provider is unavailable.
+const PROVIDER_TIMEOUT_MS = Number(process.env.PROVIDER_TIMEOUT_MS ?? 12_000);
+const FALLBACK_MODEL = process.env.OPENAI_FALLBACK_MODEL ?? "gpt-6-luna";
 const GEMINI_THINKING_LEVEL = process.env.GEMINI_THINKING_LEVEL ?? "low";
 
 export async function callModel<T>(args: ModelArgs): Promise<T> {
@@ -22,28 +23,45 @@ export async function callModel<T>(args: ModelArgs): Promise<T> {
   return callGemini<T>(args);
 }
 
-async function callOpenAI<T>(args: ModelArgs): Promise<T> {
+function isTransientProviderError(message: string): boolean {
+  return /\b408\b|\b409\b|\b429\b|\b500\b|\b502\b|\b503\b|\b504\b|timeout|timed out|overloaded|temporar|quota|resource.?exhausted/i.test(message);
+}
+
+async function callOpenAIRequest<T>(args: ModelArgs, model: string): Promise<T> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY is missing");
-  // Do not let the SDK silently retry: the engine owns the debate time budget.
   const client = new OpenAI({ apiKey: key, timeout: PROVIDER_TIMEOUT_MS, maxRetries: 0 });
-  try {
-    const response = await client.responses.create({
-      model: args.model,
-      instructions: args.system,
-      input: args.prompt,
-      text: {
-        format: {
-          type: "json_schema",
-          name: args.schemaName,
-          strict: true,
-          schema: args.schema
-        }
+  const response = await client.responses.create({
+    model,
+    instructions: args.system,
+    input: args.prompt,
+    text: {
+      format: {
+        type: "json_schema",
+        name: args.schemaName,
+        strict: true,
+        schema: args.schema
       }
-    });
-    return JSON.parse(response.output_text) as T;
+    }
+  });
+  return JSON.parse(response.output_text) as T;
+}
+
+async function callOpenAI<T>(args: ModelArgs): Promise<T> {
+  try {
+    return await callOpenAIRequest<T>(args, args.model);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    // If the configured OpenAI model is slow, unavailable, or rate-limited,
+    // immediately switch to the low-cost fast fallback model instead of aborting.
+    if (args.model !== FALLBACK_MODEL && isTransientProviderError(message)) {
+      try {
+        return await callOpenAIRequest<T>(args, FALLBACK_MODEL);
+      } catch (fallbackError) {
+        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        throw new Error(`OpenAI ${args.model} failed (${message}); fallback ${FALLBACK_MODEL} failed (${fallbackMessage})`);
+      }
+    }
     throw new Error(`OpenAI ${args.model}: ${message}`);
   }
 }
@@ -59,10 +77,6 @@ function extractGeminiText(payload: any): string {
     throw new Error(`Gemini returned no text${blockReason ? `; blockReason=${blockReason}` : ""}${finishReason ? `; finishReason=${finishReason}` : ""}`);
   }
   return text;
-}
-
-function isTransientProviderError(message: string): boolean {
-  return /\b408\b|\b409\b|\b429\b|\b500\b|\b502\b|\b503\b|\b504\b|timeout|timed out|overloaded|temporar/i.test(message);
 }
 
 async function geminiGenerate(
@@ -84,25 +98,17 @@ async function geminiGenerate(
       },
       signal: controller.signal,
       body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: system }]
-        },
+        systemInstruction: { parts: [{ text: system }] },
         contents: [{
           role: "user",
-          parts: [{
-            text: `${prompt}\n\nReturn ONLY one valid JSON object matching the requested structure. Do not use markdown fences, commentary, or extra text.`
-          }]
+          parts: [{ text: `${prompt}\n\nReturn ONLY one valid JSON object matching the requested structure. Do not use markdown fences, commentary, or extra text.` }]
         }],
         generationConfig: {
-          thinkingConfig: {
-            thinkingLevel: GEMINI_THINKING_LEVEL
-          },
+          thinkingConfig: { thinkingLevel: GEMINI_THINKING_LEVEL },
           ...(schema ? {
             responseMimeType: "application/json",
             responseJsonSchema: schema
-          } : {
-            responseMimeType: "application/json"
-          })
+          } : { responseMimeType: "application/json" })
         }
       })
     });
@@ -125,15 +131,29 @@ async function geminiGenerate(
 
 async function callGemini<T>(args: ModelArgs): Promise<T> {
   const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY is missing");
+  if (!key) {
+    // Gemini is optional: use OpenAI immediately when no Gemini key is configured.
+    return callOpenAI<T>({ ...args, provider: "openai", model: FALLBACK_MODEL });
+  }
 
   try {
     const text = await geminiGenerate(key, args.model, args.system, args.prompt, args.schema);
     return JSON.parse(text) as T;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    // Schema incompatibility gets one fast plain-JSON fallback. Do not retry transient
-    // failures here because doing so would multiply the total debate duration.
+
+    // Gemini's free tier can hard-stop at its daily quota. Do not make the user
+    // wait for a reset: switch the role to OpenAI immediately on transient/quota errors.
+    if (isTransientProviderError(message)) {
+      try {
+        return await callOpenAI<T>({ ...args, provider: "openai", model: FALLBACK_MODEL });
+      } catch (fallbackError) {
+        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        throw new Error(`Gemini ${args.model} unavailable (${message}); OpenAI fallback ${FALLBACK_MODEL} failed (${fallbackMessage})`);
+      }
+    }
+
+    // Schema incompatibility gets one fast plain-JSON fallback.
     if (/\b400\b|INVALID_ARGUMENT|schema/i.test(message) && !/API key not valid|API_KEY_INVALID|\b401\b|\b403\b/i.test(message)) {
       try {
         const text = await geminiGenerate(key, args.model, args.system, args.prompt);
@@ -143,7 +163,6 @@ async function callGemini<T>(args: ModelArgs): Promise<T> {
         throw new Error(`Gemini ${args.model}: structured JSON failed (${message}); plain JSON retry failed (${fallbackMessage})`);
       }
     }
-    if (isTransientProviderError(message)) throw new Error(`Gemini ${args.model}: transient provider failure: ${message}`);
     throw new Error(`Gemini ${args.model}: ${message}`);
   }
 }
