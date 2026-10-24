@@ -38,10 +38,30 @@ function init(){const v=q('v10');if(v&&!q('v106RealtimeCard'))v.insertAdjacentHT
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();</script>`;
 
+const V106_AUTH_REFRESH = String.raw`<script>(function(){
+const originalFetch=window.fetch.bind(window),sessionKey='afe-v09-session';
+let refreshPromise=null;
+function readSession(){try{return JSON.parse(localStorage.getItem(sessionKey)||'null')}catch{return null}}
+function saveSession(s){try{localStorage.setItem(sessionKey,JSON.stringify(s))}catch{}}
+async function refreshSession(){
+ if(refreshPromise)return refreshPromise;
+ const s=readSession();if(!s?.refresh_token)return null;
+ refreshPromise=(async()=>{try{
+  const cfg=await originalFetch('/auth/config',{cache:'no-store'}).then(r=>r.json());
+  if(!cfg?.supabaseUrl||!cfg?.publishableKey)return null;
+  const r=await originalFetch(cfg.supabaseUrl.replace(/\\/$/,'')+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:cfg.publishableKey,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:s.refresh_token})});
+  const fresh=await r.json().catch(()=>null);if(!r.ok||!fresh?.access_token)return null;
+  saveSession(fresh);return fresh.access_token;
+ }catch{return null}finally{refreshPromise=null}})();
+ return refreshPromise;
+}
+window.fetch=async function(input,init){const response=await originalFetch(input,init);if(response.status!==401)return response;const token=await refreshSession();if(!token)return response;const headers=new Headers(init?.headers||(input instanceof Request?input.headers:undefined));headers.set('Authorization','Bearer '+token);return originalFetch(input,{...(init||{}),headers})};
+})();</script>`;
+
 const LAB_SW_106 = String.raw`const CACHE="afe-ci-v106";self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(["/lab","/lab/manifest.webmanifest","/lab/icon.svg"]))) });self.addEventListener("activate",e=>{e.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));await self.clients.claim();const clients=await self.clients.matchAll({type:"window",includeUncontrolled:true});for(const client of clients)client.postMessage({type:"AFE_CI_V106_READY"})})())});self.addEventListener("fetch",e=>{if(e.request.method!=="GET")return;e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)))})`;
 
-export const LAB_HTML = BASE_HTML.replace(/AFE-CI · V0\.9/g,'AFE-CI · V1.0.6').replace('Centre V1.0.4','Centre V1.0.6 · Temps réel').replace('<section id="v10" class="view">','<section id="v10" class="view">'+V106).replace('</body>',V106JS+`<script>navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='AFE_CI_V106_READY')location.reload()});navigator.serviceWorker?.register('/lab/sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});</script>`+'</body>');
+export const LAB_HTML = BASE_HTML.replace(/AFE-CI · V0\.9/g,'AFE-CI · V1.0.6').replace('Centre V1.0.4','Centre V1.0.6 · Temps réel').replace('<section id="v10" class="view">','<section id="v10" class="view">'+V106).replace('</body>',V106JS+V106_AUTH_REFRESH+`<script>navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='AFE_CI_V106_READY')location.reload()});navigator.serviceWorker?.register('/lab/sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});</script>`+'</body>');
 export const LAB_SW = LAB_SW_106;
 export { LAB_MANIFEST, LAB_ICON };
 
-// V1.0.6 realtime client: Postgres Changes is used as a refresh signal; Postgres remains the source of truth.
+// V1.0.6 realtime client + auth refresh: Postgres Changes is used as a refresh signal; Postgres remains the source of truth.
