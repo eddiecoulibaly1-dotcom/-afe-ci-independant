@@ -1,5 +1,7 @@
 name: V1.0.6 hardening
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: write
