@@ -2,15 +2,15 @@ import type { Debate, DebateRound, JudgeDecision } from "./types.js";
 
 function getConfig(){
   const url=process.env.SUPABASE_URL?.replace(/\/$/,"");
-  const serviceRoleKey=process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if(!url||!serviceRoleKey)return null;
-  return{url,serviceRoleKey};
+  const secretKey=process.env.SUPABASE_SECRET_KEY??process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if(!url||!secretKey)return null;
+  return{url,secretKey};
 }
 
 async function request<T>(path:string,init:RequestInit={}):Promise<T>{
   const config=getConfig();
   if(!config)throw new Error("Supabase persistence is not configured");
-  const response=await fetch(`${config.url}/rest/v1/${path}`,{...init,headers:{apikey:config.serviceRoleKey,Authorization:`Bearer ${config.serviceRoleKey}`,"Content-Type":"application/json",...(init.headers??{})}});
+  const response=await fetch(`${config.url}/rest/v1/${path}`,{...init,headers:{apikey:config.secretKey,Authorization:`Bearer ${config.secretKey}`,"Content-Type":"application/json",...(init.headers??{})}});
   const text=await response.text();
   if(!response.ok)throw new Error(`Supabase ${response.status}: ${text}`);
   return text?JSON.parse(text) as T:undefined as T;
@@ -52,7 +52,7 @@ export async function listDebatesFromSupabase(userId:string){
   const sharedRows=shareIds.length?await request<DebateRow[]>(`debates?select=*,debate_rounds(*)&id=in.(${shareIds.join(",")})&order=created_at.desc`):[];
   const map=new Map<string,Debate>();
   for(const row of [...own,...workspaceRows,...sharedRows])map.set(row.id,normalizeRow(row));
-  return [...map.values()].sort((a,b)=>a.id.localeCompare(b.id));
+  return [...map.values()].sort((a,b)=>b.id.localeCompare(a.id));
 }
 
 export async function getDebateFromSupabase(id:string,userId:string){
