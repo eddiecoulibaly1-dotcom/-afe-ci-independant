@@ -1,4 +1,4 @@
-import { LAB_HTML as BASE_HTML, LAB_MANIFEST, LAB_SW, LAB_ICON } from "./lab-v10.js";
+import { LAB_HTML as BASE_HTML, LAB_MANIFEST, LAB_SW as BASE_SW, LAB_ICON } from "./lab-v10.js";
 
 const V106 = String.raw`<div class="card" id="v106RealtimeCard"><div class="section">⚡ Collaboration temps réel</div><div id="v106RealtimeStatus" class="muted">Connexion…</div><div id="v106RealtimeEvents" class="muted" style="margin-top:6px">Les changements de notifications, audit et partage actualiseront automatiquement le centre.</div></div>`;
 
@@ -16,7 +16,7 @@ async function boot(){
   const cfg=await fetch('/auth/config',{cache:'no-store'}).then(r=>r.json());
   if(!cfg?.supabaseUrl||!cfg?.publishableKey)throw new Error('Configuration Supabase publique indisponible');
   client=window.supabase.createClient(cfg.supabaseUrl,cfg.publishableKey,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
-  if(client.realtime?.setAuth)client.realtime.setAuth(s.access_token);
+  if(client.realtime?.setAuth)await client.realtime.setAuth(s.access_token);
   const uid=s.user.id;
   const add=(name,table,filter)=>{
    let ch=client.channel(name).on('postgres_changes',{event:'*',schema:'public',table,filter},()=>refresh());
@@ -26,7 +26,7 @@ async function boot(){
   add('afe-notifications-'+uid,'notifications','user_id=eq.'+uid);
   add('afe-audit-'+uid,'admin_audit_log','actor_id=eq.'+uid);
   add('afe-share-links-'+uid,'debate_share_links','created_by=eq.'+uid);
-  window.addEventListener('online',()=>{status('Réseau rétabli · reconnexion…','connecting');refresh();boot()});
+  window.addEventListener('online',()=>{status('Réseau rétabli · reconnexion…','connecting');channels.forEach(ch=>client.removeChannel(ch));channels=[];boot()});
   window.addEventListener('offline',()=>status('Hors ligne','offline'));
   window.addEventListener('beforeunload',()=>channels.forEach(ch=>client.removeChannel(ch)));
  }catch(e){status(E(e.message||e),'error')}
@@ -38,7 +38,10 @@ function init(){const v=q('v10');if(v&&!q('v106RealtimeCard'))v.insertAdjacentHT
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();</script>`;
 
-export const LAB_HTML = BASE_HTML.replace('Centre V1.0.4','Centre V1.0.6 · Temps réel').replace('<section id="v10" class="view">','<section id="v10" class="view">'+V106).replace('</body>',V106JS+'</body>');
-export { LAB_MANIFEST, LAB_SW, LAB_ICON };
+const LAB_SW_106 = String.raw`const CACHE="afe-ci-v106";self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(["/lab","/lab/manifest.webmanifest","/lab/icon.svg"]))) });self.addEventListener("activate",e=>{e.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));await self.clients.claim();const clients=await self.clients.matchAll({type:"window",includeUncontrolled:true});for(const client of clients)client.postMessage({type:"AFE_CI_V106_READY"})})())});self.addEventListener("fetch",e=>{if(e.request.method!=="GET")return;e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)))})`;
+
+export const LAB_HTML = BASE_HTML.replace(/AFE-CI · V0\.9/g,'AFE-CI · V1.0.6').replace('Centre V1.0.4','Centre V1.0.6 · Temps réel').replace('<section id="v10" class="view">','<section id="v10" class="view">'+V106).replace('</body>',V106JS+`<script>navigator.serviceWorker?.addEventListener('message',e=>{if(e.data?.type==='AFE_CI_V106_READY')location.reload()});navigator.serviceWorker?.register('/lab/sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});</script>`+'</body>');
+export const LAB_SW = LAB_SW_106;
+export { LAB_MANIFEST, LAB_ICON };
 
 // V1.0.6 realtime client: Postgres Changes is used as a refresh signal; Postgres remains the source of truth.
