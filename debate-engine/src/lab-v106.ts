@@ -40,3 +40,5 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
 export const LAB_HTML = BASE_HTML.replace('Centre V1.0.4','Centre V1.0.6 · Temps réel').replace('<section id="v10" class="view">','<section id="v10" class="view">'+V106).replace('</body>',V106JS+'</body>');
 export { LAB_MANIFEST, LAB_SW, LAB_ICON };
+
+// V1.0.6 realtime client: Postgres Changes is used as a refresh signal; Postgres remains the source of truth.
