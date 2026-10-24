@@ -4,7 +4,7 @@ Adversarial strategic decision engine for AFE-CI.
 
 ## Flow
 
-`Question -> Architect (OpenAI) -> Red Team (Gemini) -> Evidence Engine -> Independent Judge -> deterministic score -> next round -> convergence/unresolved`
+`Question -> Architect (OpenAI) -> Red Team (OpenAI fallback-compatible) -> Evidence Engine -> Independent Judge -> deterministic score -> next round -> convergence/unresolved`
 
 The orchestrator is deterministic: it controls rounds, evidence auditing, persistence, scoring and convergence instead of delegating the loop to an LLM.
 
@@ -60,7 +60,7 @@ V0.9 turns the personal application into a collaborative decision workspace with
 
 Phone flow:
 
-`Phone -> Supabase Auth -> Profile -> Workspace/Role -> Debate -> OpenAI/Gemini -> Evidence Engine -> Arbiter -> controlled Supabase memory`
+`Phone -> Supabase Auth -> Profile -> Workspace/Role -> Debate -> OpenAI -> Evidence Engine -> Arbiter -> controlled Supabase memory`
 
 V0.9 includes:
 
