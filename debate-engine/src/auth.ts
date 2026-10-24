@@ -17,7 +17,8 @@ export function publicAuthConfig() {
   const cfg = config();
   const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
   if (!cfg?.url || !publishableKey) return null;
-  return { supabaseUrl: cfg.url, publishableKey };
+  // Keep both names for compatibility with the v1.0.6 client and older clients.
+  return { supabaseUrl: cfg.url, url: cfg.url, publishableKey };
 }
 
 export async function authenticateRequest(req: IncomingMessage): Promise<AuthUser | null> {
