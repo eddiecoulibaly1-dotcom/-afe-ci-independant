@@ -8,6 +8,28 @@ Adversarial strategic decision engine for AFE-CI.
 
 The orchestrator is deterministic: it controls rounds, evidence auditing, persistence, scoring and convergence instead of delegating the loop to an LLM.
 
+## V1.0.6 Realtime + production hardening
+
+V1.0.6 completes the mobile collaboration foundation and aligns the application with the current Supabase secret-key model.
+
+It adds:
+
+- mobile realtime refresh signals through Supabase Realtime Postgres Changes;
+- realtime subscriptions scoped to the authenticated user's notifications, audit records and share links;
+- V1.0.6 PWA cache migration with `skipWaiting`, `clients.claim` and old-cache cleanup;
+- server-side share-link listing, creation, expiration and revocation;
+- presentation-safe public share viewer;
+- provider-specific OpenAI/Gemini error diagnostics without exposing secrets;
+- CSP connectivity for the Supabase HTTPS API and Realtime WebSocket endpoints;
+- server support for `SUPABASE_SECRET_KEY` with legacy `SUPABASE_SERVICE_ROLE_KEY` fallback;
+- deterministic scoring and convergence retained in the orchestrator;
+- Node.js 24 and TypeScript strict typechecking;
+- reproducible `package-lock.json` for production installs.
+
+Realtime is intentionally used as a refresh signal, not as the source of truth: durable state remains in Postgres. Supabase Realtime requires the relevant tables to be in the `supabase_realtime` publication and the table RLS policies continue to govern Postgres Changes delivery.
+
+The V1.0.6 database migration is `supabase/migrations/v1_0_6_realtime_collaboration.sql`.
+
 ## V1.0 Product foundation
 
 V1.0 hardens the collaborative product layer around the decision engine.
@@ -69,15 +91,16 @@ Required server-side variables:
 - `OPENAI_API_KEY`
 - `GEMINI_API_KEY`
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SECRET_KEY` (preferred current Supabase server credential)
 - `SUPABASE_PUBLISHABLE_KEY`
+- legacy `SUPABASE_SERVICE_ROLE_KEY` remains supported for compatibility
 - optional model/provider settings from `.env.example`
 
-`SUPABASE_PUBLISHABLE_KEY` is safe for browser authentication. Service-role/secret and model API keys must never be sent to the browser.
+`SUPABASE_PUBLISHABLE_KEY` is safe for browser authentication. Supabase secret/service-role and model API keys must never be sent to the browser.
 
 ## V1.0 backend API foundation
 
-New authenticated capabilities are implemented in `src/v1-store.ts` for integration into the application server:
+Authenticated capabilities are implemented in `src/v1-store.ts` for integration into the application server:
 
 - notifications: list, mark one read, mark all read;
 - audit log: retrieve the user's own audit trail;
@@ -85,8 +108,8 @@ New authenticated capabilities are implemented in `src/v1-store.ts` for integrat
 - workspace invitation through Supabase Auth Admin;
 - server-side notification and audit creation.
 
-Public share resolution is deliberately limited to a signed high-entropy token; the raw token is never persisted.
+Public share resolution is deliberately limited to a high-entropy token; the raw token is never persisted.
 
 ## Decision intelligence
 
-V0.4 introduced a deterministic 100-point scorecard. V0.5 added evidence intelligence. V0.8 added identity and private ownership. V0.9 added collaboration. V1.0 adds the product trust layer: invitations, notifications, auditability and secure sharing.
+V0.4 introduced a deterministic 100-point scorecard. V0.5 added evidence intelligence. V0.8 added identity and private ownership. V0.9 added collaboration. V1.0 adds the product trust layer. V1.0.6 adds realtime synchronization, PWA migration and production hardening.
