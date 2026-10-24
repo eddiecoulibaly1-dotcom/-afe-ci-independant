@@ -66,18 +66,6 @@ jobs:
           d['version']='1.0.6'
           p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
 
-      - name: Improve provider diagnostics
-        shell: python
-        run: |
-          from pathlib import Path
-          p=Path('src/providers.ts')
-          s=p.read_text()
-          s=s.replace('  const response = await client.responses.create({', '  try {\n    const response = await client.responses.create({')
-          s=s.replace('  });\n  return JSON.parse(response.output_text) as T;\n}\n\nasync function callGemini', '    });\n    return JSON.parse(response.output_text) as T;\n  } catch (error) {\n    const message = error instanceof Error ? error.message : String(error);\n    throw new Error(`OpenAI ${args.model}: ${message}`);\n  }\n}\n\nasync function callGemini', 1)
-          s=s.replace('  const interaction = await ai.interactions.create({', '  try {\n    const interaction = await ai.interactions.create({')
-          s=s.replace('  });\n  if (!interaction.output_text) throw new Error("Gemini returned no output_text");\n  return JSON.parse(interaction.output_text) as T;\n}', '    });\n    if (!interaction.output_text) throw new Error("Gemini returned no output_text");\n    return JSON.parse(interaction.output_text) as T;\n  } catch (error) {\n    const message = error instanceof Error ? error.message : String(error);\n    throw new Error(`Gemini ${args.model}: ${message}`);\n  }\n}', 1)
-          p.write_text(s)
-
       - name: Install and typecheck
         run: npm install && npm run typecheck
 
@@ -86,9 +74,9 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add debate-engine/src/server.ts debate-engine/src/providers.ts debate-engine/src/workspace-store.ts debate-engine/package.json debate-engine/package-lock.json
+          git add debate-engine/src/server.ts debate-engine/src/workspace-store.ts debate-engine/package.json debate-engine/package-lock.json
           git diff --cached --quiet && exit 0
-          git commit -m 'feat(debate-engine): finalize V1.0.6 realtime, security and diagnostics'
+          git commit -m 'feat(debate-engine): finalize V1.0.6 realtime, security and metadata'
           git push origin main
 
-# V1.0.6 finalization: wire realtime client, PWA cache migration, diagnostics, CSP connectivity, secret-key compatibility, and server metadata.
+# V1.0.6 finalization: wire realtime client, PWA cache migration, CSP connectivity, secret-key compatibility, and server metadata.
