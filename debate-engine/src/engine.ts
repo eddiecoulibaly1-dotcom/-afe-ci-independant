@@ -44,20 +44,37 @@ function applyConvergencePolicy(
   };
 }
 
+function terminalFromLastRound(debate: Debate, reason: string): Debate {
+  const last = debate.rounds.at(-1);
+  if (!last) throw new Error(reason);
+  const finalDecision: JudgeDecision = {
+    ...last.judge,
+    status: last.judge.status === "converged" ? "converged" : "unresolved",
+    rationale: [...last.judge.rationale, `Débat terminé proprement : ${reason}`]
+  };
+  debate.status = finalDecision.status === "converged" ? "converged" : "unresolved";
+  debate.finalDecision = finalDecision;
+  return debate;
+}
+
 export async function runDebate(question: string, context: string | undefined, config: DebateConfig): Promise<Debate> {
   const debate: Debate = { id: randomUUID(), question, context, status: "running", rounds: [], config };
 
   for (let roundNo = 1; roundNo <= config.maxRounds; roundNo++) {
-    const architect = await callModel<Proposal>({
-      ...config.architect,
-      system: ARCHITECT_SYSTEM,
-      prompt: architectPrompt(question, context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective),
-      schemaName: "architect_proposal",
-      schema: proposalSchema
-    });
+    let architect: Proposal;
+    try {
+      architect = await callModel<Proposal>({
+        ...config.architect,
+        system: ARCHITECT_SYSTEM,
+        prompt: architectPrompt(question, context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective),
+        schemaName: "architect_proposal",
+        schema: proposalSchema
+      });
+    } catch (error) {
+      return terminalFromLastRound(debate, `l’Architecte n’a pas répondu à temps (${error instanceof Error ? error.message : String(error)})`);
+    }
 
     const evidenceAudit = auditClaims(architect.claims);
-
     const partial: DebateRound = {
       round: roundNo,
       architect,
@@ -80,28 +97,38 @@ export async function runDebate(question: string, context: string | undefined, c
       createdAt: new Date().toISOString()
     };
 
-    partial.redTeam = await callModel<Critique>({
-      ...config.redTeam,
-      system: RED_TEAM_SYSTEM,
-      prompt: redTeamPrompt(question, context, partial),
-      schemaName: "red_team_critique",
-      schema: critiqueSchema
-    });
+    try {
+      partial.redTeam = await callModel<Critique>({
+        ...config.redTeam,
+        system: RED_TEAM_SYSTEM,
+        prompt: redTeamPrompt(question, context, partial),
+        schemaName: "red_team_critique",
+        schema: critiqueSchema
+      });
+    } catch (error) {
+      if (debate.rounds.length) return terminalFromLastRound(debate, `la Red Team n’a pas répondu à temps (${error instanceof Error ? error.message : String(error)})`);
+      throw error;
+    }
 
-    const rawJudge = await callModel<JudgeDecision>({
-      ...config.judge,
-      system: JUDGE_SYSTEM,
-      prompt: judgePrompt(question, context, partial, config.convergenceScore),
-      schemaName: "judge_decision",
-      schema: judgeSchema
-    });
+    try {
+      const rawJudge = await callModel<JudgeDecision>({
+        ...config.judge,
+        system: JUDGE_SYSTEM,
+        prompt: judgePrompt(question, context, partial, config.convergenceScore),
+        schemaName: "judge_decision",
+        schema: judgeSchema
+      });
 
-    partial.judge = applyConvergencePolicy(
-      { ...rawJudge, evidenceAudit },
-      config.convergenceScore,
-      partial.redTeam.unresolvedQuestions.length,
-      partial.redTeam.attacks.filter((attack) => attack.severity === "critical").length
-    );
+      partial.judge = applyConvergencePolicy(
+        { ...rawJudge, evidenceAudit },
+        config.convergenceScore,
+        partial.redTeam.unresolvedQuestions.length,
+        partial.redTeam.attacks.filter((attack) => attack.severity === "critical").length
+      );
+    } catch (error) {
+      if (debate.rounds.length) return terminalFromLastRound(debate, `l’Arbitre n’a pas répondu à temps (${error instanceof Error ? error.message : String(error)})`);
+      throw error;
+    }
 
     debate.rounds.push(partial);
 
@@ -112,6 +139,7 @@ export async function runDebate(question: string, context: string | undefined, c
     }
   }
 
+  // maxRounds is a hard completion boundary: never leave the request hanging.
   debate.status = "unresolved";
   debate.finalDecision = debate.rounds.at(-1)?.judge;
   return debate;
