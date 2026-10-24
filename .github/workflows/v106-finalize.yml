@@ -37,6 +37,7 @@ jobs:
           s = p.read_text()
           s = s.replace('from "./lab-v10.js"', 'from "./lab-v106.js"')
           s = s.replace("script-src 'unsafe-inline';", "script-src 'unsafe-inline' https://cdn.jsdelivr.net;")
+          s = s.replace("script-src 'unsafe-inline' https://cdn.jsdelivr.net;", "script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://*.supabase.co wss://*.supabase.co;")
           s = s.replace('const VERSION="1.0.5"', 'const VERSION="1.0.6"')
           p.write_text(s)
 
@@ -75,4 +76,4 @@ jobs:
           git commit -m 'feat(debate-engine): finalize V1.0.6 realtime and diagnostics'
           git push origin main
 
-# V1.0.6 finalization: wire realtime client, PWA cache migration, diagnostics, and server metadata.
+# V1.0.6 finalization: wire realtime client, PWA cache migration, diagnostics, CSP connectivity, and server metadata.
