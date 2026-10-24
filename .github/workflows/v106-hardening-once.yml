@@ -17,11 +17,16 @@ jobs:
           from pathlib import Path
           p = Path('debate-engine/src/lab-v106.ts')
           s = p.read_text()
-          old = "async function init(){try{cfg=await(await fetch('/auth/config')).json()}catch{}session=getSession();"
-          new = "async function fetchAuthConfig(){for(let i=0;i<3;i++){try{const r=await fetch('/auth/config',{cache:'no-store',headers:{Accept:'application/json'}});if(r.ok){const d=await r.json();if(d?.supabaseUrl&&d?.publishableKey)return d}}catch{}await new Promise(r=>setTimeout(r,250*(i+1)))}return null}async function init(){try{cfg=await fetchAuthConfig()}catch{cfg=null}session=getSession();"
-          if old not in s:
-            raise SystemExit('auth bootstrap pattern not found')
-          p.write_text(s.replace(old,new,1))
+          marker = 'export const LAB_HTML = BASE_HTML.replace(AUTH_FIX_OLD,AUTH_FIX_NEW).replace('
+          boot_old = "const AUTH_FIX_OLD = String.raw`"
+          if marker not in s or boot_old not in s:
+            raise SystemExit('V1.0.6 lab hardening anchors not found')
+          insert = "const AUTH_BOOT_OLD = String.raw`async function init(){try{cfg=await(await fetch('/auth/config')).json()}catch{}session=getSession();`;\nconst AUTH_BOOT_NEW = String.raw`async function fetchAuthConfig(){for(let i=0;i<3;i++){try{const r=await fetch('/auth/config',{cache:'no-store',headers:{Accept:'application/json'}});if(r.ok){const d=await r.json();if(d?.supabaseUrl&&d?.publishableKey)return d}}catch{}await new Promise(r=>setTimeout(r,250*(i+1)))}return null}async function init(){try{cfg=await fetchAuthConfig()}catch{cfg=null}session=getSession();`;\n"
+          if 'const AUTH_BOOT_OLD =' not in s:
+            pos = s.index(marker)
+            s = s[:pos] + insert + s[pos:]
+          s = s.replace(marker, 'export const LAB_HTML = BASE_HTML.replace(AUTH_FIX_OLD,AUTH_FIX_NEW).replace(AUTH_BOOT_OLD,AUTH_BOOT_NEW).replace(', 1)
+          p.write_text(s)
           p = Path('debate-engine/src/server.ts')
           s = p.read_text()
           duplicate = "connect-src 'self' https://*.supabase.co wss://*.supabase.co; "
