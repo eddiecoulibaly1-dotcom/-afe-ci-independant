@@ -22,7 +22,8 @@ async function callOpenAI<T>(args: ModelArgs): Promise<T> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("OPENAI_API_KEY is missing");
   const client = new OpenAI({ apiKey: key });
-  const response = await client.responses.create({
+  try {
+    const response = await client.responses.create({
     model: args.model,
     instructions: args.system,
     input: args.prompt,
@@ -34,15 +35,20 @@ async function callOpenAI<T>(args: ModelArgs): Promise<T> {
         schema: args.schema
       }
     }
-  });
-  return JSON.parse(response.output_text) as T;
+    });
+    return JSON.parse(response.output_text) as T;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`OpenAI ${args.model}: ${message}`);
+  }
 }
 
 async function callGemini<T>(args: ModelArgs): Promise<T> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY is missing");
   const ai = new GoogleGenAI({ apiKey: key });
-  const interaction = await ai.interactions.create({
+  try {
+    const interaction = await ai.interactions.create({
     model: args.model,
     system_instruction: args.system,
     input: args.prompt,
@@ -51,7 +57,11 @@ async function callGemini<T>(args: ModelArgs): Promise<T> {
       mime_type: "application/json",
       schema: args.schema
     }
-  });
-  if (!interaction.output_text) throw new Error("Gemini returned no output_text");
-  return JSON.parse(interaction.output_text) as T;
+    });
+    if (!interaction.output_text) throw new Error("Gemini returned no output_text");
+    return JSON.parse(interaction.output_text) as T;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Gemini ${args.model}: ${message}`);
+  }
 }
