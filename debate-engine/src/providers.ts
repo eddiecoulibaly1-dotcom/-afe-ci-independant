@@ -17,12 +17,27 @@ type ModelArgs = {
 // sont distinguées afin que l'interface puisse afficher la vraie cause.
 const PROVIDER_TIMEOUT_MS = Number(process.env.PROVIDER_TIMEOUT_MS ?? 20_000);
 const FALLBACK_TIMEOUT_MS = Number(process.env.FALLBACK_TIMEOUT_MS ?? 9_000);
+const JUDGE_TIMEOUT_MS = Number(process.env.JUDGE_TIMEOUT_MS ?? 12_000);
+const JUDGE_FALLBACK_TIMEOUT_MS = Number(process.env.JUDGE_FALLBACK_TIMEOUT_MS ?? 5_000);
 const FALLBACK_MODEL = process.env.OPENAI_FALLBACK_MODEL ?? "gpt-4.1-mini";
 const GEMINI_THINKING_LEVEL = process.env.GEMINI_THINKING_LEVEL ?? "low";
+const FRENCH_OUTPUT_CONTRACT = `
+CONTRAT DE SORTIE OBLIGATOIRE — FRANÇAIS EXCLUSIVEMENT :
+- Toutes les valeurs textuelles narratives doivent être rédigées en français naturel et professionnel.
+- Aucun texte narratif en anglais, même partiellement.
+- Les noms de champs JSON, identifiants, noms de modèles et valeurs d'énumération imposées par le schéma peuvent rester techniques.
+- Les termes techniques internationaux réellement nécessaires peuvent rester tels quels, mais la phrase qui les contient doit rester française.
+- Reformule en français tout contenu anglais présent dans l'historique ou le contexte au lieu de le recopier.
+- Retourne uniquement le JSON demandé par le schéma, sans commentaire ni bloc Markdown.`;
 
 export async function callModel<T>(args: ModelArgs): Promise<T> {
-  if (args.provider === "openai") return callOpenAI<T>(args);
-  return callGemini<T>(args);
+  const hardenedArgs = {
+    ...args,
+    system: `${args.system}\n\n${FRENCH_OUTPUT_CONTRACT}`,
+    prompt: `${args.prompt}\n\n${FRENCH_OUTPUT_CONTRACT}`
+  };
+  if (args.provider === "openai") return callOpenAI<T>(hardenedArgs);
+  return callGemini<T>(hardenedArgs);
 }
 
 function isAuthProviderError(message: string): boolean {
@@ -38,6 +53,14 @@ function providerError(message: string, provider: string, model: string): Error 
     return new Error(`${provider.toUpperCase()}_AUTH_ERROR: authentification du modèle ${model} refusée. Vérifie la clé API, son projet OpenAI et ses permissions dans l'environnement de production.`);
   }
   return new Error(`${provider.toUpperCase()}_PROVIDER_ERROR: ${message}`);
+}
+
+function requestTimeoutFor(schemaName: string): number {
+  return schemaName === "judge_decision" ? JUDGE_TIMEOUT_MS : PROVIDER_TIMEOUT_MS;
+}
+
+function fallbackTimeoutFor(schemaName: string): number {
+  return schemaName === "judge_decision" ? JUDGE_FALLBACK_TIMEOUT_MS : FALLBACK_TIMEOUT_MS;
 }
 
 async function callOpenAIRequest<T>(args: ModelArgs, model: string, timeoutMs: number): Promise<T> {
@@ -61,8 +84,10 @@ async function callOpenAIRequest<T>(args: ModelArgs, model: string, timeoutMs: n
 }
 
 async function callOpenAI<T>(args: ModelArgs): Promise<T> {
+  const primaryTimeout = requestTimeoutFor(args.schemaName);
+  const fallbackTimeout = fallbackTimeoutFor(args.schemaName);
   try {
-    return await callOpenAIRequest<T>(args, args.model, PROVIDER_TIMEOUT_MS);
+    return await callOpenAIRequest<T>(args, args.model, primaryTimeout);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
@@ -72,7 +97,7 @@ async function callOpenAI<T>(args: ModelArgs): Promise<T> {
 
     if (args.model !== FALLBACK_MODEL && isTransientProviderError(message)) {
       try {
-        return await callOpenAIRequest<T>(args, FALLBACK_MODEL, FALLBACK_TIMEOUT_MS);
+        return await callOpenAIRequest<T>(args, FALLBACK_MODEL, fallbackTimeout);
       } catch (fallbackError) {
         const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
         if (isAuthProviderError(fallbackMessage)) throw providerError(fallbackMessage, "OpenAI", FALLBACK_MODEL);
