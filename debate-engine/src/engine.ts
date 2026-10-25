@@ -59,10 +59,43 @@ function applyConvergencePolicy(judge: JudgeDecision, unresolvedQuestions: numbe
   return buildActionableDecision(scored, scored.evidenceAudit ?? { records: [], unsupportedCriticalClaims: [], unsupportedHighImpactClaims: [], confidence: 1, blocking: false, nextTests: [] }, finalRound);
 }
 
+function normalizeTerminalDecision(judge: JudgeDecision): JudgeDecision {
+  const winner = winnerFromScores(judge);
+  if (winner === "neither") {
+    return {
+      ...judge,
+      status: "unresolved",
+      winner: "neither",
+      confidence: "low",
+      decision: judge.decision || "Aucune option ne domine suffisamment : un test discriminant est nécessaire avant de choisir."
+    };
+  }
+
+  // Un timeout ou une ancienne version du moteur ne doit jamais transformer
+  // une décision déjà suffisamment départagée en "unresolved".
+  if (judge.status === "unresolved" || judge.status === "revise") {
+    const provisional = judge.confidence !== "high" || (judge.criticalDisagreements ?? []).length > 0;
+    return {
+      ...judge,
+      status: provisional ? "provisional" : "converged",
+      winner,
+      confidence: provisional ? (judge.confidence === "low" ? "low" : "moderate") : "high",
+      decision: judge.decision?.startsWith("Décision") ? judge.decision : `Décision provisoire : ${decisionLabel(winner)}. ${judge.decision || "La comparaison finale donne un avantage suffisant à cette option."}`,
+      rationale: [...(judge.rationale ?? []), `Normalisation terminale : l'écart final de ${scoreDelta(judge)} points permet de départager les options.`]
+    };
+  }
+
+  return { ...judge, winner };
+}
+
 function terminalFromLastRound(debate: Debate, reason: string): Debate {
   const last = debate.rounds.at(-1);
   if (!last) throw new Error(reason);
-  const finalDecision: JudgeDecision = { ...last.judge, status: last.judge.status === "converged" || last.judge.status === "provisional" ? last.judge.status : "unresolved", rationale: [...last.judge.rationale, `Débat terminé proprement : ${reason}`] };
+  const normalized = normalizeTerminalDecision(last.judge);
+  const finalDecision: JudgeDecision = {
+    ...normalized,
+    rationale: [...normalized.rationale, `Débat terminé proprement : ${reason}`]
+  };
   debate.status = finalDecision.status === "converged" || finalDecision.status === "provisional" ? finalDecision.status : "unresolved";
   debate.finalDecision = finalDecision;
   return debate;
