@@ -12,9 +12,9 @@ type ModelArgs = {
   schema: JsonSchema;
 };
 
-// The debate endpoint has a generous Vercel execution budget, so provider calls
-// must be allowed enough time to complete. A short, separate fallback timeout
-// prevents a slow primary model from making the whole debate feel stuck.
+// Le moteur ne doit jamais masquer une panne d'authentification sous un faux
+// "timeout". Les erreurs de clé, de permissions, de quota et de disponibilité
+// sont distinguées afin que l'interface puisse afficher la vraie cause.
 const PROVIDER_TIMEOUT_MS = Number(process.env.PROVIDER_TIMEOUT_MS ?? 20_000);
 const FALLBACK_TIMEOUT_MS = Number(process.env.FALLBACK_TIMEOUT_MS ?? 9_000);
 const FALLBACK_MODEL = process.env.OPENAI_FALLBACK_MODEL ?? "gpt-4.1-mini";
@@ -25,13 +25,24 @@ export async function callModel<T>(args: ModelArgs): Promise<T> {
   return callGemini<T>(args);
 }
 
+function isAuthProviderError(message: string): boolean {
+  return /\b401\b|incorrect api key|invalid api key|authentication|api_key_invalid|invalid authentication|permission.?denied/i.test(message);
+}
+
 function isTransientProviderError(message: string): boolean {
   return /\b408\b|\b409\b|\b429\b|\b500\b|\b502\b|\b503\b|\b504\b|timeout|timed out|overloaded|temporar|quota|resource.?exhausted/i.test(message);
 }
 
+function providerError(message: string, provider: string, model: string): Error {
+  if (isAuthProviderError(message)) {
+    return new Error(`${provider.toUpperCase()}_AUTH_ERROR: authentification du modèle ${model} refusée. Vérifie la clé API, son projet OpenAI et ses permissions dans l'environnement de production.`);
+  }
+  return new Error(`${provider.toUpperCase()}_PROVIDER_ERROR: ${message}`);
+}
+
 async function callOpenAIRequest<T>(args: ModelArgs, model: string, timeoutMs: number): Promise<T> {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) throw new Error("OPENAI_API_KEY is missing");
+  const key = process.env.OPENAI_API_KEY?.trim();
+  if (!key) throw new Error("OPENAI_CONFIG_ERROR: OPENAI_API_KEY est absente de l'environnement serveur");
   const client = new OpenAI({ apiKey: key, timeout: timeoutMs, maxRetries: 0 });
   const response = await client.responses.create({
     model,
@@ -55,17 +66,20 @@ async function callOpenAI<T>(args: ModelArgs): Promise<T> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    // Never retry the same model with the same timeout. The previous production
-    // configuration did exactly that and could fail twice for the same reason.
+    // Une erreur d'authentification ne peut pas être réparée par un retry :
+    // surtout, ne pas essayer le modèle de secours avec la même clé invalide.
+    if (isAuthProviderError(message)) throw providerError(message, "OpenAI", args.model);
+
     if (args.model !== FALLBACK_MODEL && isTransientProviderError(message)) {
       try {
         return await callOpenAIRequest<T>(args, FALLBACK_MODEL, FALLBACK_TIMEOUT_MS);
       } catch (fallbackError) {
         const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        if (isAuthProviderError(fallbackMessage)) throw providerError(fallbackMessage, "OpenAI", FALLBACK_MODEL);
         throw new Error(`OpenAI ${args.model} failed (${message}); fallback ${FALLBACK_MODEL} failed (${fallbackMessage})`);
       }
     }
-    throw new Error(`OpenAI ${args.model}: ${message}`);
+    throw providerError(message, "OpenAI", args.model);
   }
 }
 
@@ -133,7 +147,7 @@ async function geminiGenerate(
 }
 
 async function callGemini<T>(args: ModelArgs): Promise<T> {
-  const key = process.env.GEMINI_API_KEY;
+  const key = process.env.GEMINI_API_KEY?.trim();
   if (!key) {
     return callOpenAI<T>({ ...args, provider: "openai", model: FALLBACK_MODEL });
   }
@@ -144,8 +158,9 @@ async function callGemini<T>(args: ModelArgs): Promise<T> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    // Gemini is never allowed to block a debate. On quota/availability errors,
-    // immediately use the independent OpenAI fallback.
+    if (isAuthProviderError(message)) throw providerError(message, "Gemini", args.model);
+
+    // Gemini est optionnel : en cas de quota/indisponibilité, utiliser OpenAI.
     if (isTransientProviderError(message)) {
       try {
         return await callOpenAI<T>({ ...args, provider: "openai", model: FALLBACK_MODEL });
@@ -164,6 +179,6 @@ async function callGemini<T>(args: ModelArgs): Promise<T> {
         throw new Error(`Gemini ${args.model}: structured JSON failed (${message}); plain JSON retry failed (${fallbackMessage})`);
       }
     }
-    throw new Error(`Gemini ${args.model}: ${message}`);
+    throw providerError(message, "Gemini", args.model);
   }
 }
