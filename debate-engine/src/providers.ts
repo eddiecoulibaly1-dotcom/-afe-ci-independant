@@ -12,9 +12,9 @@ type ModelArgs = {
   schema: JsonSchema;
 };
 
-// Le moteur ne doit jamais masquer une panne d'authentification sous un faux
+// Le moteur ne doit jamais masquer une panne d’authentification sous un faux
 // "timeout". Les erreurs de clé, de permissions, de quota et de disponibilité
-// sont distinguées afin que l'interface puisse afficher la vraie cause.
+// sont distinguées afin que l’interface puisse afficher la vraie cause.
 const PROVIDER_TIMEOUT_MS = Number(process.env.PROVIDER_TIMEOUT_MS ?? 20_000);
 const FALLBACK_TIMEOUT_MS = Number(process.env.FALLBACK_TIMEOUT_MS ?? 9_000);
 const JUDGE_TIMEOUT_MS = Number(process.env.JUDGE_TIMEOUT_MS ?? 12_000);
@@ -25,9 +25,9 @@ const FRENCH_OUTPUT_CONTRACT = `
 CONTRAT DE SORTIE OBLIGATOIRE — FRANÇAIS EXCLUSIVEMENT :
 - Toutes les valeurs textuelles narratives doivent être rédigées en français naturel et professionnel.
 - Aucun texte narratif en anglais, même partiellement.
-- Les noms de champs JSON, identifiants, noms de modèles et valeurs d'énumération imposées par le schéma peuvent rester techniques.
+- Les noms de champs JSON, identifiants, noms de modèles et valeurs d’énumération imposées par le schéma peuvent rester techniques.
 - Les termes techniques internationaux réellement nécessaires peuvent rester tels quels, mais la phrase qui les contient doit rester française.
-- Reformule en français tout contenu anglais présent dans l'historique ou le contexte au lieu de le recopier.
+- Reformule en français tout contenu anglais présent dans l’historique ou le contexte au lieu de le recopier.
 - Retourne uniquement le JSON demandé par le schéma, sans commentaire ni bloc Markdown.`;
 
 export async function callModel<T>(args: ModelArgs): Promise<T> {
@@ -41,7 +41,7 @@ export async function callModel<T>(args: ModelArgs): Promise<T> {
 }
 
 function isAuthProviderError(message: string): boolean {
-  return /\b401\b|incorrect api key|invalid api key|authentication|api_key_invalid|invalid authentication|permission.?denied/i.test(message);
+  return /\b401\b|incorrect api key|invalid api key|api key not valid|api_key_invalid|invalid authentication|authentication failed|permission.?denied/i.test(message);
 }
 
 function isTransientProviderError(message: string): boolean {
@@ -50,7 +50,7 @@ function isTransientProviderError(message: string): boolean {
 
 function providerError(message: string, provider: string, model: string): Error {
   if (isAuthProviderError(message)) {
-    return new Error(`${provider.toUpperCase()}_AUTH_ERROR: authentification du modèle ${model} refusée. Vérifie la clé API, son projet OpenAI et ses permissions dans l'environnement de production.`);
+    return new Error(`${provider.toUpperCase()}_AUTH_ERROR: authentification du modèle ${model} refusée. Vérifie la clé API, son projet et ses permissions dans l'environnement de production.`);
   }
   return new Error(`${provider.toUpperCase()}_PROVIDER_ERROR: ${message}`);
 }
@@ -91,8 +91,6 @@ async function callOpenAI<T>(args: ModelArgs): Promise<T> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    // Une erreur d'authentification ne peut pas être réparée par un retry :
-    // surtout, ne pas essayer le modèle de secours avec la même clé invalide.
     if (isAuthProviderError(message)) throw providerError(message, "OpenAI", args.model);
 
     if (args.model !== FALLBACK_MODEL && isTransientProviderError(message)) {
@@ -185,7 +183,6 @@ async function callGemini<T>(args: ModelArgs): Promise<T> {
 
     if (isAuthProviderError(message)) throw providerError(message, "Gemini", args.model);
 
-    // Gemini est optionnel : en cas de quota/indisponibilité, utiliser OpenAI.
     if (isTransientProviderError(message)) {
       try {
         return await callOpenAI<T>({ ...args, provider: "openai", model: FALLBACK_MODEL });
