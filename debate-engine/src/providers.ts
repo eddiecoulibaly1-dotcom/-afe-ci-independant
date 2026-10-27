@@ -12,32 +12,35 @@ type ModelArgs = {
   schema: JsonSchema;
 };
 
-// Le moteur ne doit jamais masquer une panne d’authentification sous un faux
-// "timeout". Les erreurs de clé, de permissions, de quota et de disponibilité
-// sont distinguées afin que l’interface puisse afficher la vraie cause.
+// Production policy: the debate engine uses one stable OpenAI path.
+// Environment model names are deliberately ignored so a stale/mistyped
+// OPENAI_MODEL (for example an obsolete gpt-6-luna value) can never break the UI.
+const PRIMARY_MODEL = "gpt-4.1-mini";
+const FALLBACK_MODEL = "gpt-4o-mini";
 const PROVIDER_TIMEOUT_MS = Number(process.env.PROVIDER_TIMEOUT_MS ?? 20_000);
-const FALLBACK_TIMEOUT_MS = Number(process.env.FALLBACK_TIMEOUT_MS ?? 9_000);
-const JUDGE_TIMEOUT_MS = Number(process.env.JUDGE_TIMEOUT_MS ?? 12_000);
-const JUDGE_FALLBACK_TIMEOUT_MS = Number(process.env.JUDGE_FALLBACK_TIMEOUT_MS ?? 5_000);
-const FALLBACK_MODEL = process.env.OPENAI_FALLBACK_MODEL ?? "gpt-4.1-mini";
-const GEMINI_THINKING_LEVEL = process.env.GEMINI_THINKING_LEVEL ?? "low";
+const FALLBACK_TIMEOUT_MS = Number(process.env.FALLBACK_TIMEOUT_MS ?? 12_000);
+const JUDGE_TIMEOUT_MS = Number(process.env.JUDGE_TIMEOUT_MS ?? 18_000);
+const JUDGE_FALLBACK_TIMEOUT_MS = Number(process.env.JUDGE_FALLBACK_TIMEOUT_MS ?? 10_000);
 const FRENCH_OUTPUT_CONTRACT = `
 CONTRAT DE SORTIE OBLIGATOIRE — FRANÇAIS EXCLUSIVEMENT :
 - Toutes les valeurs textuelles narratives doivent être rédigées en français naturel et professionnel.
 - Aucun texte narratif en anglais, même partiellement.
-- Les noms de champs JSON, identifiants, noms de modèles et valeurs d’énumération imposées par le schéma peuvent rester techniques.
+- Les noms de champs JSON, identifiants, noms de modèles et valeurs d'énumération imposées par le schéma peuvent rester techniques.
 - Les termes techniques internationaux réellement nécessaires peuvent rester tels quels, mais la phrase qui les contient doit rester française.
 - Reformule en français tout contenu anglais présent dans l’historique ou le contexte au lieu de le recopier.
 - Retourne uniquement le JSON demandé par le schéma, sans commentaire ni bloc Markdown.`;
 
 export async function callModel<T>(args: ModelArgs): Promise<T> {
-  const hardenedArgs = {
+  // Ignore provider/model supplied by deployment configuration. This is the
+  // single production boundary for Architect, Red Team and Arbiter.
+  const hardenedArgs: ModelArgs = {
     ...args,
+    provider: "openai",
+    model: PRIMARY_MODEL,
     system: `${args.system}\n\n${FRENCH_OUTPUT_CONTRACT}`,
     prompt: `${args.prompt}\n\n${FRENCH_OUTPUT_CONTRACT}`
   };
-  if (args.provider === "openai") return callOpenAI<T>(hardenedArgs);
-  return callGemini<T>(hardenedArgs);
+  return callOpenAI<T>(hardenedArgs);
 }
 
 function isAuthProviderError(message: string): boolean {
@@ -87,120 +90,21 @@ async function callOpenAI<T>(args: ModelArgs): Promise<T> {
   const primaryTimeout = requestTimeoutFor(args.schemaName);
   const fallbackTimeout = fallbackTimeoutFor(args.schemaName);
   try {
-    return await callOpenAIRequest<T>(args, args.model, primaryTimeout);
+    return await callOpenAIRequest<T>(args, PRIMARY_MODEL, primaryTimeout);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    if (isAuthProviderError(message)) throw providerError(message, "OpenAI", args.model);
-
-    if (args.model !== FALLBACK_MODEL && isTransientProviderError(message)) {
-      try {
-        return await callOpenAIRequest<T>(args, FALLBACK_MODEL, fallbackTimeout);
-      } catch (fallbackError) {
-        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-        if (isAuthProviderError(fallbackMessage)) throw providerError(fallbackMessage, "OpenAI", FALLBACK_MODEL);
-        throw new Error(`OpenAI ${args.model} failed (${message}); fallback ${FALLBACK_MODEL} failed (${fallbackMessage})`);
-      }
-    }
-    throw providerError(message, "OpenAI", args.model);
-  }
-}
-
-function extractGeminiText(payload: any): string {
-  const text = payload?.candidates?.[0]?.content?.parts
-    ?.map((part: any) => part?.text ?? "")
-    .join("")
-    .trim();
-  if (!text) {
-    const blockReason = payload?.promptFeedback?.blockReason;
-    const finishReason = payload?.candidates?.[0]?.finishReason;
-    throw new Error(`Gemini returned no text${blockReason ? `; blockReason=${blockReason}` : ""}${finishReason ? `; finishReason=${finishReason}` : ""}`);
-  }
-  return text;
-}
-
-async function geminiGenerate(
-  key: string,
-  model: string,
-  system: string,
-  prompt: string,
-  schema?: JsonSchema
-): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-goog-api-key": key
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents: [{
-          role: "user",
-          parts: [{ text: `${prompt}\n\nReturn ONLY one valid JSON object matching the requested structure. Do not use markdown fences, commentary, or extra text.` }]
-        }],
-        generationConfig: {
-          thinkingConfig: { thinkingLevel: GEMINI_THINKING_LEVEL },
-          ...(schema ? {
-            responseMimeType: "application/json",
-            responseJsonSchema: schema
-          } : { responseMimeType: "application/json" })
-        }
-      })
-    });
-
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const detail = payload?.error?.message || payload?.error?.status || `HTTP ${response.status}`;
-      throw new Error(`${response.status} ${detail}`);
-    }
-    return extractGeminiText(payload);
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Gemini request timed out after ${PROVIDER_TIMEOUT_MS / 1000}s`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function callGemini<T>(args: ModelArgs): Promise<T> {
-  const key = process.env.GEMINI_API_KEY?.trim();
-  if (!key) {
-    return callOpenAI<T>({ ...args, provider: "openai", model: FALLBACK_MODEL });
-  }
-
-  try {
-    const text = await geminiGenerate(key, args.model, args.system, args.prompt, args.schema);
-    return JSON.parse(text) as T;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-
-    if (isAuthProviderError(message)) throw providerError(message, "Gemini", args.model);
+    if (isAuthProviderError(message)) throw providerError(message, "OpenAI", PRIMARY_MODEL);
 
     if (isTransientProviderError(message)) {
       try {
-        return await callOpenAI<T>({ ...args, provider: "openai", model: FALLBACK_MODEL });
+        return await callOpenAIRequest<T>({ ...args, model: FALLBACK_MODEL }, FALLBACK_MODEL, fallbackTimeout);
       } catch (fallbackError) {
         const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-        throw new Error(`Gemini ${args.model} unavailable (${message}); OpenAI fallback ${FALLBACK_MODEL} failed (${fallbackMessage})`);
+        if (isAuthProviderError(fallbackMessage)) throw providerError(fallbackMessage, "OpenAI", FALLBACK_MODEL);
+        throw new Error(`OpenAI ${PRIMARY_MODEL} indisponible (${message}); secours ${FALLBACK_MODEL} indisponible (${fallbackMessage})`);
       }
     }
-
-    if (/\b400\b|INVALID_ARGUMENT|schema/i.test(message) && !/API key not valid|API_KEY_INVALID|\b401\b|\b403\b/i.test(message)) {
-      try {
-        const text = await geminiGenerate(key, args.model, args.system, args.prompt);
-        return JSON.parse(text) as T;
-      } catch (fallbackError) {
-        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-        throw new Error(`Gemini ${args.model}: structured JSON failed (${message}); plain JSON retry failed (${fallbackMessage})`);
-      }
-    }
-    throw providerError(message, "Gemini", args.model);
+    throw providerError(message, "OpenAI", PRIMARY_MODEL);
   }
 }
