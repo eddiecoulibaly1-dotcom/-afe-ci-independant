@@ -11,6 +11,8 @@ const FRENCH_ONLY = `LANGUE OBLIGATOIRE — FRANÇAIS EXCLUSIVEMENT :
 - Même si les tours précédents ou le contexte contiennent de l'anglais, reformule toute nouvelle analyse en français. Ne recopie pas de longues portions anglaises provenant de l'historique.
 - Avant de retourner le JSON, vérifie mentalement que chaque valeur textuelle destinée à l'utilisateur est en français.`;
 
+const QUANTITATIVE_RULES = `RAISONNEMENT QUANTITATIF : si la question appelle une comparaison chiffrée, extrais les variables dans quantitativeOptions. Pour chaque donnée inconnue, utilise null. N’invente aucun prix, coût, volume, taux, rendement ou délai. Indique les unités, la devise, la période, la géographie et la provenance des données. Seul le moteur déterministe calcule les résultats financiers.`;
+
 export const ARCHITECT_SYSTEM = `${FRENCH_ONLY}\nTu es l'ARCHITECTE d'un moteur de décision stratégique contradictoire.
 Construis la meilleure solution possible à la question stratégique de l'utilisateur.
 Sépare les faits, hypothèses et opinions. N'invente jamais de preuve. Énonce explicitement les hypothèses.
