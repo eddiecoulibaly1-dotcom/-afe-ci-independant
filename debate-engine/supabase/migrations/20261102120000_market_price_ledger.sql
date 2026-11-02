@@ -56,7 +56,6 @@ create index if not exists market_price_observations_source_idx
 create index if not exists market_price_observations_batch_idx
   on public.market_price_observations (batch_id);
 
--- Prevent silent mutation. A correction is always a new linked row.
 create or replace function public.reject_market_price_mutation()
 returns trigger language plpgsql as $$
 begin
@@ -69,7 +68,6 @@ create trigger market_price_observations_no_update
   before update or delete on public.market_price_observations
   for each row execute function public.reject_market_price_mutation();
 
--- Reject correction links across different products, units, currencies or geographies.
 create or replace function public.validate_market_price_correction()
 returns trigger language plpgsql as $$
 declare original public.market_price_observations%rowtype;
@@ -98,7 +96,6 @@ create trigger market_price_observations_validate_correction
   before insert on public.market_price_observations
   for each row execute function public.validate_market_price_correction();
 
--- Current view: latest non-superseded versions only. Full history remains in the base table.
 create or replace view public.market_price_observations_current
 with (security_invoker = true) as
 select o.*
@@ -118,8 +115,11 @@ drop policy if exists market_price_observations_select_own on public.market_pric
 create policy market_price_observations_select_own on public.market_price_observations
   for select to authenticated using (created_by = auth.uid());
 
--- Writes are performed only by the authenticated application server using its server-side secret.
--- No direct client INSERT/UPDATE/DELETE policies are created.
+-- Client sessions are read-only. Server writes occur only after bearer-token validation.
 grant select on public.market_price_import_batches to authenticated;
 grant select on public.market_price_observations to authenticated;
 grant select on public.market_price_observations_current to authenticated;
+
+-- Explicitly deny bulk truncation to application roles; row UPDATE/DELETE are blocked by trigger.
+revoke truncate on public.market_price_import_batches from anon, authenticated, service_role;
+revoke truncate on public.market_price_observations from anon, authenticated, service_role;
