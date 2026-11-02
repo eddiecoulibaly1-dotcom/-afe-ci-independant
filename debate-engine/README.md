@@ -186,3 +186,30 @@ This endpoint currently performs a validated import preview only: `persisted:fal
 It does not write rows to a database or retain uploaded data after the request. Durable
 storage is deliberately deferred until its table, retention policy, source attribution,
 and access controls are agreed. Do not treat a preview as a permanent price feed.
+
+
+### Durable market price ledger (migration pending approval)
+
+The append-only ledger migration is at `supabase/migrations/20261102120000_market_price_ledger.sql`.
+It creates import batches, immutable price observations, duplicate fingerprints, correction links,
+row-level read policies and a current-observations view. The migration has **not** been applied
+to any Supabase project.
+
+Once the migration is reviewed and explicitly approved, the API supports:
+- `POST /market-prices/import`: authenticated CSV import; returns inserted and duplicate counts.
+- `GET /market-prices`: current (non-superseded) observations, scoped to the authenticated user.
+- `GET /market-prices/:id/history`: original observation and its sequential correction history.
+- `POST /market-prices/:id/corrections`: append a corrected version with a mandatory reason.
+
+The ledger stores source name, URL, source class, original source observation ID, publication/observation/
+retrieval dates, geography, unit, currency, import batch and a SHA-256 duplicate fingerprint.
+Database triggers reject UPDATE and DELETE. Corrections are new rows linked by `supersedes_id`;
+the previous value remains available in history. Duplicate imports are ignored by unique fingerprint.
+
+Server-side Supabase credentials are required. Browser clients receive no write policy; writes
+are made by the authenticated API after validating the user's bearer token. The service key
+must never be exposed to the browser. The current view returns only latest versions, while the
+base table retains the complete audit trail.
+
+**Operational gate:** apply the SQL migration manually only after reviewing it and approving the
+target Supabase project. Until then the durable endpoints return HTTP 503 and no data is written.
