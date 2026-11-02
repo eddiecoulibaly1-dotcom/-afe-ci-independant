@@ -150,13 +150,13 @@ function buildContinuityDebate(question: string, context: string | undefined, co
   return { id: randomUUID(), question, context, status: "provisional", rounds: [round], finalDecision: judge, config };
 }
 
-export async function runDebate(question: string, context: string | undefined, config: DebateConfig): Promise<Debate> {
+export async function runDebate(question: string, context: string | undefined, config: DebateConfig, modelCaller: typeof callModel = callModel): Promise<Debate> {
   const debate: Debate = { id: randomUUID(), question, context, status: "running", rounds: [], config };
   for (let roundNo = 1; roundNo <= config.maxRounds; roundNo++) {
     const finalRound = roundNo === config.maxRounds;
     let architect: Proposal;
     try {
-      architect = await callModel<Proposal>({ ...config.architect, system: ARCHITECT_SYSTEM, prompt: architectPrompt(question, context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective), schemaName: "architect_proposal", schema: proposalSchema });
+      architect = await modelCaller<Proposal>({ ...config.architect, system: ARCHITECT_SYSTEM, prompt: architectPrompt(question, context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective), schemaName: "architect_proposal", schema: proposalSchema });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       return terminalFromLastRound(debate, `continuité automatique activée (${reason})`);
@@ -166,13 +166,13 @@ export async function runDebate(question: string, context: string | undefined, c
     const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(question));
     const partial: DebateRound = { round: roundNo, architect, evidenceAudit, quantitativeAudit, redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] }, judge: { status: "revise", winner: "neither", architectScore: 0, redTeamScore: 0, architectScorecard: emptyScorecard(), redTeamScorecard: emptyScorecard(), acceptedClaims: [], rejectedClaims: [], criticalDisagreements: [], decision: "", rationale: [], evidenceAudit }, createdAt: new Date().toISOString() };
     try {
-      partial.redTeam = await callModel<Critique>({ ...config.redTeam, system: RED_TEAM_SYSTEM, prompt: redTeamPrompt(question, context, partial), schemaName: "red_team_critique", schema: critiqueSchema });
+      partial.redTeam = await modelCaller<Critique>({ ...config.redTeam, system: RED_TEAM_SYSTEM, prompt: redTeamPrompt(question, context, partial), schemaName: "red_team_critique", schema: critiqueSchema });
     } catch (error) {
       if (debate.rounds.length) return terminalFromLastRound(debate, "la Red Team n'a pas pu terminer l'analyse; dernière décision conservée");
       return buildContinuityDebate(question, context, config, "la Red Team n'a pas pu terminer l'analyse");
     }
     try {
-      const rawJudge = await callModel<JudgeDecision>({ ...config.judge, system: JUDGE_SYSTEM, prompt: judgePrompt(question, context, partial, config.convergenceScore), schemaName: "judge_decision", schema: judgeSchema });
+      const rawJudge = await modelCaller<JudgeDecision>({ ...config.judge, system: JUDGE_SYSTEM, prompt: judgePrompt(question, context, partial, config.convergenceScore), schemaName: "judge_decision", schema: judgeSchema });
       const arbitrated = applyConvergencePolicy({ ...rawJudge, evidenceAudit }, partial.redTeam.unresolvedQuestions.length, partial.redTeam.attacks.filter((attack) => attack.severity === "critical").length, finalRound);
       const quantitativeGateRequired = quantitativeAudit.applicable;
       partial.judge = quantitativeGateRequired && !canDeclareEconomicWinner(quantitativeAudit)
