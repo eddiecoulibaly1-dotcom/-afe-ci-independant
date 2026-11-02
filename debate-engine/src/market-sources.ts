@@ -41,6 +41,21 @@ export function validateMarketObservation(value: unknown): MarketObservation {
   if (!allowedKinds.has(kind)) throw new Error("Type de prix inconnu.");
   const publishedAt = typeof value.publishedAt === "string" && value.publishedAt.trim() ? value.publishedAt.trim() : undefined;
   const observedAt = typeof value.observedAt === "string" && value.observedAt.trim() ? value.observedAt.trim() : undefined;
+  for (const field of ["minimumQuantity", "packSize"] as const) {
+    const raw = value[field];
+    if (raw !== undefined && raw !== "" && (!Number.isInteger(Number(raw)) || Number(raw) <= 0)) {
+      throw new Error(`Quantité invalide : ${field}.`);
+    }
+  }
+  if (value.deliveryFee !== undefined && value.deliveryFee !== "" &&
+      (!Number.isFinite(Number(value.deliveryFee)) || Number(value.deliveryFee) < 0)) {
+    throw new Error("Frais de livraison invalides.");
+  }
+  if (value.availabilityDate !== undefined && value.availabilityDate !== "" &&
+      (typeof value.availabilityDate !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value.availabilityDate) ||
+       !Number.isFinite(Date.parse(value.availabilityDate)))) {
+    throw new Error("Date de disponibilité invalide.");
+  }
   const retrievedAt = requiredString(value.retrievedAt, "retrievedAt");
   if (!Number.isFinite(Date.parse(retrievedAt))) throw new Error("Date de collecte invalide.");
   if (publishedAt && !Number.isFinite(Date.parse(publishedAt))) throw new Error("Date de publication invalide.");
