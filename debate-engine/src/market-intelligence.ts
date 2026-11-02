@@ -31,6 +31,7 @@ export interface MarketObservation {
   sourceUrl: string;
   sourceClass: SourceClass;
   publishedAt?: string;
+  observedAt?: string;
   retrievedAt: string;
   validUntil?: string;
   notes?: string;
