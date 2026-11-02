@@ -49,8 +49,11 @@ send(res,200,history);return;
 const correctionMatch=path.match(/^\/market-prices\/([^/]+)\/corrections$/);
 if(req.method==="POST"&&correctionMatch){
 if(!marketPriceStorageEnabled()){send(res,503,{error:"Stockage durable non configuré."});return;}
-const input=await body(req) as {value:number;reason:string;publishedAt?:string;observedAt?:string;retrievedAt?:string;validUntil?:string;notes?:string};
-const correction=await correctMarketPrice(user.id,{...input,id:decodeURIComponent(correctionMatch[1])});
+const input=await body(req) as {value?:number;reason?:string;publishedAt?:string;observedAt?:string;retrievedAt?:string;validUntil?:string;notes?:string};
+if(!input||typeof input.value!=="number"||!Number.isFinite(input.value)||typeof input.reason!=="string"||input.reason.trim().length<8){
+send(res,400,{error:"Une valeur numérique valide et un motif d'au moins 8 caractères sont obligatoires."});return;
+}
+const correction=await correctMarketPrice(user.id,{...input,value:input.value,reason:input.reason,id:decodeURIComponent(correctionMatch[1])});
 send(res,201,{persisted:true,correction});return;
 }
 if(req.method==="GET"&&path==="/market-prices"){
