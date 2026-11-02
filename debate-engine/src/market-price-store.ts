@@ -53,10 +53,18 @@ export async function listMarketPrices(userId:string,filters:Record<string,strin
 export async function getMarketPriceHistory(userId:string,id:string){
   const rows=await request<Array<Record<string,unknown>>>(`market_price_observations?select=*&created_by=eq.${userId}&id=eq.${encodeURIComponent(id)}&limit=1`);
   if(!rows[0])return null;
-  const root=rows[0];
+  let root=rows[0];
+  // Resolve the complete chain from its first immutable observation.
+  for(;;){
+    const parentId=root.supersedes_id;
+    if(typeof parentId!=="string")break;
+    const parent=await request<Array<Record<string,unknown>>>(`market_price_observations?select=*&created_by=eq.${userId}&id=eq.${encodeURIComponent(parentId)}&limit=1`);
+    if(!parent[0])break;
+    root=parent[0];
+  }
   const history=[root];
-  let currentId=id;
-  for(let depth=0;depth<25;depth++){
+  let currentId=String(root.id);
+  for(;;){
     const next=await request<Array<Record<string,unknown>>>(`market_price_observations?select=*&created_by=eq.${userId}&supersedes_id=eq.${encodeURIComponent(currentId)}&limit=1`);
     if(!next[0])break;
     history.push(next[0]);
