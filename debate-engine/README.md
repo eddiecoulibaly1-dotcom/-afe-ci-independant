@@ -113,3 +113,47 @@ Public share resolution is deliberately limited to a high-entropy token; the raw
 ## Decision intelligence
 
 V0.4 introduced a deterministic 100-point scorecard. V0.5 added evidence intelligence. V0.8 added identity and private ownership. V0.9 added collaboration. V1.0 adds the product trust layer. V1.0.6 adds realtime synchronization, PWA migration and production hardening.
+
+## Market intelligence — Côte d'Ivoire (V2.1)
+
+The market evidence layer supports validated JSON feeds and CSV exports. The authenticated
+`GET /market-prices` endpoint reads a server-side feed configured with
+`MARKET_PRICE_FEED_URL` and optionally `MARKET_PRICE_FEED_TOKEN`, then applies the
+city-first, same-country fallback and 30-day freshness policy.
+
+Expected JSON response from the configured provider:
+
+```json
+{
+  "source": "SIMAgri export",
+  "observations": [{
+    "id": "simagri-maize-001",
+    "product": "maïs jaune",
+    "normalizedProduct": "mais jaune",
+    "kind": "raw_material",
+    "value": 215,
+    "currency": "XOF",
+    "unit": "FCFA/kg",
+    "country": "Côte d'Ivoire",
+    "region": "Gbêkê",
+    "city": "Bouaké",
+    "sourceName": "SIMAgri",
+    "sourceUrl": "https://simagri-ci.info/product-detail/mais-jaune",
+    "sourceClass": "public_market_system",
+    "publishedAt": "2026-10-28T00:00:00Z",
+    "retrievedAt": "2026-10-29T00:00:00Z"
+  }]
+}
+```
+
+Example request (after authentication):
+
+`GET /market-prices?product=ma%C3%AFs%20jaune&kind=raw_material&country=C%C3%B4te%20d'Ivoire&city=Bouak%C3%A9&currency=XOF&unit=FCFA%2Fkg`
+
+The OCPV and SIMAgri public pages were identified as useful reference sources, but no
+documented public JSON API was confirmed during implementation. Do not point the feed
+variables at undocumented endpoints or scrape pages contrary to their terms. Use an
+authorized API/export or an approved data relay. Until configured, the endpoint returns
+a configuration error; it does not fabricate or substitute prices. Supplier quotations
+for feed bags, chicks and guinea fowl require their own verified supplier feed or CSV
+import and must not be inferred from grain-market prices.
