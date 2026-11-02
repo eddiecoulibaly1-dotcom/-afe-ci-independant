@@ -82,7 +82,7 @@ const dw=path.match(/^\/debates\/([^/]+)\/workspace$/);if(dw&&req.method==="POST
 if(req.method==="GET"&&path==="/debates"){send(res,200,await listDebates(user.id));return;}if(req.method==="GET"&&/^\/debates\/[^/]+$/.test(path)){const id=decodeURIComponent(path.slice(9)),d=await getDebate(id,user.id);if(!d){send(res,404,{error:"Debate not found"});return;}send(res,200,d);return;}
 if(req.method!=="POST"||(path!=="/debates/run"&&path!=="/api/debates/run")){send(res,404,{error:"Not found"});return;}
 const input=await body(req) as {question?:string;context?:string;config?:Partial<DebateConfig>};if(!input.question?.trim()){send(res,400,{error:"question is required"});return;}const cfg={...config(),...(input.config??{})} as DebateConfig;const debate=await runDebate(input.question.trim(),input.context?.trim()??"",cfg);const savedDebate={...debate,userId:user.id};await saveDebate(savedDebate);send(res,200,savedDebate);
-}catch(e){const msg=e instanceof Error?e.message:String(e);const status=/required|invalid|insufficient|refus|not found|introuvable/i.test(msg)?400:500;send(res,status,{error:msg});}}
+}catch(e){const msg=e instanceof Error?e.message:String(e);console.error("[afe-ci-debate-engine] request failed",e);const status=/too large/i.test(msg)?413:/required|invalid|insufficient|refus|not found|introuvable/i.test(msg)?400:500;send(res,status,{error:status===500?"Erreur interne du serveur. Consultez les journaux du déploiement.":msg});}}
 
 export default handler;
 
