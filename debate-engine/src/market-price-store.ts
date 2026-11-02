@@ -17,7 +17,7 @@ async function request<T>(path:string,init:RequestInit={}):Promise<T>{
   return text?JSON.parse(text) as T:undefined as T;
 }
 const sha=(value:string)=>createHash("sha256").update(value).digest("hex");
-const fingerprint=(o:MarketObservation)=>sha([o.sourceName,o.sourceUrl,o.id,o.normalizedProduct,o.kind,o.value,o.currency,o.unit,o.country,o.region??"",o.city??"",o.publishedAt??"",o.retrievedAt].join("|"));
+const fingerprint=(o:MarketObservation)=>sha([o.sourceName,o.sourceUrl,o.id,o.normalizedProduct,o.kind,o.value,o.currency,o.unit,o.country,o.region??"",o.city??"",o.observedAt??"",o.publishedAt??""].join("|"));
 
 export async function importMarketCsv(userId:string,csv:string,fileName?:string){
   const observations=parseMarketCsv(csv);
