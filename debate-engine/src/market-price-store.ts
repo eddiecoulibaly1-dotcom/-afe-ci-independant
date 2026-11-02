@@ -54,7 +54,14 @@ export async function getMarketPriceHistory(userId:string,id:string){
   const rows=await request<Array<Record<string,unknown>>>(`market_price_observations?select=*&created_by=eq.${userId}&id=eq.${encodeURIComponent(id)}&limit=1`);
   if(!rows[0])return null;
   const root=rows[0];
-  const history=await request<Array<Record<string,unknown>>>(`market_price_observations?select=*&created_by=eq.${userId}&or=(id.eq.${encodeURIComponent(id)},supersedes_id.eq.${encodeURIComponent(id)})&order=created_at.asc`);
+  const history=[root];
+  let currentId=id;
+  for(let depth=0;depth<25;depth++){
+    const next=await request<Array<Record<string,unknown>>>(`market_price_observations?select=*&created_by=eq.${userId}&supersedes_id=eq.${encodeURIComponent(currentId)}&limit=1`);
+    if(!next[0])break;
+    history.push(next[0]);
+    currentId=String(next[0].id);
+  }
   return {observation:root,history};
 }
 export async function correctMarketPrice(userId:string,input:{id:string;value:number;reason:string;publishedAt?:string;observedAt?:string;retrievedAt?:string;validUntil?:string;notes?:string}){
