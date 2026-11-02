@@ -1,6 +1,8 @@
 import "node:process";
 import { createServer } from "node:http";
 import { runDebate } from "./engine.js";
+import { assessMarketEvidence } from "./market-intelligence.js";
+import { fetchConfiguredMarketFeed } from "./market-sources.js";
 import { getDebate, listDebates, saveDebate } from "./store.js";
 import { LAB_HTML, LAB_MANIFEST, LAB_SW, LAB_ICON } from "./lab-v106.js";
 import { authenticateRequest, publicAuthConfig } from "./auth.js";
@@ -25,6 +27,13 @@ if(req.method==="GET"&&path==="/lab/manifest.webmanifest"){res.writeHead(200,{"C
 if(req.method==="GET"&&path==="/health"){send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,evidenceEngine:true,mobileLab:true,pwa:true,auth:true,privateHistory:true,workspaces:true,roles:true,controlledSharing:true,v1_0_3:true,v1_0_5:true,v1_0_6:true,v1_0_7:true,notifications:true,audit:true,secureShareLinks:true,publicShareViewer:true,visualShareViewer:true,shareCenter:true,serverBackedShareLinks:true,invitations:true,realtime:true,deployment:"ready"});return;}
 if(req.method==="GET"&&path==="/auth/config"){const a=publicAuthConfig();if(!a){send(res,503,{error:"Supabase public auth is not configured"});return;}send(res,200,a);return;}
 const user=await authenticateRequest(req);if(!user){send(res,401,{error:"Authentication required"});return;}
+if(req.method==="GET"&&path==="/market-prices"){
+const product=url.searchParams.get("product")?.trim(),kind=url.searchParams.get("kind")?.trim(),country=url.searchParams.get("country")?.trim(),city=url.searchParams.get("city")?.trim(),currency=url.searchParams.get("currency")?.trim(),unit=url.searchParams.get("unit")?.trim();
+if(!product||!kind||!country||!currency||!unit){send(res,400,{error:"Paramètres requis : product, kind, country, currency, unit."});return;}
+const feed=await fetchConfiguredMarketFeed();
+const assessment=assessMarketEvidence({product,kind:kind as import("./market-intelligence.js").PriceKind,country,city:city??undefined,region:url.searchParams.get("region")??undefined,currency,unit},feed.observations,url.searchParams.get("region")??undefined);
+send(res,200,{source:feed.source,retrievedAt:feed.retrievedAt,...assessment});return;
+}
 if(req.method==="GET"&&path==="/me"){send(res,200,await getMe(user.id,user.email));return;}if(req.method==="PATCH"&&path==="/me"){send(res,200,{profile:await updateProfile(user.id,await body(req) as {displayName?:string;phone?:string})});return;}
 if(req.method==="GET"&&path==="/notifications"){send(res,200,await listNotifications(user.id));return;}const nm=path.match(/^\/notifications\/([^/]+)$/);if(nm&&req.method==="PATCH"){await markNotificationRead(user.id,decodeURIComponent(nm[1]));send(res,200,{ok:true});return;}if(req.method==="POST"&&path==="/notifications/read-all"){await markAllNotificationsRead(user.id);send(res,200,{ok:true});return;}if(req.method==="GET"&&path==="/audit"){send(res,200,await listAudit(user.id));return;}
 if(req.method==="GET"&&path==="/workspaces"){send(res,200,await listWorkspaces(user.id));return;}if(req.method==="POST"&&path==="/workspaces"){const i=await body(req) as {name?:string};if(!i.name?.trim())throw new Error("workspace name is required");send(res,201,await createWorkspace(user.id,i.name));return;}
