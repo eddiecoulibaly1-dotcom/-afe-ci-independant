@@ -2,7 +2,7 @@ import "node:process";
 import { createServer } from "node:http";
 import { runDebate } from "./engine.js";
 import { assessMarketEvidence } from "./market-intelligence.js";
-import { fetchConfiguredMarketFeed } from "./market-sources.js";
+import { fetchConfiguredMarketFeed, parseMarketCsv } from "./market-sources.js";
 import { getDebate, listDebates, saveDebate } from "./store.js";
 import { LAB_HTML, LAB_MANIFEST, LAB_SW, LAB_ICON } from "./lab-v106.js";
 import { authenticateRequest, publicAuthConfig } from "./auth.js";
@@ -27,10 +27,25 @@ if(req.method==="GET"&&path==="/lab/manifest.webmanifest"){res.writeHead(200,{"C
 if(req.method==="GET"&&path==="/health"){send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,evidenceEngine:true,mobileLab:true,pwa:true,auth:true,privateHistory:true,workspaces:true,roles:true,controlledSharing:true,v1_0_3:true,v1_0_5:true,v1_0_6:true,v1_0_7:true,notifications:true,audit:true,secureShareLinks:true,publicShareViewer:true,visualShareViewer:true,shareCenter:true,serverBackedShareLinks:true,invitations:true,realtime:true,deployment:"ready"});return;}
 if(req.method==="GET"&&path==="/auth/config"){const a=publicAuthConfig();if(!a){send(res,503,{error:"Supabase public auth is not configured"});return;}send(res,200,a);return;}
 const user=await authenticateRequest(req);if(!user){send(res,401,{error:"Authentication required"});return;}
+if(req.method==="POST"&&path==="/market-prices/import"){
+const input=await body(req) as {csv?:string;product?:string;kind?:string;country?:string;city?:string;region?:string;currency?:string;unit?:string};
+if(typeof input.csv!=="string"||!input.csv.trim()){send(res,400,{error:"Le champ csv (texte CSV UTF-8) est obligatoire."});return;}
+let observations;
+try{observations=parseMarketCsv(input.csv);}catch(error){send(res,400,{error:error instanceof Error?error.message:String(error)});return;}
+if(!observations.length){send(res,400,{error:"Aucune ligne de données valide dans le CSV."});return;}
+const filters=[input.product,input.kind,input.country,input.currency,input.unit];
+if(filters.every(value=>typeof value==="string"&&value.trim())){
+const allowedKinds=["input_purchase","feed","raw_material","sale_price","transport","energy","labor","health","equipment"];
+if(!allowedKinds.includes(input.kind!)){send(res,400,{error:"kind invalide."});return;}
+const assessment=assessMarketEvidence({product:input.product!,kind:input.kind as import("./market-intelligence.js").PriceKind,country:input.country!,city:input.city,region:input.region,currency:input.currency!,unit:input.unit!},observations,input.region);
+send(res,200,{mode:"csv_preview",persisted:false,importedCount:observations.length,assessment,observations});return;
+}
+send(res,200,{mode:"csv_validation",persisted:false,importedCount:observations.length,observations,warnings:["Import validé en mémoire uniquement : aucune écriture durable n'est effectuée. Fournir les filtres product, kind, country, currency et unit pour obtenir l'évaluation du marché."]});return;
+}
 if(req.method==="GET"&&path==="/market-prices"){
 const product=url.searchParams.get("product")?.trim(),kind=url.searchParams.get("kind")?.trim(),country=url.searchParams.get("country")?.trim(),city=url.searchParams.get("city")?.trim(),currency=url.searchParams.get("currency")?.trim(),unit=url.searchParams.get("unit")?.trim();
 if(!product||!kind||!country||!currency||!unit){send(res,400,{error:"Paramètres requis : product, kind, country, currency, unit."});return;}
-const feed=await fetchConfiguredMarketFeed();
+if(!["input_purchase","feed","raw_material","sale_price","transport","energy","labor","health","equipment"].includes(kind)){send(res,400,{error:"kind invalide."});return;}\nconst feed=await fetchConfiguredMarketFeed();
 const assessment=assessMarketEvidence({product,kind:kind as import("./market-intelligence.js").PriceKind,country,city:city??undefined,region:url.searchParams.get("region")??undefined,currency,unit},feed.observations,url.searchParams.get("region")??undefined);
 send(res,200,{source:feed.source,retrievedAt:feed.retrievedAt,...assessment});return;
 }
