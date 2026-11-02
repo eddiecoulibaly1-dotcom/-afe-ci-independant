@@ -6,7 +6,7 @@
  * their source URL, retrieval time, geography and publication metadata.
  */
 
-import { MARKET_INTELLIGENCE_POLICY, isMarketObservationFresh } from "./market-intelligence-policy.js";
+import { MARKET_INTELLIGENCE_POLICY, isMarketObservationFresh, marketDataGapInstructions, marketGeographySearchOrder } from "./market-intelligence-policy.js";
 
 export type SourceClass =
   | "government" | "public_market_system" | "official_supplier"
@@ -140,6 +140,76 @@ export function summarizeMarketEvidence(ranked: RankedMarketObservation[]) {
     warning: values.length < 3
       ? "Moins de trois observations exploitables : le prix est indicatif et doit être confirmé."
       : "Médiane calculée sur les observations exploitables ; consulter les sources et leur fraîcheur."
+  };
+}
+
+/**
+ * End-to-end policy gate for market evidence. City observations are assessed
+ * independently; data from another city is never silently blended into a local
+ * price. A fallback requires explicit user confirmation before it is used.
+ */
+export interface MarketEvidenceAssessment {
+  status: "local" | "fallback_confirmation_required" | "missing";
+  searchOrder: Array<{ level: "city" | "region" | "country"; location: string }>;
+  ranked: RankedMarketObservation[];
+  summary: ReturnType<typeof summarizeMarketEvidence>;
+  gaps: Array<{ field: string; reason: string }>;
+  instructions: string[];
+}
+
+export function assessMarketEvidence(
+  query: MarketQuery,
+  observations: MarketObservation[],
+  region?: string
+): MarketEvidenceAssessment {
+  const ranked = rankMarketObservations(query, observations);
+  const local = query.city
+    ? ranked.filter(item => item.observation.city && normalize(item.observation.city) === normalize(query.city!))
+    : ranked;
+  const fallback = ranked.filter(item => !local.includes(item));
+  const searchOrder = marketGeographySearchOrder({
+    city: query.city ?? "",
+    region,
+    country: query.country
+  });
+
+  if (local.length) {
+    return {
+      status: "local",
+      searchOrder,
+      ranked: local,
+      summary: summarizeMarketEvidence(local),
+      gaps: [],
+      instructions: ["Données locales disponibles : la synthèse utilise uniquement les observations de la ville demandée."]
+    };
+  }
+
+  if (fallback.length) {
+    return {
+      status: "fallback_confirmation_required",
+      searchOrder,
+      ranked: fallback,
+      summary: summarizeMarketEvidence(fallback),
+      gaps: [{ field: query.product + " à " + (query.city ?? query.country), reason: "Aucune observation exploitable dans la ville demandée." }],
+      instructions: [
+        "Aucune donnée exploitable n'a été trouvée dans la ville demandée.",
+        "Des observations d'une autre zone du même pays sont disponibles, mais elles ne représentent pas automatiquement le prix local.",
+        "Demander à l'utilisateur de confirmer l'utilisation de ce repli géographique avant tout calcul."
+      ]
+    };
+  }
+
+  const gaps = [{
+    field: query.product + " (" + query.kind + ") à " + (query.city ?? query.country),
+    reason: "Aucune observation exploitable, fraîche et vérifiable ne correspond à la demande."
+  }];
+  return {
+    status: "missing",
+    searchOrder,
+    ranked: [],
+    summary: summarizeMarketEvidence([]),
+    gaps,
+    instructions: marketDataGapInstructions(gaps)
   };
 }
 
