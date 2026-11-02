@@ -63,7 +63,14 @@ export function validateMarketObservation(value: unknown): MarketObservation {
     observedAt,
     retrievedAt,
     validUntil: typeof value.validUntil === "string" ? value.validUntil : undefined,
-    notes: typeof value.notes === "string" ? value.notes : undefined
+    notes: typeof value.notes === "string" ? value.notes : undefined,
+    productCategory: typeof value.productCategory === "string" && ["chick","feed","raw_material","equipment","health","other"].includes(value.productCategory) ? value.productCategory as MarketObservation["productCategory"] : undefined,
+    strain: typeof value.strain === "string" ? value.strain.trim() : undefined,
+    vaccinationStatus: typeof value.vaccinationStatus === "string" ? value.vaccinationStatus.trim() : undefined,
+    minimumQuantity: value.minimumQuantity === undefined || value.minimumQuantity === "" ? undefined : Number(value.minimumQuantity),
+    packSize: value.packSize === undefined || value.packSize === "" ? undefined : Number(value.packSize),
+    deliveryFee: value.deliveryFee === undefined || value.deliveryFee === "" ? undefined : Number(value.deliveryFee),
+    availabilityDate: typeof value.availabilityDate === "string" ? value.availabilityDate : undefined
   };
 }
 
