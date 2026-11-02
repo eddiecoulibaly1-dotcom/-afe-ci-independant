@@ -48,8 +48,15 @@ export async function importMarketCsv(userId:string,csv:string,fileName?:string)
 }
 
 export async function listMarketPrices(userId:string,filters:Record<string,string|undefined>={}){
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId))throw new Error("Identifiant utilisateur invalide.");
   const params=new URLSearchParams({select:"*",created_by:`eq.${userId}`,order:"observed_at.desc.nullslast,retrieved_at.desc",limit:"500"});
-  for(const key of ["normalized_product","kind","country","region","city"] as const)if(filters[key])params.set(key,`eq.${filters[key]}`);
+  for(const key of ["normalized_product","kind","country","region","city"] as const){
+    const value=filters[key]?.trim();
+    if(value){
+      if(value.length>160 || /[,()\\r\\n]/.test(value))throw new Error(`Filtre invalide : ${key}.`);
+      params.set(key,`eq.${value}`);
+    }
+  }
   return request<Array<Record<string,unknown>>>(`market_price_observations_current?${params.toString()}`);
 }
 export async function getMarketPriceHistory(userId:string,id:string){
@@ -81,15 +88,19 @@ export async function correctMarketPrice(userId:string,input:{id:string;value:nu
   const old=rows[0];if(!old)throw new Error("Cotation introuvable ou accès refusé.");
   const latest=await request<Array<{id:string}>>(`market_price_observations?select=id&created_by=eq.${userId}&supersedes_id=eq.${encodeURIComponent(input.id)}&limit=1`);
   if(latest.length)throw new Error("Cette cotation a déjà été corrigée. Il faut corriger sa version la plus récente.");
-  const correctionId=randomUUID(),publishedAt=input.publishedAt??old.published_at??undefined;
-  const fp=sha([old.source_name,old.source_url,old.source_observation_id??old.id,old.normalized_product,old.kind,input.value,old.currency,old.unit,old.country,old.region??"",old.city??"",publishedAt??"",input.retrievedAt??new Date().toISOString(),correctionId].join("|"));
+  const correctionId=randomUUID(),retrievedAt=input.retrievedAt??new Date().toISOString(),publishedAt=input.publishedAt??old.published_at??undefined;
+  if(!Number.isFinite(Date.parse(retrievedAt)))throw new Error("Date de collecte invalide.");
+  if(input.observedAt&&!Number.isFinite(Date.parse(input.observedAt)))throw new Error("Date d'observation invalide.");
+  if(input.validUntil&&!Number.isFinite(Date.parse(input.validUntil)))throw new Error("Date de validité invalide.");
+  if(input.validUntil&&input.observedAt&&Date.parse(input.validUntil)<Date.parse(input.observedAt))throw new Error("La date de validité ne peut pas précéder l'observation.");
+  const fp=sha([old.source_name,old.source_url,old.source_observation_id??old.id,old.normalized_product,old.kind,input.value,old.currency,old.unit,old.country,old.region??"",old.city??"",publishedAt??"",retrievedAt,correctionId].join("|"));
   const inserted=await request<Array<{id:string}>>("market_price_observations?select=id",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({
     id:correctionId,created_by:userId,batch_id:old.batch_id,source_observation_id:old.source_observation_id,
     fingerprint:fp,product:old.product,normalized_product:old.normalized_product,kind:old.kind,value:input.value,
     currency:old.currency,unit:old.unit,country:old.country,region:old.region,city:old.city,
     source_name:old.source_name,source_url:old.source_url,source_class:old.source_class,
     published_at:publishedAt,observed_at:input.observedAt??old.observed_at,
-    retrieved_at:input.retrievedAt??new Date().toISOString(),valid_until:input.validUntil??old.valid_until,
+    retrieved_at:retrievedAt,valid_until:input.validUntil??old.valid_until,
     notes:input.notes??old.notes,product_category:old.product_category,strain:old.strain,
     vaccination_status:old.vaccination_status,minimum_quantity:old.minimum_quantity,pack_size:old.pack_size,
     delivery_fee:old.delivery_fee,availability_date:old.availability_date,
