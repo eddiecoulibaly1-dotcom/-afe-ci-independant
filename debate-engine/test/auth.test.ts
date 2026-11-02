@@ -22,7 +22,7 @@ function withEnv(values: Record<string, string | undefined>, run: () => Promise<
   });
 }
 
-test("auth fails closed if public and server Supabase keys are not both configured", async () => {
+test("auth fails closed when the public Supabase key is missing", async () => {
   await withEnv({
     SUPABASE_URL: "https://example.supabase.co",
     SUPABASE_SECRET_KEY: "server-secret",
@@ -32,6 +32,22 @@ test("auth fails closed if public and server Supabase keys are not both configur
     assert.equal(publicAuthConfig(), null);
     const result = await authenticateRequest({ headers: { authorization: "Bearer token" } } as never);
     assert.equal(result, null);
+  });
+});
+
+test("public auth configuration does not require the server secret key", async () => {
+  await withEnv({
+    SUPABASE_URL: "https://example.supabase.co",
+    SUPABASE_SECRET_KEY: undefined,
+    SUPABASE_SERVICE_ROLE_KEY: undefined,
+    SUPABASE_PUBLISHABLE_KEY: "public-key",
+    SUPABASE_ANON_KEY: undefined
+  }, async () => {
+    assert.deepEqual(publicAuthConfig(), {
+      supabaseUrl: "https://example.supabase.co",
+      url: "https://example.supabase.co",
+      publishableKey: "public-key"
+    });
   });
 });
 
