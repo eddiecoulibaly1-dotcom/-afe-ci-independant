@@ -16,6 +16,8 @@ export type PriceKind =
   | "input_purchase" | "feed" | "raw_material" | "sale_price"
   | "transport" | "energy" | "labor" | "health" | "equipment";
 
+export type MarketProductCategory = "chick" | "feed" | "raw_material" | "equipment" | "health" | "other";
+
 export interface MarketObservation {
   id: string;
   product: string;
@@ -35,6 +37,13 @@ export interface MarketObservation {
   retrievedAt: string;
   validUntil?: string;
   notes?: string;
+  productCategory?: MarketProductCategory;
+  strain?: string;
+  vaccinationStatus?: string;
+  minimumQuantity?: number;
+  packSize?: number;
+  deliveryFee?: number;
+  availabilityDate?: string;
 }
 
 export interface MarketQuery {
