@@ -1,10 +1,10 @@
 {
   "name": "afe-ci-debate-engine",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "tsx src/server.ts",
