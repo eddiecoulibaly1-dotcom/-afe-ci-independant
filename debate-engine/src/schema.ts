@@ -30,6 +30,18 @@ const evidenceAuditSchema = {
   required: ["records", "unsupportedCriticalClaims", "unsupportedHighImpactClaims", "confidence", "blocking", "nextTests"]
 } as const;
 
+const nullableNumber = { anyOf: [{ type: "number" }, { type: "null" }] } as const;
+const quantitativeOptionSchema = {
+  type: "object", additionalProperties: false,
+  properties: {
+    label: { type: "string" }, startingUnits: nullableNumber, purchaseCostPerUnit: nullableNumber,
+    feedCostPerUnit: nullableNumber, healthCostPerUnit: nullableNumber, laborAndOverhead: nullableNumber,
+    infrastructureCost: nullableNumber, otherCosts: nullableNumber, mortalityRate: nullableNumber,
+    salePricePerUnit: nullableNumber, extraRevenue: nullableNumber, cycleDays: nullableNumber
+  },
+  required: ["label", "startingUnits", "purchaseCostPerUnit", "feedCostPerUnit", "healthCostPerUnit", "laborAndOverhead", "infrastructureCost", "otherCosts", "mortalityRate", "salePricePerUnit"]
+} as const;
+
 export const proposalSchema = {
   type: "object", additionalProperties: false,
   properties: {
@@ -38,7 +50,7 @@ export const proposalSchema = {
       confidence: { type: "number", minimum: 0, maximum: 1 }, evidenceRequired: { type: "boolean" }, evidenceRefs: { type: "array", items: { type: "string" } }
     }, required: ["id", "statement", "type", "confidence", "evidenceRequired", "evidenceRefs"] } },
     assumptions: { type: "array", items: { type: "string" } }, risks: { type: "array", items: { type: "string" } }, alternatives: { type: "array", items: { type: "string" } },
-    scoreExpected: { type: "number", minimum: 0, maximum: 100 }, nextTests: { type: "array", items: { type: "string" } }
+    scoreExpected: { type: "number", minimum: 0, maximum: 100 }, quantitativeOptions: { type: "array", items: quantitativeOptionSchema }, nextTests: { type: "array", items: { type: "string" } }
   },
   required: ["position", "claims", "assumptions", "risks", "alternatives", "scoreExpected", "nextTests"]
 } as const;
