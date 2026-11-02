@@ -40,9 +40,11 @@ export function validateMarketObservation(value: unknown): MarketObservation {
   const allowedKinds = new Set(["input_purchase", "feed", "raw_material", "sale_price", "transport", "energy", "labor", "health", "equipment"]);
   if (!allowedKinds.has(kind)) throw new Error("Type de prix inconnu.");
   const publishedAt = typeof value.publishedAt === "string" && value.publishedAt.trim() ? value.publishedAt.trim() : undefined;
+  const observedAt = typeof value.observedAt === "string" && value.observedAt.trim() ? value.observedAt.trim() : undefined;
   const retrievedAt = requiredString(value.retrievedAt, "retrievedAt");
   if (!Number.isFinite(Date.parse(retrievedAt))) throw new Error("Date de collecte invalide.");
   if (publishedAt && !Number.isFinite(Date.parse(publishedAt))) throw new Error("Date de publication invalide.");
+  if (observedAt && !Number.isFinite(Date.parse(observedAt))) throw new Error("Date d'observation invalide.");
   return {
     id: requiredString(value.id, "id"),
     product: requiredString(value.product, "product"),
@@ -58,6 +60,7 @@ export function validateMarketObservation(value: unknown): MarketObservation {
     sourceUrl,
     sourceClass,
     publishedAt,
+    observedAt,
     retrievedAt,
     validUntil: typeof value.validUntil === "string" ? value.validUntil : undefined,
     notes: typeof value.notes === "string" ? value.notes : undefined
