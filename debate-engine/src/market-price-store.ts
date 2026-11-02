@@ -50,7 +50,7 @@ export async function importMarketCsv(userId:string,csv:string,fileName?:string)
 export async function listMarketPrices(userId:string,filters:Record<string,string|undefined>={}){
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId))throw new Error("Identifiant utilisateur invalide.");
   const params=new URLSearchParams({select:"*",created_by:`eq.${userId}`,order:"observed_at.desc.nullslast,retrieved_at.desc",limit:"500"});
-  for(const key of ["normalized_product","kind","country","region","city"] as const){
+  for(const key of ["normalized_product","kind","country","region","city","currency","unit"] as const){
     const value=filters[key]?.trim();
     if(value){
       if(value.length>160 || /[,()\\r\\n]/.test(value))throw new Error(`Filtre invalide : ${key}.`);
