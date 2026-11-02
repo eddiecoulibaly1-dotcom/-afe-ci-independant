@@ -1,4 +1,4 @@
-import { buildQuantitativeAudit } from "./quantitative-reasoning.js";
+import { buildQuantitativeAudit, canDeclareEconomicWinner } from "./quantitative-reasoning.js";
 import { randomUUID } from "node:crypto";
 import type { Debate, DebateConfig, DebateRound, Proposal, Critique, JudgeDecision, Scorecard } from "./types.js";
 import { proposalSchema, critiqueSchema, judgeSchema } from "./schema.js";
@@ -173,7 +173,17 @@ export async function runDebate(question: string, context: string | undefined, c
     }
     try {
       const rawJudge = await callModel<JudgeDecision>({ ...config.judge, system: JUDGE_SYSTEM, prompt: judgePrompt(question, context, partial, config.convergenceScore), schemaName: "judge_decision", schema: judgeSchema });
-      partial.judge = applyConvergencePolicy({ ...rawJudge, evidenceAudit }, partial.redTeam.unresolvedQuestions.length, partial.redTeam.attacks.filter((attack) => attack.severity === "critical").length, finalRound);
+      const arbitrated = applyConvergencePolicy({ ...rawJudge, evidenceAudit }, partial.redTeam.unresolvedQuestions.length, partial.redTeam.attacks.filter((attack) => attack.severity === "critical").length, finalRound);
+      const quantitativeGateRequired = quantitativeAudit.applicable;
+      partial.judge = quantitativeGateRequired && !canDeclareEconomicWinner(quantitativeAudit)
+        ? {
+            ...arbitrated, status: finalRound ? "unresolved" : "revise", winner: "neither", confidence: "low",
+            decision: "Arbitrage économique suspendu : les données quantitatives obligatoires sont incomplètes ou la comparaison calculée est indisponible.",
+            rationale: [...arbitrated.rationale, ...quantitativeAudit.instructions, "Aucun gagnant économique ne peut être désigné avant une comparaison déterministe complète."],
+            risks: [...(arbitrated.risks ?? []), "Données quantitatives insuffisantes pour départager économiquement les options."],
+            tests: [...new Set([...(arbitrated.tests ?? []), ...quantitativeAudit.options.flatMap(option => option.missingInputs.map(input => `Renseigner : ${input} (${option.label})`))])]
+          }
+        : arbitrated;
     } catch (error) {
       if (debate.rounds.length) return terminalFromLastRound(debate, "l'Arbitre n'a pas pu terminer l'analyse; dernière décision conservée");
       return buildContinuityDebate(question, context, config, "l'Arbitre n'a pas pu terminer l'analyse");
