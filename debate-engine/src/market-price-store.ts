@@ -35,7 +35,7 @@ export async function importMarketCsv(userId:string,csv:string,fileName?:string)
       source_class:o.sourceClass,published_at:o.publishedAt??null,observed_at:o.observedAt??null,
       retrieved_at:o.retrievedAt,valid_until:o.validUntil??null,notes:o.notes??null
     }));
-    const inserted=await request<Array<{id:string}>>("market_price_observations?on_conflict=fingerprint&select=id",{method:"POST",headers:{Prefer:"resolution=ignore-duplicates,return=representation"},body:JSON.stringify(rows)});
+    const inserted=await request<Array<{id:string}>>("market_price_observations?on_conflict=created_by,fingerprint&select=id",{method:"POST",headers:{Prefer:"resolution=ignore-duplicates,return=representation"},body:JSON.stringify(rows)});
     const duplicateCount=observations.length-inserted.length;
     await request(`market_price_import_batches?id=eq.${batchId}`,{method:"PATCH",headers:{Prefer:"return=minimal"},body:JSON.stringify({inserted_count:inserted.length,duplicate_count:duplicateCount,status:"completed",completed_at:new Date().toISOString()})});
     return {batchId,total:observations.length,inserted:inserted.length,duplicates:duplicateCount,status:"completed"};
@@ -80,7 +80,7 @@ export async function correctMarketPrice(userId:string,input:{id:string;value:nu
     source_name:old.source_name,source_url:old.source_url,source_class:old.source_class,
     published_at:publishedAt,observed_at:input.observedAt??old.observed_at,
     retrieved_at:input.retrievedAt??new Date().toISOString(),valid_until:input.validUntil??old.valid_until,
-    notes:input.notes??old.notes,supersedes_id:old.id,correction_reason:input.reason.trim()
+    notes:input.notes??old.notes,product_category:old.product_category,strain:old.strain,\n    vaccination_status:old.vaccination_status,minimum_quantity:old.minimum_quantity,pack_size:old.pack_size,\n    delivery_fee:old.delivery_fee,availability_date:old.availability_date,\n    supersedes_id:old.id,correction_reason:input.reason.trim()
   })});
   return inserted[0]??{id:correctionId};
 }
