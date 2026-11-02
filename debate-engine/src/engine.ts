@@ -1,3 +1,4 @@
+import { buildQuantitativeAudit } from "./quantitative-reasoning.js";
 import { randomUUID } from "node:crypto";
 import type { Debate, DebateConfig, DebateRound, Proposal, Critique, JudgeDecision, Scorecard } from "./types.js";
 import { proposalSchema, critiqueSchema, judgeSchema } from "./schema.js";
@@ -162,7 +163,8 @@ export async function runDebate(question: string, context: string | undefined, c
     }
 
     const evidenceAudit = auditClaims(architect.claims);
-    const partial: DebateRound = { round: roundNo, architect, evidenceAudit, redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] }, judge: { status: "revise", winner: "neither", architectScore: 0, redTeamScore: 0, architectScorecard: emptyScorecard(), redTeamScorecard: emptyScorecard(), acceptedClaims: [], rejectedClaims: [], criticalDisagreements: [], decision: "", rationale: [], evidenceAudit }, createdAt: new Date().toISOString() };
+    const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(question));
+    const partial: DebateRound = { round: roundNo, architect, evidenceAudit, quantitativeAudit, redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] }, judge: { status: "revise", winner: "neither", architectScore: 0, redTeamScore: 0, architectScorecard: emptyScorecard(), redTeamScorecard: emptyScorecard(), acceptedClaims: [], rejectedClaims: [], criticalDisagreements: [], decision: "", rationale: [], evidenceAudit }, createdAt: new Date().toISOString() };
     try {
       partial.redTeam = await callModel<Critique>({ ...config.redTeam, system: RED_TEAM_SYSTEM, prompt: redTeamPrompt(question, context, partial), schemaName: "red_team_critique", schema: critiqueSchema });
     } catch (error) {
