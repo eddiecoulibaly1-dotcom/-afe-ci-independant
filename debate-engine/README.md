@@ -116,10 +116,11 @@ V0.4 introduced a deterministic 100-point scorecard. V0.5 added evidence intelli
 
 ## Market intelligence — Côte d'Ivoire (V2.1)
 
-The market evidence layer supports validated JSON feeds and CSV exports. The authenticated
-`GET /market-prices` endpoint reads a server-side feed configured with
-`MARKET_PRICE_FEED_URL` and optionally `MARKET_PRICE_FEED_TOKEN`, then applies the
-city-first, same-country fallback and 30-day freshness policy.
+The market evidence layer includes validated JSON-feed and CSV parsers. The authenticated
+`GET /market-prices` endpoint currently reads persisted, non-superseded observations from
+the Supabase ledger. The configured-feed adapter (`MARKET_PRICE_FEED_URL` and optional
+`MARKET_PRICE_FEED_TOKEN`) exists in `src/market-sources.ts`, but is not currently exposed
+as an HTTP route or automatically merged into the ledger response.
 
 Expected JSON response from the configured provider:
 
@@ -166,9 +167,10 @@ French email and the proposed normalized data contract. The CSV column template 
 `templates/market-prices-template.csv`.
 
 The authenticated `POST /market-prices/import` endpoint accepts JSON with a `csv`
-string containing UTF-8 CSV. It validates every row and can optionally assess the
-uploaded observations when `product`, `kind`, `country`, `currency` and `unit`
-are supplied (with optional `city` and `region`). Example body:
+string containing UTF-8 CSV. It validates every row, creates an import batch, persists
+non-duplicate observations and returns inserted/duplicate counts. Optional chick fields
+include `productCategory`, `strain`, `vaccinationStatus`, `minimumQuantity`,
+`packSize`, `deliveryFee` and `availabilityDate`. Example body:
 
 ```json
 {
@@ -182,34 +184,34 @@ are supplied (with optional `city` and `region`). Example body:
 }
 ```
 
-This endpoint currently performs a validated import preview only: `persisted:false`.
-It does not write rows to a database or retain uploaded data after the request. Durable
-storage is deliberately deferred until its table, retention policy, source attribution,
-and access controls are agreed. Do not treat a preview as a permanent price feed.
+This endpoint writes to the append-only ledger using a server-side Supabase secret key.
+The authenticated user's ID is attached to the batch and every observation. Do not expose
+the Supabase secret/service-role key to browser code.
 
 
-### Durable market price ledger (migration pending approval)
+### Durable market price ledger
 
-The append-only ledger migration is at `supabase/migrations/20261102120000_market_price_ledger.sql`.
-It creates import batches, immutable price observations, duplicate fingerprints, correction links,
-row-level read policies and a current-observations view. The migration has **not** been applied
-to any Supabase project.
+The ledger migrations are stored in `supabase/migrations/`:
+- `20261102120000_market_price_ledger.sql`: import batches, immutable observations, correction history and initial read policies.
+- `20261102150000_market_price_security_and_chicks.sql`: owner-scoped fingerprints, batch ownership, chick quotation fields and integrity constraints.
+- `20261102160000_market_price_advisor_hardening.sql`: fixed function search paths and RLS/index hardening.
+- `20261102170000_refresh_market_price_current_view.sql`: repair for databases where chick fields were added after the current-observations view was first created.
 
-Once the migration is reviewed and explicitly approved, the API supports:
-- `POST /market-prices/import`: authenticated CSV import; returns inserted and duplicate counts.
-- `GET /market-prices`: current (non-superseded) observations, scoped to the authenticated user.
+Do not replay migrations already recorded as applied. For an existing database that has applied the first three migrations, apply only the view-refresh migration after reviewing it.
+
+Authenticated API routes (all require a valid Supabase bearer token, except the public share/auth/health routes documented elsewhere):
+- `GET /market-prices/chick-catalog`: supplier directory and required chick quotation fields; no live prices are fabricated.
+- `POST /market-prices/import`: validated UTF-8 CSV import into the durable ledger; returns inserted and duplicate counts.
+- `GET /market-prices`: current (non-superseded) observations for the authenticated user, with optional product/kind/country/region/city filters.
 - `GET /market-prices/:id/history`: original observation and its sequential correction history.
 - `POST /market-prices/:id/corrections`: append a corrected version with a mandatory reason.
 
 The ledger stores source name, URL, source class, original source observation ID, publication/observation/
 retrieval dates, geography, unit, currency, import batch and a SHA-256 duplicate fingerprint.
 Database triggers reject UPDATE and DELETE. Corrections are new rows linked by `supersedes_id`;
-the previous value remains available in history. Duplicate imports are ignored by unique fingerprint.
+the previous value remains available in history. Duplicate imports are ignored per owner/fingerprint.
 
 Server-side Supabase credentials are required. Browser clients receive no write policy; writes
 are made by the authenticated API after validating the user's bearer token. The service key
 must never be exposed to the browser. The current view returns only latest versions, while the
 base table retains the complete audit trail.
-
-**Operational gate:** apply the SQL migration manually only after reviewing it and approving the
-target Supabase project. Until then the durable endpoints return HTTP 503 and no data is written.
