@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { MarketObservation } from "./market-intelligence.js";
 import { parseMarketCsv } from "./market-sources.js";
 
+export function marketPriceStorageEnabled(){return Boolean(process.env.SUPABASE_URL&&(process.env.SUPABASE_SECRET_KEY||process.env.SUPABASE_SERVICE_ROLE_KEY));}
 function config(){
   const url=process.env.SUPABASE_URL?.replace(/\/$/,"");
   const secretKey=process.env.SUPABASE_SECRET_KEY??process.env.SUPABASE_SERVICE_ROLE_KEY;
