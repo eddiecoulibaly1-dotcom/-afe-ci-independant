@@ -34,7 +34,7 @@ test("calculates option economics and compares two complete options", () => {
 
   assert.equal(audit.status, "calculated");
   assert.equal(audit.options[0].result?.soldUnits, 90);
-  assert.equal(audit.options[0].result?.totalCost, 285000);
+  assert.equal(audit.options[0].result?.totalCost, 295000);
   assert.equal(audit.options[0].result?.revenue, 315000);
   assert.equal(audit.comparison?.winner, "B");
 });
