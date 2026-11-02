@@ -45,7 +45,8 @@ send(res,200,{mode:"csv_validation",persisted:false,importedCount:observations.l
 if(req.method==="GET"&&path==="/market-prices"){
 const product=url.searchParams.get("product")?.trim(),kind=url.searchParams.get("kind")?.trim(),country=url.searchParams.get("country")?.trim(),city=url.searchParams.get("city")?.trim(),currency=url.searchParams.get("currency")?.trim(),unit=url.searchParams.get("unit")?.trim();
 if(!product||!kind||!country||!currency||!unit){send(res,400,{error:"Paramètres requis : product, kind, country, currency, unit."});return;}
-if(!["input_purchase","feed","raw_material","sale_price","transport","energy","labor","health","equipment"].includes(kind)){send(res,400,{error:"kind invalide."});return;}\nconst feed=await fetchConfiguredMarketFeed();
+if(!["input_purchase","feed","raw_material","sale_price","transport","energy","labor","health","equipment"].includes(kind)){send(res,400,{error:"kind invalide."});return;}
+const feed=await fetchConfiguredMarketFeed();
 const assessment=assessMarketEvidence({product,kind:kind as import("./market-intelligence.js").PriceKind,country,city:city??undefined,region:url.searchParams.get("region")??undefined,currency,unit},feed.observations,url.searchParams.get("region")??undefined);
 send(res,200,{source:feed.source,retrievedAt:feed.retrievedAt,...assessment});return;
 }
