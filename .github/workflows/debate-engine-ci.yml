@@ -1,0 +1,40 @@
+name: AFE-CI Debate Engine CI
+
+on:
+  push:
+    branches:
+      - main
+      - feature/debate-engine-v2-1
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: debate-engine-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: debate-engine
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: debate-engine/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: TypeScript typecheck
+        run: npm run typecheck
+      - name: Unit and integration tests
+        run: npm test
