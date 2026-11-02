@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  assessMarketEvidence,
   buildPoultryResearchPlan,
   rankMarketObservations,
   summarizeMarketEvidence
@@ -57,4 +58,41 @@ test("labels a fresh same-country observation outside the requested city as geog
   }, [outsideCity]);
   assert.equal(ranked.length, 1);
   assert.ok(ranked[0].warnings.some(w => w.includes("repli géographique à confirmer")));
+});
+
+test("uses only requested-city observations when local evidence exists", () => {
+  const outsideCity = {
+    ...sample[0], id: "bouake-fresh", city: "Bouaké",
+    publishedAt: "2026-11-01T00:00:00Z", retrievedAt: "2026-11-02T00:00:00Z"
+  };
+  const assessment = assessMarketEvidence({
+    product: "maïs jaune", kind: "raw_material", country: "Côte d'Ivoire",
+    city: "Abidjan", currency: "XOF", unit: "FCFA/kg", asOf: "2026-11-02T00:00:00Z"
+  }, [...sample, outsideCity]);
+  assert.equal(assessment.status, "local");
+  assert.ok(assessment.ranked.every(item => item.observation.city === "Abidjan"));
+});
+
+test("requires user confirmation before using another city's market data", () => {
+  const outsideCity = {
+    ...sample[0], id: "bouake-fresh", city: "Bouaké",
+    publishedAt: "2026-11-01T00:00:00Z", retrievedAt: "2026-11-02T00:00:00Z"
+  };
+  const assessment = assessMarketEvidence({
+    product: "maïs jaune", kind: "raw_material", country: "Côte d'Ivoire",
+    city: "Abidjan", currency: "XOF", unit: "FCFA/kg", asOf: "2026-11-02T00:00:00Z"
+  }, [outsideCity], "Lagunes");
+  assert.equal(assessment.status, "fallback_confirmation_required");
+  assert.ok(assessment.instructions.some(item => item.includes("confirmer")));
+  assert.deepEqual(assessment.searchOrder.map(item => item.level), ["city", "region", "country"]);
+});
+
+test("asks for missing market data instead of estimating", () => {
+  const assessment = assessMarketEvidence({
+    product: "maïs jaune", kind: "raw_material", country: "Côte d'Ivoire",
+    city: "Abidjan", currency: "XOF", unit: "FCFA/kg", asOf: "2026-11-02T00:00:00Z"
+  }, []);
+  assert.equal(assessment.status, "missing");
+  assert.equal(assessment.summary.median, null);
+  assert.ok(assessment.instructions.some(item => item.includes("Ne pas inventer")));
 });
