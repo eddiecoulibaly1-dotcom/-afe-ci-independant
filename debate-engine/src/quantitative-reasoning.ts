@@ -139,3 +139,9 @@ export function quantitativePromptGuidance(): string {
 - N'invente aucun prix, coût, volume, taux de mortalité, rendement ou délai.
 - Le moteur calcule les résultats ; ne fabrique pas de résultat net, de marge ou de ROI.`;
 }
+
+/** A quantitative debate cannot name an economic winner without two complete calculated options. */
+export function canDeclareEconomicWinner(audit: QuantitativeAudit): boolean {
+  return audit.applicable && audit.status === "calculated" && audit.comparison !== null &&
+    audit.comparison.winner !== "indeterminate";
+}
