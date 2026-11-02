@@ -8,6 +8,12 @@ Adversarial strategic decision engine for AFE-CI.
 
 The orchestrator is deterministic: it controls rounds, evidence auditing, persistence, scoring and convergence instead of delegating the loop to an LLM.
 
+## V1.0.8 Vercel API runtime + market ledger hardening
+
+The API entrypoint exports a Vercel-compatible default HTTP handler and starts a local Node HTTP server only outside Vercel. Request JSON bodies are capped at 1 MB, malformed JSON is rejected with HTTP 400, oversized bodies with HTTP 413, and internal server errors are logged without exposing database/provider details to clients. Public endpoints include `GET /health`, `GET /auth/config`, and token-based share resolution; protected routes require a valid Supabase bearer token.
+
+The market-price list supports `product`, `kind`, `country`, `region`, `city`, `currency` and `unit` filters. `currency` and `unit` are exact-match filters against the ledger.
+
 ## V1.0.6 Realtime + production hardening
 
 V1.0.6 completes the mobile collaboration foundation and aligns the application with the current Supabase secret-key model.
@@ -175,12 +181,7 @@ include `productCategory`, `strain`, `vaccinationStatus`, `minimumQuantity`,
 ```json
 {
   "csv": "id,product,normalizedProduct,kind,value,currency,unit,country,sourceName,sourceUrl,sourceClass,retrievedAt\\n...",
-  "product": "maïs jaune",
-  "kind": "raw_material",
-  "country": "Côte d'Ivoire",
-  "city": "Abidjan",
-  "currency": "XOF",
-  "unit": "FCFA/kg"
+  "fileName": "market-prices.csv"
 }
 ```
 
