@@ -1,0 +1,2 @@
+id,product,normalizedProduct,kind,value,currency,unit,country,region,city,sourceName,sourceUrl,sourceClass,publishedAt,retrievedAt,validUntil,notes
+ocpv-mais-abidjan-exemple,maïs grain,mais grain,raw_material,0,XOF,FCFA/kg,Côte d'Ivoire,Lagunes,Abidjan,OCPV,https://www.ocpv-ci.com/,government,2026-11-01T00:00:00Z,2026-11-02T00:00:00Z,,EXEMPLE A REMPLACER : ne pas importer tant que value=0 n'est pas remplacé par le prix réellement observé
