@@ -33,7 +33,9 @@ export async function importMarketCsv(userId:string,csv:string,fileName?:string)
       product:o.product,normalized_product:o.normalizedProduct,kind:o.kind,value:o.value,currency:o.currency,unit:o.unit,
       country:o.country,region:o.region??null,city:o.city??null,source_name:o.sourceName,source_url:o.sourceUrl,
       source_class:o.sourceClass,published_at:o.publishedAt??null,observed_at:o.observedAt??null,
-      retrieved_at:o.retrievedAt,valid_until:o.validUntil??null,notes:o.notes??null,\n      product_category:o.productCategory??null,strain:o.strain??null,vaccination_status:o.vaccinationStatus??null,\n      minimum_quantity:o.minimumQuantity??null,pack_size:o.packSize??null,delivery_fee:o.deliveryFee??null,availability_date:o.availabilityDate??null
+      retrieved_at:o.retrievedAt,valid_until:o.validUntil??null,notes:o.notes??null,
+      product_category:o.productCategory??null,strain:o.strain??null,vaccination_status:o.vaccinationStatus??null,
+      minimum_quantity:o.minimumQuantity??null,pack_size:o.packSize??null,delivery_fee:o.deliveryFee??null,availability_date:o.availabilityDate??null
     }));
     const inserted=await request<Array<{id:string}>>("market_price_observations?on_conflict=created_by,fingerprint&select=id",{method:"POST",headers:{Prefer:"resolution=ignore-duplicates,return=representation"},body:JSON.stringify(rows)});
     const duplicateCount=observations.length-inserted.length;
