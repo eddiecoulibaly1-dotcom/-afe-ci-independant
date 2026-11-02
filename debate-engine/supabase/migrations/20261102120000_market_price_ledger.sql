@@ -57,7 +57,7 @@ create index if not exists market_price_observations_batch_idx
   on public.market_price_observations (batch_id);
 
 create or replace function public.reject_market_price_mutation()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql set search_path = pg_catalog, public as $
 begin
   raise exception 'Market price observations are append-only; insert a correction instead.';
 end;
@@ -109,7 +109,7 @@ alter table public.market_price_observations enable row level security;
 
 drop policy if exists market_price_batches_select_own on public.market_price_import_batches;
 create policy market_price_batches_select_own on public.market_price_import_batches
-  for select to authenticated using (created_by = auth.uid());
+  for select to authenticated using (created_by = (select auth.uid()));
 
 drop policy if exists market_price_observations_select_own on public.market_price_observations;
 create policy market_price_observations_select_own on public.market_price_observations
