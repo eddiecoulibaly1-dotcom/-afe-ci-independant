@@ -59,7 +59,7 @@ alter table public.market_price_observations
 -- Every correction must preserve the quotation's identity and commercial attributes.
 -- The correction API changes the price and observation metadata, not chick attributes.
 create or replace function public.validate_market_price_correction()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql set search_path = pg_catalog, public as $
 declare original public.market_price_observations%rowtype;
 begin
   if new.supersedes_id is null then return new; end if;
@@ -91,6 +91,12 @@ $$;
 create index if not exists market_price_observations_chick_lookup_idx
   on public.market_price_observations (created_by, product_category, strain, city, observed_at desc)
   where product_category = 'chick';
+
+-- Cover the owner and batch foreign keys for efficient deletes/joins.
+create index if not exists market_price_import_batches_created_by_idx
+  on public.market_price_import_batches (created_by);
+create index if not exists market_price_observations_batch_owner_idx
+  on public.market_price_observations (batch_id, created_by);
 
 -- Integrity checks for source metadata and temporal consistency.
 alter table public.market_price_import_batches
