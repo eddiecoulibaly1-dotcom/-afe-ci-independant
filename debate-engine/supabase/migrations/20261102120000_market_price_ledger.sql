@@ -14,8 +14,7 @@ create table if not exists public.market_price_import_batches (
   status text not null default 'received' check (status in ('received','completed','failed')),
   error_message text,
   created_at timestamptz not null default now(),
-  completed_at timestamptz,
-  unique (created_by, file_sha256)
+  completed_at timestamptz
 );
 
 create table if not exists public.market_price_observations (
