@@ -157,3 +157,32 @@ authorized API/export or an approved data relay. Until configured, the endpoint 
 a configuration error; it does not fabricate or substitute prices. Supplier quotations
 for feed bags, chicks and guinea fowl require their own verified supplier feed or CSV
 import and must not be inferred from grain-market prices.
+
+### Partner access and CSV intake
+
+The partner outreach pack for OCPV and SIMAgri is in `docs/market-partner-access.md`.
+It contains verified public contact channels, the data-access questions, a ready-to-send
+French email and the proposed normalized data contract. The CSV column template is
+`templates/market-prices-template.csv`.
+
+The authenticated `POST /market-prices/import` endpoint accepts JSON with a `csv`
+string containing UTF-8 CSV. It validates every row and can optionally assess the
+uploaded observations when `product`, `kind`, `country`, `currency` and `unit`
+are supplied (with optional `city` and `region`). Example body:
+
+```json
+{
+  "csv": "id,product,normalizedProduct,kind,value,currency,unit,country,sourceName,sourceUrl,sourceClass,retrievedAt\\n...",
+  "product": "maïs jaune",
+  "kind": "raw_material",
+  "country": "Côte d'Ivoire",
+  "city": "Abidjan",
+  "currency": "XOF",
+  "unit": "FCFA/kg"
+}
+```
+
+This endpoint currently performs a validated import preview only: `persisted:false`.
+It does not write rows to a database or retain uploaded data after the request. Durable
+storage is deliberately deferred until its table, retention policy, source attribution,
+and access controls are agreed. Do not treat a preview as a permanent price feed.
