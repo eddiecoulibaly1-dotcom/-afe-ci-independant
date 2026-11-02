@@ -8,10 +8,9 @@ export interface AuthUser {
 
 function config() {
   const url = process.env.SUPABASE_URL?.replace(/\/$/, "");
-  const secretKey = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
   const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.SUPABASE_ANON_KEY;
-  if (!url || !secretKey || !publishableKey) return null;
-  return { url, secretKey, publishableKey };
+  if (!url || !publishableKey) return null;
+  return { url, publishableKey };
 }
 
 export function publicAuthConfig() {
