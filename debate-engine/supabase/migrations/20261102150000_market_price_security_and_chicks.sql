@@ -59,7 +59,7 @@ alter table public.market_price_observations
 -- Every correction must preserve the quotation's identity and commercial attributes.
 -- The correction API changes the price and observation metadata, not chick attributes.
 create or replace function public.validate_market_price_correction()
-returns trigger language plpgsql set search_path = pg_catalog, public as $
+returns trigger language plpgsql set search_path = pg_catalog, public as $$
 declare original public.market_price_observations%rowtype;
 begin
   if new.supersedes_id is null then return new; end if;
@@ -116,3 +116,18 @@ alter table public.market_price_observations
 alter table public.market_price_observations
   add constraint market_price_observations_validity_check
   check (valid_until is null or observed_at is null or valid_until >= observed_at);
+
+-- Refresh the view after adding chick quotation columns.
+-- PostgreSQL expands SELECT * when the view is created; without this replacement,
+-- the view silently omits columns added above and GET /market-prices cannot return them.
+create or replace view public.market_price_observations_current
+with (security_invoker = true) as
+select o.*
+from public.market_price_observations o
+where not exists (
+  select 1
+  from public.market_price_observations newer
+  where newer.supersedes_id = o.id
+);
+
+grant select on public.market_price_observations_current to authenticated, service_role;
