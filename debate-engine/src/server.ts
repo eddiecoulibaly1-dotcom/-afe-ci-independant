@@ -2,6 +2,7 @@ import "node:process";
 import { createServer } from "node:http";
 import { runDebate } from "./engine.js";
 import { assessMarketEvidence } from "./market-intelligence.js";
+import { CHICK_PRICE_SUPPLIERS, CHICK_QUOTATION_FIELDS } from "./chick-market-catalog.js";
 import { fetchConfiguredMarketFeed } from "./market-sources.js";
 import { correctMarketPrice, getMarketPriceHistory, importMarketCsv, listMarketPrices, marketPriceStorageEnabled } from "./market-price-store.js";
 import { getDebate, listDebates, saveDebate } from "./store.js";
@@ -28,6 +29,9 @@ if(req.method==="GET"&&path==="/lab/manifest.webmanifest"){res.writeHead(200,{"C
 if(req.method==="GET"&&path==="/health"){send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,evidenceEngine:true,mobileLab:true,pwa:true,auth:true,privateHistory:true,workspaces:true,roles:true,controlledSharing:true,v1_0_3:true,v1_0_5:true,v1_0_6:true,v1_0_7:true,notifications:true,audit:true,secureShareLinks:true,publicShareViewer:true,visualShareViewer:true,shareCenter:true,serverBackedShareLinks:true,invitations:true,realtime:true,deployment:"ready"});return;}
 if(req.method==="GET"&&path==="/auth/config"){const a=publicAuthConfig();if(!a){send(res,503,{error:"Supabase public auth is not configured"});return;}send(res,200,a);return;}
 const user=await authenticateRequest(req);if(!user){send(res,401,{error:"Authentication required"});return;}
+if(req.method==="GET"&&path==="/market-prices/chick-catalog"){
+send(res,200,{category:"chick",currency:"XOF",unit:"FCFA/sujet",suppliers:CHICK_PRICE_SUPPLIERS,quotationFields:CHICK_QUOTATION_FIELDS,priceStatus:"No current supplier tariff is assumed; only dated, sourced quotations are displayed."});return;
+}
 if(req.method==="POST"&&path==="/market-prices/import"){
 if(!marketPriceStorageEnabled()){send(res,503,{error:"Le stockage durable des prix n'est pas configuré. Appliquer d'abord la migration SQL approuvée et configurer Supabase côté serveur."});return;}
 const input=await body(req) as {csv?:string;fileName?:string};
