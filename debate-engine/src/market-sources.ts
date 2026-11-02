@@ -52,7 +52,7 @@ export function validateMarketObservation(value: unknown): MarketObservation {
     throw new Error("Frais de livraison invalides.");
   }
   if (value.availabilityDate !== undefined && value.availabilityDate !== "" &&
-      (typeof value.availabilityDate !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value.availabilityDate) ||
+      (typeof value.availabilityDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.availabilityDate) ||
        !Number.isFinite(Date.parse(value.availabilityDate)))) {
     throw new Error("Date de disponibilité invalide.");
   }
