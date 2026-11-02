@@ -6,6 +6,8 @@
  * their source URL, retrieval time, geography and publication metadata.
  */
 
+import { MARKET_INTELLIGENCE_POLICY, isMarketObservationFresh } from "./market-intelligence-policy.js";
+
 export type SourceClass =
   | "government" | "public_market_system" | "official_supplier"
   | "producer" | "marketplace" | "press" | "technical_publication" | "unknown";
@@ -80,7 +82,7 @@ export function rankMarketObservations(
   observations: MarketObservation[]
 ): RankedMarketObservation[] {
   const asOf = query.asOf ?? new Date().toISOString();
-  const maxAge = query.maxAgeDays ?? 90;
+  const maxAge = query.maxAgeDays ?? MARKET_INTELLIGENCE_POLICY.maxAgeDays;
   return observations
     .filter(o => normalize(o.product) === normalize(query.product)
       || normalize(o.normalizedProduct) === normalize(query.product))
@@ -96,16 +98,11 @@ export function rankMarketObservations(
       if (query.city && observation.city && normalize(query.city) === normalize(observation.city)) score += 20;
       else if (query.region && observation.region && normalize(query.region) === normalize(observation.region)) score += 12;
       else if (observation.city || observation.region) warnings.push("Localisation différente ou moins précise que la demande.");
-      if (ageDays === null) {
-        warnings.push("Date de publication/récupération inexploitable : fraîcheur non vérifiable.");
-        score -= 20;
-      } else if (ageDays <= 7) score += 25;
-      else if (ageDays <= 30) score += 18;
-      else if (ageDays <= maxAge) score += 8;
-      else {
-        score -= 35;
-        warnings.push("Donnée ancienne : ne pas l'utiliser comme prix courant sans confirmation.");
-      }
+      if (!isMarketObservationFresh(ageDays, { ...MARKET_INTELLIGENCE_POLICY, maxAgeDays: maxAge })) {
+        warnings.push("Donnée exclue : fraîcheur non vérifiable ou supérieure à " + maxAge + " jours.");
+        score = -1;
+      } else if (ageDays !== null && ageDays <= 7) score += 25;
+      else if (ageDays !== null && ageDays <= 30) score += 18;
       if (!observation.publishedAt) warnings.push("Date de publication absente ; seule la date de collecte est disponible.");
       if (observation.validUntil && Date.parse(observation.validUntil) < Date.parse(asOf)) {
         score -= 40;
@@ -118,8 +115,12 @@ export function rankMarketObservations(
       if (observation.sourceClass === "marketplace" || observation.sourceClass === "unknown") {
         warnings.push("Source commerciale/non institutionnelle : confirmer le prix auprès du vendeur.");
       }
+      if (query.city && observation.city && normalize(query.city) !== normalize(observation.city)) {
+        warnings.push("Donnée hors de la ville demandée : repli géographique à confirmer.");
+      }
       return { observation, score: Math.max(0, Math.min(100, score)), ageDays, warnings };
     })
+    .filter(item => isMarketObservationFresh(item.ageDays, { ...MARKET_INTELLIGENCE_POLICY, maxAgeDays: maxAge }))
     .sort((a, b) => b.score - a.score);
 }
 
