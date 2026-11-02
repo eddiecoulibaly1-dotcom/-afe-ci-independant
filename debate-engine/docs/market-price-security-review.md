@@ -59,3 +59,6 @@ Après approbation explicite et application sur un projet Supabase de test :
 7. vérifier les droits effectifs du rôle `service_role` et la vue `security_invoker`.
 
 **Décision de sécurité :** ne pas appliquer les migrations sur le projet Supabase de production et ne pas déployer cette extension tant que ces tests n'ont pas été effectués et que l'utilisateur n'a pas donné son accord explicite.
+
+
+Dernier passage CI : une première exécution a révélé une erreur de syntaxe dans la résolution de l'historique ; le correctif a été poussé ensuite. La validation complète du commit corrigé reste en attente du prochain résultat GitHub Actions.
