@@ -66,7 +66,7 @@ send(res,201,{persisted:true,correction});return;
 }
 if(req.method==="GET"&&path==="/market-prices"){
 if(!marketPriceStorageEnabled()){send(res,503,{error:"Stockage durable non configuré."});return;}
-const filters:Record<string,string|undefined>={normalized_product:url.searchParams.get("product")??undefined,kind:url.searchParams.get("kind")??undefined,country:url.searchParams.get("country")??undefined,region:url.searchParams.get("region")??undefined,city:url.searchParams.get("city")??undefined};
+const filters:Record<string,string|undefined>={normalized_product:url.searchParams.get("product")??undefined,kind:url.searchParams.get("kind")??undefined,country:url.searchParams.get("country")??undefined,region:url.searchParams.get("region")??undefined,city:url.searchParams.get("city")??undefined,currency:url.searchParams.get("currency")??undefined,unit:url.searchParams.get("unit")??undefined};
 const observations=await listMarketPrices(user.id,filters);
 send(res,200,{persisted:true,count:observations.length,observations});return;
 }
