@@ -113,9 +113,8 @@ if(advanceMatch&&req.method==="POST"){
  if(debate.status!=="running"){send(res,200,{debate,complete:true,steps:await listDebateExecutionSteps(id)});return;}
  const steps=await listDebateExecutionSteps(id);
  // Recover a completed step's snapshot if the process stopped after journal commit but before debate save.
- const recovered=steps.filter(s=>s.status==="completed"&&s.output_payload&&typeof s.output_payload.debate==="object").sort((a,b)=>a.round_number-b.round_number)[0];
  let state=debate;
- for(const s of steps){const snap=s.output_payload?.debate;if(s.status==="completed"&&snap&&typeof snap==="object")state=snap as typeof debate;}
+ for(const s of [...steps].sort((a,b)=>a.round_number-b.round_number||new Date(a.created_at).getTime()-new Date(b.created_at).getTime())){const snap=s.output_payload?.debate;if(s.status==="completed"&&snap&&typeof snap==="object")state=snap as typeof debate;}
  const roles=["architect","red_team","judge"] as const;
  let round=1,role:typeof roles[number]="architect";
  outer: for(let r=1;r<=(state.config?.maxRounds??3);r++){
