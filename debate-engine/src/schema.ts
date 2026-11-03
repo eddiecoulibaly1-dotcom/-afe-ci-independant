@@ -39,7 +39,7 @@ const quantitativeOptionSchema = {
     infrastructureCost: nullableNumber, otherCosts: nullableNumber, mortalityRate: nullableNumber,
     salePricePerUnit: nullableNumber, extraRevenue: nullableNumber, cycleDays: nullableNumber
   },
-  required: ["label", "startingUnits", "purchaseCostPerUnit", "feedCostPerUnit", "healthCostPerUnit", "laborAndOverhead", "infrastructureCost", "otherCosts", "mortalityRate", "salePricePerUnit"]
+  required: ["label", "startingUnits", "purchaseCostPerUnit", "feedCostPerUnit", "healthCostPerUnit", "laborAndOverhead", "infrastructureCost", "otherCosts", "mortalityRate", "salePricePerUnit", "extraRevenue", "cycleDays"]
 } as const;
 
 export const proposalSchema = {
@@ -52,7 +52,7 @@ export const proposalSchema = {
     assumptions: { type: "array", items: { type: "string" } }, risks: { type: "array", items: { type: "string" } }, alternatives: { type: "array", items: { type: "string" } },
     scoreExpected: { type: "number", minimum: 0, maximum: 100 }, quantitativeOptions: { type: "array", items: quantitativeOptionSchema }, nextTests: { type: "array", items: { type: "string" } }
   },
-  required: ["position", "claims", "assumptions", "risks", "alternatives", "scoreExpected", "nextTests"]
+  required: ["position", "claims", "assumptions", "risks", "alternatives", "scoreExpected", "quantitativeOptions", "nextTests"]
 } as const;
 
 export const critiqueSchema = {
