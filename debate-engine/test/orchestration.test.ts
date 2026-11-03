@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { runDebateAgentStep } from "../src/engine.js";
 import type { Debate, DebateConfig, Proposal, Critique, JudgeDecision } from "../src/types.js";
 import type { callModel } from "../src/providers.js";
+import { proposalSchema, critiqueSchema, judgeSchema } from "../src/schema.js";
 
 const scorecard = { buyerValue: 80, sellerValue: 80, coteDIvoireFit: 80, marketplaceLiquidity: 80, differentiation: 80, trustFraud: 80, technicalFeasibility: 80, acquisition: 80, monetization: 80 };
 const config: DebateConfig = {
@@ -38,4 +39,25 @@ test("durable orchestration executes architect, red team and judge as resumable 
   assert.equal(afterJudge.rounds.length, 1);
   assert.notEqual(afterJudge.status, "running");
   assert.ok(afterJudge.finalDecision?.decision);
+});
+
+
+test("all provider JSON schemas satisfy strict required-property rules recursively", () => {
+  const visit = (schema: any, path: string) => {
+    if (!schema || typeof schema !== "object") return;
+    if (schema.type === "object" && schema.properties) {
+      assert.equal(schema.additionalProperties, false, path + " must reject additional properties");
+      assert.deepEqual(
+        [...(schema.required ?? [])].sort(),
+        Object.keys(schema.properties).sort(),
+        path + " must require every declared property for strict JSON output"
+      );
+      for (const [key, child] of Object.entries(schema.properties)) visit(child, path + "." + key);
+    }
+    if (schema.items) visit(schema.items, path + "[]");
+    for (const [index, branch] of (schema.anyOf ?? []).entries()) visit(branch, path + ".anyOf[" + index + "]");
+  };
+  visit(proposalSchema, "proposalSchema");
+  visit(critiqueSchema, "critiqueSchema");
+  visit(judgeSchema, "judgeSchema");
 });
