@@ -233,7 +233,6 @@ export async function runDebateAgentStep(
         schemaName: "red_team_critique", schema: critiqueSchema
       }) };
     } else {
-      if (!round.redTeam.attacks.length && !round.redTeam.unresolvedQuestions.length && round.redTeam.verdict === "challenge") throw new Error("RED_TEAM_STEP_REQUIRED");
       if (round.judge.decision) throw new Error("STEP_ALREADY_COMPLETED");
       const rawJudge = await modelCaller<JudgeDecision>({
         ...cfg.judge, system: JUDGE_SYSTEM,
