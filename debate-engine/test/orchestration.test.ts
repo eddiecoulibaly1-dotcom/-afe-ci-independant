@@ -31,6 +31,8 @@ test("durable orchestration executes architect, red team and judge as resumable 
   assert.equal(afterArchitect.rounds[0].architect.position, "Option A");
   const afterRedTeam = await runDebateAgentStep(afterArchitect, "red_team", 1, mockedCaller);
   assert.deepEqual(afterRedTeam.rounds[0].redTeam, emptyCritique);
+  assert.equal(afterRedTeam.rounds[0].redTeamCompleted, true);
+  await assert.rejects(() => runDebateAgentStep(afterRedTeam, "red_team", 1, mockedCaller), /STEP_ALREADY_COMPLETED/);
   // An empty Red Team response is valid; the journal determines recovery order.
   const afterJudge = await runDebateAgentStep(afterRedTeam, "judge", 1, mockedCaller);
   assert.equal(afterJudge.rounds.length, 1);
