@@ -76,32 +76,25 @@ async function callOpenAI<T>(args: ModelArgs, model: string, timeoutMs: number):
 async function callGemini<T>(args: ModelArgs, model: string, timeoutMs: number): Promise<T> {
   const key = process.env.GEMINI_API_KEY?.trim();
   if (!key) throw new Error("GEMINI_CONFIG_ERROR: GEMINI_API_KEY est absente de l'environnement serveur.");
-  const client = new GoogleGenAI({ apiKey: key, httpOptions: { timeout: Math.max(timeoutMs, 10_000) } });
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const response = await client.models.generateContent({
-        model,
-        contents: args.prompt,
-        config: {
-          systemInstruction: args.system,
-          responseMimeType: "application/json",
-          responseSchema: googleSchema(args.schema),
-          temperature: 0.2
-        }
-      });
-      const output = response.text?.trim();
-      if (!output) throw new Error("GEMINI_EMPTY_RESPONSE: le modèle n'a retourné aucun contenu.");
-      return JSON.parse(output) as T;
-    } catch (error) {
-      lastError = error;
-      const message = errorText(error);
-      const retryable = /\b429\b|\b500\b|\b502\b|\b503\b|\b504\b|UNAVAILABLE|overloaded|temporar|timeout/i.test(message);
-      if (!retryable || attempt === 2) throw error;
-      await new Promise(resolve => setTimeout(resolve, 600 * (attempt + 1)));
-    }
+  const effectiveTimeout = Number.isFinite(timeoutMs) ? Math.min(60_000, Math.max(10_000, timeoutMs)) : 30_000;
+  const client = new GoogleGenAI({ apiKey: key, httpOptions: { timeout: effectiveTimeout } });
+  try {
+    const response = await client.models.generateContent({
+      model,
+      contents: args.prompt,
+      config: {
+        systemInstruction: args.system,
+        responseMimeType: "application/json",
+        responseSchema: googleSchema(args.schema),
+        temperature: 0.2
+      }
+    });
+    const output = response.text?.trim();
+    if (!output) throw new Error("GEMINI_EMPTY_RESPONSE: le modèle n'a retourné aucun contenu.");
+    return JSON.parse(output) as T;
+  } catch (error) {
+    throw error;
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 async function callProvider<T>(args: ModelArgs, provider: Provider, model: string, timeoutMs: number): Promise<T> {
   return provider === "openai"
