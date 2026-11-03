@@ -18,6 +18,20 @@ async function request<T>(path:string,init:RequestInit={}):Promise<T>{
 
 export function supabasePersistenceEnabled(){return Boolean(getConfig());}
 
+const REQUIRED_DEBATE_TABLES=["debates","debate_rounds","debate_events","debate_hypotheses","debate_evidence","debate_decisions","debate_profiles","debate_workspaces","debate_workspace_members","debate_shares","debate_share_links","notifications","admin_audit_log"];
+export async function assertSupabaseSchemaReady():Promise<void>{
+  const config=getConfig();
+  if(!config)throw new Error("Supabase persistence is not configured");
+  const checks=await Promise.all(REQUIRED_DEBATE_TABLES.map(async table=>{
+    try{
+      const response=await fetch(`${config.url}/rest/v1/${table}?select=*&limit=0`,{headers:{apikey:config.secretKey,Authorization:`Bearer ${config.secretKey}`}});
+      return response.ok?null:table;
+    }catch{return table;}
+  }));
+  const missing=checks.filter((table):table is string=>Boolean(table));
+  if(missing.length)throw new Error(`Schéma Supabase incomplet : ${missing.join(", ")}. Appliquer les migrations AFE-CI Debate Engine avant de lancer un débat.`);
+}
+
 export async function saveDebateToSupabase(debate:Debate):Promise<void>{
   if(!debate.userId)throw new Error("Authenticated user is required");
   await request("debates?on_conflict=id",{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({id:debate.id,user_id:debate.userId,workspace_id:debate.workspaceId??null,question:debate.question,context:debate.context??null,mode:"decision",status:debate.status,config:debate.config??{},final_decision:debate.finalDecision??null})});
