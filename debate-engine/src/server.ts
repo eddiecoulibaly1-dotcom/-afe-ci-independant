@@ -11,7 +11,7 @@ import { authenticateRequest, publicAuthConfig } from "./auth.js";
 import { addWorkspaceMember, createWorkspace, getMe, getWorkspace, listDebateShares, listWorkspaces, removeDebateShare, removeWorkspaceMember, setDebateWorkspace, shareDebate, updateProfile, updateWorkspaceMember } from "./workspace-store.js";
 import { inviteWorkspaceUser, createNotification, listNotifications, markNotificationRead, markAllNotificationsRead, listAudit, createShareLink, listShareLinks, revokeShareLink, resolveShareLink, getSharedDebate } from "./v1-store.js";
 import type { DebateConfig, Provider } from "./types.js";
-const VERSION="1.0.8",port=Number(process.env.PORT??8787);
+const VERSION="1.0.9",port=Number(process.env.PORT??8787);
 const json=(v:unknown)=>JSON.stringify(v,null,2);
 const esc=(v:unknown)=>String(v??"").replace(/[&<>\"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m] ?? ""));
 function config():DebateConfig{const p=(v:string|undefined,f:Provider):Provider=>v==="gemini"?"gemini":v==="openai"?"openai":f;return{maxRounds:Number(process.env.MAX_ROUNDS??6),convergenceScore:Number(process.env.CONVERGENCE_SCORE??85),architect:{provider:p(process.env.ARCHITECT_PROVIDER,"openai"),model:process.env.OPENAI_MODEL??"gpt-5.5"},redTeam:{provider:p(process.env.RED_TEAM_PROVIDER,"gemini"),model:process.env.GEMINI_MODEL??"gemini-3.8-flash"},judge:{provider:p(process.env.JUDGE_PROVIDER,"openai"),model:process.env.JUDGE_MODEL??"gpt-5.5"}};}
@@ -36,6 +36,19 @@ if(req.method==="GET"&&(path==="/"||path==="/lab"||path==="/lab/")){html(res,200
 if(req.method==="GET"&&path==="/lab/manifest.webmanifest"){res.writeHead(200,{"Content-Type":"application/manifest+json; charset=utf-8"});res.end(LAB_MANIFEST);return;}if(req.method==="GET"&&path==="/lab/sw.js"){res.writeHead(200,{"Content-Type":"application/javascript; charset=utf-8"});res.end(LAB_SW);return;}if(req.method==="GET"&&path==="/lab/icon.svg"){res.writeHead(200,{"Content-Type":"image/svg+xml; charset=utf-8"});res.end(LAB_ICON);return;}
 if(req.method==="GET"&&path==="/health"){send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,evidenceEngine:true,mobileLab:true,pwa:true,auth:true,privateHistory:true,workspaces:true,roles:true,controlledSharing:true,v1_0_3:true,v1_0_5:true,v1_0_6:true,v1_0_7:true,notifications:true,audit:true,secureShareLinks:true,publicShareViewer:true,visualShareViewer:true,shareCenter:true,serverBackedShareLinks:true,invitations:true,realtime:true,deployment:"healthy"});return;}
 if(req.method==="GET"&&path==="/auth/config"){const a=publicAuthConfig();if(!a){send(res,503,{error:"Supabase public auth is not configured"});return;}send(res,200,a);return;}
+if(req.method==="POST"&&path==="/auth/session"){
+const a=publicAuthConfig();if(!a){send(res,503,{error:"Supabase public auth is not configured"});return;}
+const input=await body(req) as {action?:"signin"|"signup"|"refresh"|"logout";email?:string;password?:string;refresh_token?:string;access_token?:string};
+let endpoint="",payload:Record<string,string>={},headers:Record<string,string>={apikey:a.publishableKey,"Content-Type":"application/json"};
+if(input.action==="signin"){if(!input.email||!input.password){send(res,400,{error:"Email et mot de passe requis."});return;}endpoint="/auth/v1/token?grant_type=password";payload={email:input.email,password:input.password};}
+else if(input.action==="signup"){if(!input.email||!input.password){send(res,400,{error:"Email et mot de passe requis."});return;}endpoint="/auth/v1/signup";payload={email:input.email,password:input.password};}
+else if(input.action==="refresh"){if(!input.refresh_token){send(res,400,{error:"Jeton de renouvellement requis."});return;}endpoint="/auth/v1/token?grant_type=refresh_token";payload={refresh_token:input.refresh_token};}
+else if(input.action==="logout"){if(!input.access_token){send(res,400,{error:"Session requise."});return;}endpoint="/auth/v1/logout";headers.Authorization="Bearer "+input.access_token;}
+else{send(res,400,{error:"Action d'authentification invalide."});return;}
+try{const upstream=await fetch(a.url+endpoint,{method:"POST",headers,body:input.action==="logout"?undefined:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});const raw=await upstream.text();let result:unknown={};try{result=JSON.parse(raw||"{}")}catch{result={error:"Réponse Auth Supabase illisible."}}send(res,upstream.status,result);}
+catch(e){console.error("[afe-ci-auth-proxy] Supabase Auth request failed",e);send(res,502,{error:"Le serveur AFE-CI n'arrive pas à joindre le service Auth Supabase."});}
+return;
+}
 const user=await authenticateRequest(req);if(!user){send(res,401,{error:"Authentication required"});return;}
 if(req.method==="GET"&&path==="/market-prices/chick-catalog"){
 send(res,200,{category:"chick",currency:"XOF",unit:"FCFA/sujet",suppliers:CHICK_PRICE_SUPPLIERS,quotationFields:CHICK_QUOTATION_FIELDS,priceStatus:"No current supplier tariff is assumed; only dated, sourced quotations are displayed."});return;
