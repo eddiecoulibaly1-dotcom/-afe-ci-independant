@@ -55,7 +55,7 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
   };
 }
 
-function applyConvergencePolicy(judge: JudgeDecision, unresolvedQuestions: number, criticalAttacks: number, finalRound: boolean): JudgeDecision {
+export function applyConvergencePolicy(judge: JudgeDecision, unresolvedQuestions: number, criticalAttacks: number, finalRound: boolean): JudgeDecision {
   const scored = finalizeJudgeScore(judge, unresolvedQuestions, criticalAttacks);
   return buildActionableDecision(scored, scored.evidenceAudit ?? { records: [], unsupportedCriticalClaims: [], unsupportedHighImpactClaims: [], confidence: 1, blocking: false, nextTests: [] }, finalRound);
 }
@@ -186,7 +186,7 @@ export async function runDebate(question: string, context: string | undefined, c
       throw new Error(`JUDGE_AGENT_FAILED (tour ${roundNo}): ${error instanceof Error ? error.message : String(error)}`);
     }
     debate.rounds.push(partial);
-    if (partial.judge.status === "converged" || partial.judge.status === "provisional") { debate.status = partial.judge.status; debate.finalDecision = partial.judge; return debate; }
+    // Always complete the configured debate rounds. An intermediate provisional decision is not a stop condition.
   }
   debate.status = "unresolved";
   debate.finalDecision = debate.rounds.at(-1)?.judge;
