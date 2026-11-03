@@ -128,10 +128,25 @@ export async function callModel<T>(args: ModelArgs): Promise<T> {
         sameProviderMessage = errorText(sameProviderError);
       }
     }
+    let fallbackMessage = "";
     try {
       return await callProvider<T>(prepared, fallbackProvider, fallbackModel, fallbackTimeoutFor(args.schemaName));
     } catch (fallbackError) {
-      const fallbackMessage = errorText(fallbackError);
+      fallbackMessage = errorText(fallbackError);
+      // A temporary outage of the secondary provider must not immediately
+      // terminate the debate when an explicitly configured alternate model exists.
+      if (isTransientProviderError(fallbackMessage)) {
+        const alternateModel = fallbackProvider === "gemini"
+          ? (process.env.GEMINI_FALLBACK_MODEL?.trim() || "gemini-2.5-flash")
+          : (process.env.OPENAI_FALLBACK_MODEL?.trim() || "gpt-4.1-mini");
+        if (alternateModel !== fallbackModel) {
+          try {
+            return await callProvider<T>(prepared, fallbackProvider, alternateModel, fallbackTimeoutFor(args.schemaName));
+          } catch (alternateError) {
+            fallbackMessage += `; modèle alternatif ${fallbackProvider}/${alternateModel} (${errorText(alternateError)})`;
+          }
+        }
+      }
       throw new Error(
         `DEBATE_PROVIDER_CHAIN_FAILED: agent=${args.schemaName}; primaire=${primaryProvider}/${primaryModel} (${primaryMessage}); secours_meme_fournisseur=${sameProviderMessage}; secours=${fallbackProvider}/${fallbackModel} (${fallbackMessage})`
       );
