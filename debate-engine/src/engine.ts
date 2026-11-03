@@ -192,3 +192,75 @@ export async function runDebate(question: string, context: string | undefined, c
   debate.finalDecision = debate.rounds.at(-1)?.judge;
   return debate;
 }
+
+/**
+ * Executes exactly one agent in a debate. The returned debate contains the
+ * durable intermediate state needed by the next invocation.
+ */
+export async function runDebateAgentStep(
+  debate: Debate,
+  role: "architect" | "red_team" | "judge",
+  modelCaller: typeof callModel = callModel
+): Promise<Debate> {
+  const roundNo = debate.rounds.length || 1;
+  const finalRound = roundNo >= (debate.config ?? defaultConfig()).maxRounds;
+  const cfg = debate.config ?? defaultConfig();
+  let round = debate.rounds.find(item => item.round === roundNo);
+  if (role === "architect") {
+    if (round?.architect) throw new Error("STEP_ALREADY_COMPLETED");
+    const architect = await modelCaller<Proposal>({
+      ...cfg.architect, system: ARCHITECT_SYSTEM,
+      prompt: architectPrompt(debate.question, debate.context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective),
+      schemaName: "architect_proposal", schema: proposalSchema
+    });
+    const evidenceAudit = auditClaims(architect.claims);
+    const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(debate.question));
+    round = {
+      round: roundNo, architect, evidenceAudit, quantitativeAudit,
+      redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] },
+      judge: { status: "revise", winner: "neither", architectScore: 0, redTeamScore: 0,
+        architectScorecard: emptyScorecard(), redTeamScorecard: emptyScorecard(),
+        acceptedClaims: [], rejectedClaims: [], criticalDisagreements: [], decision: "",
+        rationale: [], evidenceAudit }, createdAt: new Date().toISOString()
+    };
+  } else {
+    if (!round?.architect) throw new Error("ARCHITECT_STEP_REQUIRED");
+    if (role === "red_team") {
+      if (round.redTeam.attacks.length || round.redTeam.unresolvedQuestions.length || round.redTeam.verdict !== "challenge") throw new Error("STEP_ALREADY_COMPLETED");
+      round = { ...round, redTeam: await modelCaller<Critique>({
+        ...cfg.redTeam, system: RED_TEAM_SYSTEM,
+        prompt: redTeamPrompt(debate.question, debate.context, round),
+        schemaName: "red_team_critique", schema: critiqueSchema
+      }) };
+    } else {
+      if (!round.redTeam.attacks.length && !round.redTeam.unresolvedQuestions.length && round.redTeam.verdict === "challenge") throw new Error("RED_TEAM_STEP_REQUIRED");
+      if (round.judge.decision) throw new Error("STEP_ALREADY_COMPLETED");
+      const rawJudge = await modelCaller<JudgeDecision>({
+        ...cfg.judge, system: JUDGE_SYSTEM,
+        prompt: judgePrompt(debate.question, debate.context, round, cfg.convergenceScore),
+        schemaName: "judge_decision", schema: judgeSchema
+      });
+      const arbitrated = applyConvergencePolicy(
+        { ...rawJudge, evidenceAudit: round.evidenceAudit },
+        round.redTeam.unresolvedQuestions.length,
+        round.redTeam.attacks.filter(attack => attack.severity === "critical").length,
+        finalRound
+      );
+      const qa = round.quantitativeAudit;
+      round = { ...round, judge: qa?.applicable && !canDeclareEconomicWinner(qa) ? {
+        ...arbitrated, status: finalRound ? "unresolved" : "revise", winner: "neither", confidence: "low",
+        decision: "Arbitrage économique suspendu : les données quantitatives obligatoires sont incomplètes ou la comparaison calculée est indisponible.",
+        rationale: [...arbitrated.rationale, ...qa.instructions, "Aucun gagnant économique ne peut être désigné avant une comparaison déterministe complète."],
+        risks: [...(arbitrated.risks ?? []), "Données quantitatives insuffisantes pour départager économiquement les options."],
+        tests: [...new Set([...(arbitrated.tests ?? []), ...qa.options.flatMap(option => option.missingInputs.map(input => `Renseigner : ${input} (${option.label})`))])]
+      } : arbitrated };
+    }
+  }
+  const rounds = debate.rounds.filter(item => item.round !== roundNo).concat(round).sort((a,b)=>a.round-b.round);
+  const updated: Debate = { ...debate, rounds, status: "running" };
+  if (role === "judge" && finalRound) {
+    updated.finalDecision = round.judge;
+    updated.status = round.judge.status === "converged" || round.judge.status === "provisional" ? round.judge.status : "unresolved";
+  }
+  return updated;
+}
