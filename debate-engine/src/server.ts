@@ -11,12 +11,12 @@ import { authenticateRequest, publicAuthConfig } from "./auth.js";
 import { addWorkspaceMember, createWorkspace, getMe, getWorkspace, listDebateShares, listWorkspaces, removeDebateShare, removeWorkspaceMember, setDebateWorkspace, shareDebate, updateProfile, updateWorkspaceMember } from "./workspace-store.js";
 import { inviteWorkspaceUser, createNotification, listNotifications, markNotificationRead, markAllNotificationsRead, listAudit, createShareLink, listShareLinks, revokeShareLink, resolveShareLink, getSharedDebate } from "./v1-store.js";
 import type { DebateConfig, Provider } from "./types.js";
-const VERSION="1.0.9",port=Number(process.env.PORT??8787);
+const VERSION="1.1.0",port=Number(process.env.PORT??8787);
 const json=(v:unknown)=>JSON.stringify(v,null,2);
 const esc=(v:unknown)=>String(v??"").replace(/[&<>\"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m] ?? ""));
 function config():DebateConfig{const p=(v:string|undefined,f:Provider):Provider=>v==="gemini"?"gemini":v==="openai"?"openai":f;return{maxRounds:Number(process.env.MAX_ROUNDS??6),convergenceScore:Number(process.env.CONVERGENCE_SCORE??85),architect:{provider:p(process.env.ARCHITECT_PROVIDER,"openai"),model:process.env.OPENAI_MODEL??"gpt-5.5"},redTeam:{provider:p(process.env.RED_TEAM_PROVIDER,"gemini"),model:process.env.GEMINI_MODEL??"gemini-3.8-flash"},judge:{provider:p(process.env.JUDGE_PROVIDER,"openai"),model:process.env.JUDGE_MODEL??"gpt-5.5"}};}
 function send(res:import("node:http").ServerResponse,s:number,v:unknown){res.writeHead(s,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer"});res.end(json(v));}
-function html(res:import("node:http").ServerResponse,s:number,v:string){res.writeHead(s,{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; base-uri 'none'; form-action 'none'"});res.end(v);}
+function html(res:import("node:http").ServerResponse,s:number,v:string){const auth=publicAuthConfig();const authOrigin=auth?.url??"";const wsOrigin=authOrigin.replace(/^https:/,"wss:").replace(/^http:/,"ws:");const connectSrc=["'self'",authOrigin,wsOrigin].filter(Boolean).join(" ");const csp="default-src 'none'; connect-src "+connectSrc+"; style-src 'unsafe-inline'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; base-uri 'none'; form-action 'none'";res.writeHead(s,{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer","Content-Security-Policy":csp});res.end(v);}
 async function body(req:import("node:http").IncomingMessage){
   let t="";
   for await(const chunk of req){
