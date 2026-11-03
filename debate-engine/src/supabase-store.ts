@@ -66,6 +66,12 @@ export async function failDebateExecutionStep(stepId:string,claimToken:string,er
   });
 }
 
+
+/** Returns the durable execution journal for a debate, ordered by round and agent. */
+export async function listDebateExecutionSteps(debateId:string):Promise<DebateExecutionStep[]>{
+  return request<DebateExecutionStep[]>(`debate_execution_steps?debate_id=eq.${encodeURIComponent(debateId)}&select=*&order=round_number.asc,created_at.asc`);
+}
+
 const REQUIRED_DEBATE_TABLES=["debates","debate_rounds","debate_events","debate_execution_steps","debate_hypotheses","debate_evidence","debate_decisions","debate_profiles","debate_workspaces","debate_workspace_members","debate_shares","debate_share_links","notifications","admin_audit_log"];
 export async function assertSupabaseSchemaReady():Promise<void>{
   const config=getConfig();
