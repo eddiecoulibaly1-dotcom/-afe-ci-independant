@@ -6,7 +6,7 @@ import { CHICK_PRICE_SUPPLIERS, CHICK_QUOTATION_FIELDS } from "./chick-market-ca
 import { fetchConfiguredMarketFeed } from "./market-sources.js";
 import { correctMarketPrice, getMarketPriceHistory, importMarketCsv, listMarketPrices, marketPriceStorageEnabled } from "./market-price-store.js";
 import { getDebate, listDebates, saveDebate } from "./store.js";
-import { assertSupabaseSchemaReady } from "./supabase-store.js";
+import { assertSupabaseSchemaReady, supabasePersistenceEnabled } from "./supabase-store.js";
 import { LAB_HTML, LAB_MANIFEST, LAB_SW, LAB_ICON } from "./lab-v106.js";
 import { authenticateRequest, publicAuthConfig } from "./auth.js";
 import { addWorkspaceMember, createWorkspace, getMe, getWorkspace, listDebateShares, listWorkspaces, removeDebateShare, removeWorkspaceMember, setDebateWorkspace, shareDebate, updateProfile, updateWorkspaceMember } from "./workspace-store.js";
