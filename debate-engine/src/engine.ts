@@ -200,9 +200,9 @@ export async function runDebate(question: string, context: string | undefined, c
 export async function runDebateAgentStep(
   debate: Debate,
   role: "architect" | "red_team" | "judge",
+  roundNo: number,
   modelCaller: typeof callModel = callModel
 ): Promise<Debate> {
-  const roundNo = debate.rounds.length || 1;
   const finalRound = roundNo >= (debate.config ?? defaultConfig()).maxRounds;
   const cfg = debate.config ?? defaultConfig();
   let round = debate.rounds.find(item => item.round === roundNo);
