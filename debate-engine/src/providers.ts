@@ -42,7 +42,7 @@ function errorText(error: unknown): string {
 function modelFor(provider: Provider, requested: string): string {
   if (requested && !(provider === "gemini" && /^gpt-/i.test(requested)) && !(provider === "openai" && /^gemini-/i.test(requested))) return requested;
   return provider === "gemini"
-    ? (process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash")
+    ? (process.env.GEMINI_MODEL?.trim() || "gemini-3.8-flash")
     : (process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini");
 }
 function googleSchema(value: any): any {
@@ -120,10 +120,12 @@ export async function callModel<T>(args: ModelArgs): Promise<T> {
   } catch (primaryError) {
     const primaryMessage = errorText(primaryError);
     let sameProviderMessage = "non tenté";
-    if (primaryProvider === "gemini" && isTransientProviderError(primaryMessage)) {
-      const sameProviderFallback = process.env.GEMINI_FALLBACK_MODEL?.trim() || "gemini-3.7-flash";
+    if (isTransientProviderError(primaryMessage)) {
+      const sameProviderFallback = primaryProvider === "gemini"
+        ? (process.env.GEMINI_FALLBACK_MODEL?.trim() || "gemini-3.7-flash")
+        : (process.env.OPENAI_FALLBACK_MODEL?.trim() || "gpt-4.1-mini");
       try {
-        return await callProvider<T>(prepared, "gemini", sameProviderFallback, fallbackTimeoutFor(args.schemaName));
+        return await callProvider<T>(prepared, primaryProvider, sameProviderFallback, fallbackTimeoutFor(args.schemaName));
       } catch (sameProviderError) {
         sameProviderMessage = errorText(sameProviderError);
       }
@@ -137,7 +139,7 @@ export async function callModel<T>(args: ModelArgs): Promise<T> {
       // terminate the debate when an explicitly configured alternate model exists.
       if (isTransientProviderError(fallbackMessage)) {
         const alternateModel = fallbackProvider === "gemini"
-          ? (process.env.GEMINI_FALLBACK_MODEL?.trim() || "gemini-2.5-flash")
+          ? (process.env.GEMINI_FALLBACK_MODEL?.trim() || "gemini-3.7-flash")
           : (process.env.OPENAI_FALLBACK_MODEL?.trim() || "gpt-4.1-mini");
         if (alternateModel !== fallbackModel) {
           try {
