@@ -96,7 +96,7 @@ async function callGemini<T>(args: ModelArgs, model: string, timeoutMs: number):
     } catch (error) {
       lastError = error;
       const message = errorText(error);
-      const retryable = /\\b429\\b|\\b500\\b|\\b502\\b|\\b503\\b|\\b504\\b|UNAVAILABLE|overloaded|temporar|timeout/i.test(message);
+      const retryable = /\b429\b|\b500\b|\b502\b|\b503\b|\b504\b|UNAVAILABLE|overloaded|temporar|timeout/i.test(message);
       if (!retryable || attempt === 2) throw error;
       await new Promise(resolve => setTimeout(resolve, 600 * (attempt + 1)));
     }
@@ -126,12 +126,21 @@ export async function callModel<T>(args: ModelArgs): Promise<T> {
     return await callProvider<T>(prepared, primaryProvider, primaryModel, requestTimeoutFor(args.schemaName));
   } catch (primaryError) {
     const primaryMessage = errorText(primaryError);
+    let sameProviderMessage = "non tenté";
+    if (primaryProvider === "gemini" && isTransientProviderError(primaryMessage)) {
+      const sameProviderFallback = process.env.GEMINI_FALLBACK_MODEL?.trim() || "gemini-3.7-flash";
+      try {
+        return await callProvider<T>(prepared, "gemini", sameProviderFallback, fallbackTimeoutFor(args.schemaName));
+      } catch (sameProviderError) {
+        sameProviderMessage = errorText(sameProviderError);
+      }
+    }
     try {
       return await callProvider<T>(prepared, fallbackProvider, fallbackModel, fallbackTimeoutFor(args.schemaName));
     } catch (fallbackError) {
       const fallbackMessage = errorText(fallbackError);
       throw new Error(
-        `DEBATE_PROVIDER_CHAIN_FAILED: agent=${args.schemaName}; primaire=${primaryProvider}/${primaryModel} (${primaryMessage}); secours=${fallbackProvider}/${fallbackModel} (${fallbackMessage})`
+        `DEBATE_PROVIDER_CHAIN_FAILED: agent=${args.schemaName}; primaire=${primaryProvider}/${primaryModel} (${primaryMessage}); secours_meme_fournisseur=${sameProviderMessage}; secours=${fallbackProvider}/${fallbackModel} (${fallbackMessage})`
       );
     }
   }
