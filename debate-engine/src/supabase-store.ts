@@ -18,7 +18,55 @@ async function request<T>(path:string,init:RequestInit={}):Promise<T>{
 
 export function supabasePersistenceEnabled(){return Boolean(getConfig());}
 
-const REQUIRED_DEBATE_TABLES=["debates","debate_rounds","debate_events","debate_hypotheses","debate_evidence","debate_decisions","debate_profiles","debate_workspaces","debate_workspace_members","debate_shares","debate_share_links","notifications","admin_audit_log"];
+export type DebateAgentRole = "architect" | "red_team" | "judge";
+export interface DebateExecutionStep {
+  id:string;
+  debate_id:string;
+  round_number:number;
+  agent_role:DebateAgentRole;
+  status:"pending"|"running"|"completed"|"failed";
+  attempt_count:number;
+  input_snapshot:Record<string,unknown>;
+  output_payload:Record<string,unknown>|null;
+  error_code:string|null;
+  error_message:string|null;
+  claim_token:string|null;
+  lease_expires_at:string|null;
+  started_at:string|null;
+  completed_at:string|null;
+  created_at:string;
+  updated_at:string;
+}
+
+/** Atomically claims a step. Concurrent callers get null while a valid lease exists. */
+export async function claimDebateExecutionStep(input:{
+  debateId:string; roundNumber:number; agentRole:DebateAgentRole;
+  inputSnapshot?:Record<string,unknown>; leaseSeconds?:number;
+}):Promise<DebateExecutionStep|null>{
+  const rows=await request<DebateExecutionStep[]>("rpc/claim_debate_execution_step",{
+    method:"POST",body:JSON.stringify({
+      p_debate_id:input.debateId,p_round_number:input.roundNumber,p_agent_role:input.agentRole,
+      p_input_snapshot:input.inputSnapshot??{},p_lease_seconds:input.leaseSeconds??120
+    })
+  });
+  return rows[0]??null;
+}
+
+/** Completes only if the caller still owns the current claim token. */
+export async function completeDebateExecutionStep(stepId:string,claimToken:string,outputPayload:Record<string,unknown>):Promise<boolean>{
+  return request<boolean>("rpc/complete_debate_execution_step",{
+    method:"POST",body:JSON.stringify({p_step_id:stepId,p_claim_token:claimToken,p_output_payload:outputPayload})
+  });
+}
+
+/** Marks failure only if the caller still owns the current claim token. */
+export async function failDebateExecutionStep(stepId:string,claimToken:string,errorCode:string,errorMessage:string):Promise<boolean>{
+  return request<boolean>("rpc/fail_debate_execution_step",{
+    method:"POST",body:JSON.stringify({p_step_id:stepId,p_claim_token:claimToken,p_error_code:errorCode,p_error_message:errorMessage})
+  });
+}
+
+const REQUIRED_DEBATE_TABLES=["debates","debate_rounds","debate_events","debate_execution_steps","debate_hypotheses","debate_evidence","debate_decisions","debate_profiles","debate_workspaces","debate_workspace_members","debate_shares","debate_share_links","notifications","admin_audit_log"];
 export async function assertSupabaseSchemaReady():Promise<void>{
   const config=getConfig();
   if(!config)throw new Error("Supabase persistence is not configured");
