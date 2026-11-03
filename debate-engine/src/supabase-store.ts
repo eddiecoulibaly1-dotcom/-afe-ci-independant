@@ -93,15 +93,35 @@ export async function saveDebateToSupabase(debate:Debate):Promise<void>{
     const roundRows=await request<Array<{id:string}>>("debate_rounds?on_conflict=debate_id%2Cround_number&select=id",{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=representation"},body:JSON.stringify({debate_id:debate.id,round_number:round.round,architect_proposal:round.architect,red_team_critique:round.redTeam,judge_decision:round.judge})});
     const roundId=roundRows[0]?.id;
     if(!roundId)throw new Error(`Supabase did not return round id for round ${round.round}`);
-    await request("debate_events",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify([{debate_id:debate.id,round_id:roundId,event_type:"architect_proposal",actor:"architect",payload:round.architect},{debate_id:debate.id,round_id:roundId,event_type:"evidence_audit",actor:"evidence_engine",payload:round.evidenceAudit??{}},{debate_id:debate.id,round_id:roundId,event_type:"red_team_critique",actor:"red_team",payload:round.redTeam},{debate_id:debate.id,round_id:roundId,event_type:"judge_decision",actor:"judge",payload:round.judge}])});
+    // Event rows have no natural unique constraint; read existing event types before
+    // inserting so a resumed/replayed save does not duplicate the round history.
+    const eventRows=[
+      {debate_id:debate.id,round_id:roundId,event_type:"architect_proposal",actor:"architect",payload:round.architect},
+      {debate_id:debate.id,round_id:roundId,event_type:"evidence_audit",actor:"evidence_engine",payload:round.evidenceAudit??{}},
+      {debate_id:debate.id,round_id:roundId,event_type:"red_team_critique",actor:"red_team",payload:round.redTeam},
+      {debate_id:debate.id,round_id:roundId,event_type:"judge_decision",actor:"judge",payload:round.judge}
+    ];
+    const existingEvents=await request<Array<{event_type:string}>>(`debate_events?debate_id=eq.${encodeURIComponent(debate.id)}&round_id=eq.${encodeURIComponent(roundId)}&select=event_type`);
+    const existingTypes=new Set(existingEvents.map(event=>event.event_type));
+    const missingEvents=eventRows.filter(event=>!existingTypes.has(event.event_type));
+    if(missingEvents.length)await request("debate_events",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(missingEvents)});
     if(round.evidenceAudit?.records.length){
       const evidenceRows=round.evidenceAudit.records.flatMap(record=>record.evidenceRefs.map(ref=>({debate_id:debate.id,round_id:roundId,kind:"source",title:`${record.claimId} evidence reference`,url:ref.startsWith("http://")||ref.startsWith("https://")?ref:null,excerpt:null,strength:Math.round(record.confidence*100),metadata:{claim_id:record.claimId,classification:record.classification,status:record.status,rationale:record.rationale}})));
       if(evidenceRows.length)await request("debate_evidence",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(evidenceRows)});
     }
     const hypotheses=round.architect.claims.filter(c=>c.type==="hypothesis").map(c=>({debate_id:debate.id,statement:c.statement,status:"open",confidence:c.confidence,source_round:round.round}));
-    if(hypotheses.length)await request("debate_hypotheses",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(hypotheses)});
+    if(hypotheses.length){
+      const existing=await request<Array<{statement:string}>>(`debate_hypotheses?debate_id=eq.${encodeURIComponent(debate.id)}&source_round=eq.${round.round}&select=statement`);
+      const known=new Set(existing.map(item=>item.statement));
+      const missing=hypotheses.filter(item=>!known.has(item.statement));
+      if(missing.length)await request("debate_hypotheses",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(missing)});
+    }
   }
-  if(debate.finalDecision)await request("debate_decisions",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({debate_id:debate.id,decision_type:debate.status==="converged"?"final":"unresolved",statement:debate.finalDecision.decision,score:Math.max(debate.finalDecision.architectScore,debate.finalDecision.redTeamScore),rationale:debate.finalDecision.rationale,status:debate.status==="converged"?"accepted":"needs_validation"})});
+  if(debate.finalDecision){
+    const statement=debate.finalDecision.decision;
+    const existing=await request<Array<{id:string}>>(`debate_decisions?debate_id=eq.${encodeURIComponent(debate.id)}&statement=eq.${encodeURIComponent(statement)}&select=id&limit=1`);
+    if(!existing.length)await request("debate_decisions",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({debate_id:debate.id,decision_type:debate.status==="converged"?"final":"unresolved",statement,score:Math.max(debate.finalDecision.architectScore,debate.finalDecision.redTeamScore),rationale:debate.finalDecision.rationale,status:debate.status==="converged"?"accepted":"needs_validation"})});
+  }
 }
 
 type DebateRow=Omit<Debate,"rounds"|"finalDecision"|"userId"|"workspaceId">&{user_id?:string|null;workspace_id?:string|null;final_decision?:JudgeDecision|null;debate_rounds:Array<{round_number:number;architect_proposal:DebateRound["architect"];red_team_critique:DebateRound["redTeam"];judge_decision:DebateRound["judge"];created_at:string}>};
