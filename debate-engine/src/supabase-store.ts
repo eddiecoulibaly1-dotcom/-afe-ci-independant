@@ -18,6 +18,74 @@ async function request<T>(path:string,init:RequestInit={}):Promise<T>{
 
 export function supabasePersistenceEnabled(){return Boolean(getConfig());}
 
+export type DebateAgentRole = "architect" | "red_team" | "judge";
+export interface DebateExecutionStep {
+  id:string;
+  debate_id:string;
+  round_number:number;
+  agent_role:DebateAgentRole;
+  status:"pending"|"running"|"completed"|"failed";
+  attempt_count:number;
+  input_snapshot:Record<string,unknown>;
+  output_payload:Record<string,unknown>|null;
+  error_code:string|null;
+  error_message:string|null;
+  claim_token:string|null;
+  lease_expires_at:string|null;
+  started_at:string|null;
+  completed_at:string|null;
+  created_at:string;
+  updated_at:string;
+}
+
+/** Atomically claims a step. Concurrent callers get null while a valid lease exists. */
+export async function claimDebateExecutionStep(input:{
+  debateId:string; roundNumber:number; agentRole:DebateAgentRole;
+  inputSnapshot?:Record<string,unknown>; leaseSeconds?:number;
+}):Promise<DebateExecutionStep|null>{
+  const rows=await request<DebateExecutionStep[]>("rpc/claim_debate_execution_step",{
+    method:"POST",body:JSON.stringify({
+      p_debate_id:input.debateId,p_round_number:input.roundNumber,p_agent_role:input.agentRole,
+      p_input_snapshot:input.inputSnapshot??{},p_lease_seconds:input.leaseSeconds??120
+    })
+  });
+  return rows[0]??null;
+}
+
+/** Completes only if the caller still owns the current claim token. */
+export async function completeDebateExecutionStep(stepId:string,claimToken:string,outputPayload:Record<string,unknown>):Promise<boolean>{
+  return request<boolean>("rpc/complete_debate_execution_step",{
+    method:"POST",body:JSON.stringify({p_step_id:stepId,p_claim_token:claimToken,p_output_payload:outputPayload})
+  });
+}
+
+/** Marks failure only if the caller still owns the current claim token. */
+export async function failDebateExecutionStep(stepId:string,claimToken:string,errorCode:string,errorMessage:string):Promise<boolean>{
+  return request<boolean>("rpc/fail_debate_execution_step",{
+    method:"POST",body:JSON.stringify({p_step_id:stepId,p_claim_token:claimToken,p_error_code:errorCode,p_error_message:errorMessage})
+  });
+}
+
+
+/** Returns the durable execution journal for a debate, ordered by round and agent. */
+export async function listDebateExecutionSteps(debateId:string):Promise<DebateExecutionStep[]>{
+  return request<DebateExecutionStep[]>(`debate_execution_steps?debate_id=eq.${encodeURIComponent(debateId)}&select=*&order=round_number.asc,created_at.asc`);
+}
+
+const REQUIRED_DEBATE_TABLES=["debates","debate_rounds","debate_events","debate_execution_steps","debate_hypotheses","debate_evidence","debate_decisions","debate_profiles","debate_workspaces","debate_workspace_members","debate_shares","debate_share_links","notifications","admin_audit_log"];
+export async function assertSupabaseSchemaReady():Promise<void>{
+  const config=getConfig();
+  if(!config)throw new Error("Supabase persistence is not configured");
+  const checks=await Promise.all(REQUIRED_DEBATE_TABLES.map(async table=>{
+    try{
+      const response=await fetch(`${config.url}/rest/v1/${table}?select=*&limit=0`,{headers:{apikey:config.secretKey,Authorization:`Bearer ${config.secretKey}`}});
+      return response.ok?null:table;
+    }catch{return table;}
+  }));
+  const missing=checks.filter((table):table is string=>Boolean(table));
+  if(missing.length)throw new Error(`Schéma Supabase incomplet : ${missing.join(", ")}. Appliquer les migrations AFE-CI Debate Engine avant de lancer un débat.`);
+}
+
 export async function saveDebateToSupabase(debate:Debate):Promise<void>{
   if(!debate.userId)throw new Error("Authenticated user is required");
   await request("debates?on_conflict=id",{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({id:debate.id,user_id:debate.userId,workspace_id:debate.workspaceId??null,question:debate.question,context:debate.context??null,mode:"decision",status:debate.status,config:debate.config??{},final_decision:debate.finalDecision??null})});
@@ -25,15 +93,35 @@ export async function saveDebateToSupabase(debate:Debate):Promise<void>{
     const roundRows=await request<Array<{id:string}>>("debate_rounds?on_conflict=debate_id%2Cround_number&select=id",{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=representation"},body:JSON.stringify({debate_id:debate.id,round_number:round.round,architect_proposal:round.architect,red_team_critique:round.redTeam,judge_decision:round.judge})});
     const roundId=roundRows[0]?.id;
     if(!roundId)throw new Error(`Supabase did not return round id for round ${round.round}`);
-    await request("debate_events",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify([{debate_id:debate.id,round_id:roundId,event_type:"architect_proposal",actor:"architect",payload:round.architect},{debate_id:debate.id,round_id:roundId,event_type:"evidence_audit",actor:"evidence_engine",payload:round.evidenceAudit??{}},{debate_id:debate.id,round_id:roundId,event_type:"red_team_critique",actor:"red_team",payload:round.redTeam},{debate_id:debate.id,round_id:roundId,event_type:"judge_decision",actor:"judge",payload:round.judge}])});
+    // Event rows have no natural unique constraint; read existing event types before
+    // inserting so a resumed/replayed save does not duplicate the round history.
+    const eventRows=[
+      {debate_id:debate.id,round_id:roundId,event_type:"architect_proposal",actor:"architect",payload:round.architect},
+      {debate_id:debate.id,round_id:roundId,event_type:"evidence_audit",actor:"evidence_engine",payload:round.evidenceAudit??{}},
+      {debate_id:debate.id,round_id:roundId,event_type:"red_team_critique",actor:"red_team",payload:round.redTeam},
+      {debate_id:debate.id,round_id:roundId,event_type:"judge_decision",actor:"judge",payload:round.judge}
+    ];
+    const existingEvents=await request<Array<{event_type:string}>>(`debate_events?debate_id=eq.${encodeURIComponent(debate.id)}&round_id=eq.${encodeURIComponent(roundId)}&select=event_type`);
+    const existingTypes=new Set(existingEvents.map(event=>event.event_type));
+    const missingEvents=eventRows.filter(event=>!existingTypes.has(event.event_type));
+    if(missingEvents.length)await request("debate_events",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(missingEvents)});
     if(round.evidenceAudit?.records.length){
       const evidenceRows=round.evidenceAudit.records.flatMap(record=>record.evidenceRefs.map(ref=>({debate_id:debate.id,round_id:roundId,kind:"source",title:`${record.claimId} evidence reference`,url:ref.startsWith("http://")||ref.startsWith("https://")?ref:null,excerpt:null,strength:Math.round(record.confidence*100),metadata:{claim_id:record.claimId,classification:record.classification,status:record.status,rationale:record.rationale}})));
       if(evidenceRows.length)await request("debate_evidence",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(evidenceRows)});
     }
     const hypotheses=round.architect.claims.filter(c=>c.type==="hypothesis").map(c=>({debate_id:debate.id,statement:c.statement,status:"open",confidence:c.confidence,source_round:round.round}));
-    if(hypotheses.length)await request("debate_hypotheses",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(hypotheses)});
+    if(hypotheses.length){
+      const existing=await request<Array<{statement:string}>>(`debate_hypotheses?debate_id=eq.${encodeURIComponent(debate.id)}&source_round=eq.${round.round}&select=statement`);
+      const known=new Set(existing.map(item=>item.statement));
+      const missing=hypotheses.filter(item=>!known.has(item.statement));
+      if(missing.length)await request("debate_hypotheses",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(missing)});
+    }
   }
-  if(debate.finalDecision)await request("debate_decisions",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({debate_id:debate.id,decision_type:debate.status==="converged"?"final":"unresolved",statement:debate.finalDecision.decision,score:Math.max(debate.finalDecision.architectScore,debate.finalDecision.redTeamScore),rationale:debate.finalDecision.rationale,status:debate.status==="converged"?"accepted":"needs_validation"})});
+  if(debate.finalDecision){
+    const statement=debate.finalDecision.decision;
+    const existing=await request<Array<{id:string}>>(`debate_decisions?debate_id=eq.${encodeURIComponent(debate.id)}&statement=eq.${encodeURIComponent(statement)}&select=id&limit=1`);
+    if(!existing.length)await request("debate_decisions",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({debate_id:debate.id,decision_type:debate.status==="converged"?"final":"unresolved",statement,score:Math.max(debate.finalDecision.architectScore,debate.finalDecision.redTeamScore),rationale:debate.finalDecision.rationale,status:debate.status==="converged"?"accepted":"needs_validation"})});
+  }
 }
 
 type DebateRow=Omit<Debate,"rounds"|"finalDecision"|"userId"|"workspaceId">&{user_id?:string|null;workspace_id?:string|null;final_decision?:JudgeDecision|null;debate_rounds:Array<{round_number:number;architect_proposal:DebateRound["architect"];red_team_critique:DebateRound["redTeam"];judge_decision:DebateRound["judge"];created_at:string}>};

@@ -8,6 +8,12 @@ Adversarial strategic decision engine for AFE-CI.
 
 The orchestrator is deterministic: it controls rounds, evidence auditing, persistence, scoring and convergence instead of delegating the loop to an LLM.
 
+## V1.0.8 Vercel API runtime + market ledger hardening
+
+The API entrypoint exports a Vercel-compatible default HTTP handler and starts a local Node HTTP server only outside Vercel. Request JSON bodies are capped at 1 MB, malformed JSON is rejected with HTTP 400, oversized bodies with HTTP 413, and internal server errors are logged without exposing database/provider details to clients. Public endpoints include `GET /health`, `GET /auth/config`, and token-based share resolution; protected routes require a valid Supabase bearer token.
+
+The market-price list supports `product`, `kind`, `country`, `region`, `city`, `currency` and `unit` filters. `currency` and `unit` are exact-match filters against the ledger.
+
 ## V1.0.6 Realtime + production hardening
 
 V1.0.6 completes the mobile collaboration foundation and aligns the application with the current Supabase secret-key model.
@@ -113,3 +119,100 @@ Public share resolution is deliberately limited to a high-entropy token; the raw
 ## Decision intelligence
 
 V0.4 introduced a deterministic 100-point scorecard. V0.5 added evidence intelligence. V0.8 added identity and private ownership. V0.9 added collaboration. V1.0 adds the product trust layer. V1.0.6 adds realtime synchronization, PWA migration and production hardening.
+
+## Market intelligence — Côte d'Ivoire (V2.1)
+
+The market evidence layer includes validated JSON-feed and CSV parsers. The authenticated
+`GET /market-prices` endpoint currently reads persisted, non-superseded observations from
+the Supabase ledger. The configured-feed adapter (`MARKET_PRICE_FEED_URL` and optional
+`MARKET_PRICE_FEED_TOKEN`) exists in `src/market-sources.ts`, but is not currently exposed
+as an HTTP route or automatically merged into the ledger response.
+
+Expected JSON response from the configured provider:
+
+```json
+{
+  "source": "SIMAgri export",
+  "observations": [{
+    "id": "simagri-maize-001",
+    "product": "maïs jaune",
+    "normalizedProduct": "mais jaune",
+    "kind": "raw_material",
+    "value": 215,
+    "currency": "XOF",
+    "unit": "FCFA/kg",
+    "country": "Côte d'Ivoire",
+    "region": "Gbêkê",
+    "city": "Bouaké",
+    "sourceName": "SIMAgri",
+    "sourceUrl": "https://simagri-ci.info/product-detail/mais-jaune",
+    "sourceClass": "public_market_system",
+    "publishedAt": "2026-10-28T00:00:00Z",
+    "retrievedAt": "2026-10-29T00:00:00Z"
+  }]
+}
+```
+
+Example request (after authentication):
+
+`GET /market-prices?product=ma%C3%AFs%20jaune&kind=raw_material&country=C%C3%B4te%20d'Ivoire&city=Bouak%C3%A9&currency=XOF&unit=FCFA%2Fkg`
+
+The OCPV and SIMAgri public pages were identified as useful reference sources, but no
+documented public JSON API was confirmed during implementation. Do not point the feed
+variables at undocumented endpoints or scrape pages contrary to their terms. Use an
+authorized API/export or an approved data relay. Until configured, the endpoint returns
+a configuration error; it does not fabricate or substitute prices. Supplier quotations
+for feed bags, chicks and guinea fowl require their own verified supplier feed or CSV
+import and must not be inferred from grain-market prices.
+
+### Partner access and CSV intake
+
+The partner outreach pack for OCPV and SIMAgri is in `docs/market-partner-access.md`.
+It contains verified public contact channels, the data-access questions, a ready-to-send
+French email and the proposed normalized data contract. The CSV column template is
+`templates/market-prices-template.csv`.
+
+The authenticated `POST /market-prices/import` endpoint accepts JSON with a `csv`
+string containing UTF-8 CSV. It validates every row, creates an import batch, persists
+non-duplicate observations and returns inserted/duplicate counts. Optional chick fields
+include `productCategory`, `strain`, `vaccinationStatus`, `minimumQuantity`,
+`packSize`, `deliveryFee` and `availabilityDate`. Example body:
+
+```json
+{
+  "csv": "id,product,normalizedProduct,kind,value,currency,unit,country,sourceName,sourceUrl,sourceClass,retrievedAt\\n...",
+  "fileName": "market-prices.csv"
+}
+```
+
+This endpoint writes to the append-only ledger using a server-side Supabase secret key.
+The authenticated user's ID is attached to the batch and every observation. Do not expose
+the Supabase secret/service-role key to browser code.
+
+
+### Durable market price ledger
+
+The ledger migrations are stored in `supabase/migrations/`:
+- `20261102120000_market_price_ledger.sql`: import batches, immutable observations, correction history and initial read policies.
+- `20261102150000_market_price_security_and_chicks.sql`: owner-scoped fingerprints, batch ownership, chick quotation fields and integrity constraints.
+- `20261102160000_market_price_advisor_hardening.sql`: fixed function search paths and RLS/index hardening.
+- `20261102170000_refresh_market_price_current_view.sql`: repair for databases where chick fields were added after the current-observations view was first created.
+
+Do not replay migrations already recorded as applied. For an existing database that has applied the first three migrations, apply only the view-refresh migration after reviewing it.
+
+Authenticated API routes (all require a valid Supabase bearer token, except the public share/auth/health routes documented elsewhere):
+- `GET /market-prices/chick-catalog`: supplier directory and required chick quotation fields; no live prices are fabricated.
+- `POST /market-prices/import`: validated UTF-8 CSV import into the durable ledger; returns inserted and duplicate counts.
+- `GET /market-prices`: current (non-superseded) observations for the authenticated user, with optional product/kind/country/region/city filters.
+- `GET /market-prices/:id/history`: original observation and its sequential correction history.
+- `POST /market-prices/:id/corrections`: append a corrected version with a mandatory reason.
+
+The ledger stores source name, URL, source class, original source observation ID, publication/observation/
+retrieval dates, geography, unit, currency, import batch and a SHA-256 duplicate fingerprint.
+Database triggers reject UPDATE and DELETE. Corrections are new rows linked by `supersedes_id`;
+the previous value remains available in history. Duplicate imports are ignored per owner/fingerprint.
+
+Server-side Supabase credentials are required. Browser clients receive no write policy; writes
+are made by the authenticated API after validating the user's bearer token. The service key
+must never be exposed to the browser. The current view returns only latest versions, while the
+base table retains the complete audit trail.

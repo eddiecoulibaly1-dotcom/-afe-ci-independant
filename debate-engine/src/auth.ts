@@ -8,33 +8,37 @@ export interface AuthUser {
 
 function config() {
   const url = process.env.SUPABASE_URL?.replace(/\/$/, "");
-  const secretKey = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !secretKey) return null;
-  return { url, secretKey };
+  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.SUPABASE_ANON_KEY;
+  if (!url || !publishableKey) return null;
+  return { url, publishableKey };
 }
 
 export function publicAuthConfig() {
   const cfg = config();
-  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
-  if (!cfg?.url || !publishableKey) return null;
-  // Keep both names for compatibility with the v1.0.6 client and older clients.
-  return { supabaseUrl: cfg.url, url: cfg.url, publishableKey };
+  if (!cfg) return null;
+  return { supabaseUrl: cfg.url, url: cfg.url, publishableKey: cfg.publishableKey };
 }
 
 export async function authenticateRequest(req: IncomingMessage): Promise<AuthUser | null> {
   const cfg = config();
   const header = req.headers.authorization;
-  if (!cfg || !header?.startsWith("Bearer ")) return null;
+  if (!cfg || typeof header !== "string" || !header.startsWith("Bearer ")) return null;
   const accessToken = header.slice("Bearer ".length).trim();
-  if (!accessToken) return null;
+  if (!accessToken || accessToken.length > 8192) return null;
 
-  const response = await fetch(`${cfg.url}/auth/v1/user`, {
-    headers: {
-      apikey: cfg.secretKey,
-      Authorization: `Bearer ${accessToken}`
-    }
-  });
-  if (!response.ok) return null;
-  const user = await response.json() as { id?: string; email?: string; role?: string };
-  return user.id ? { id: user.id, email: user.email, role: user.role } : null;
+  try {
+    const response = await fetch(`${cfg.url}/auth/v1/user`, {
+      method: "GET",
+      headers: {
+        apikey: cfg.publishableKey,
+        Authorization: `Bearer ${accessToken}`
+      },
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!response.ok) return null;
+    const user = await response.json() as { id?: string; email?: string; role?: string };
+    return user.id ? { id: user.id, email: user.email, role: user.role } : null;
+  } catch {
+    return null;
+  }
 }

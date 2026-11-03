@@ -1,3 +1,4 @@
+import { buildQuantitativeAudit, canDeclareEconomicWinner } from "./quantitative-reasoning.js";
 import { randomUUID } from "node:crypto";
 import type { Debate, DebateConfig, DebateRound, Proposal, Critique, JudgeDecision, Scorecard } from "./types.js";
 import { proposalSchema, critiqueSchema, judgeSchema } from "./schema.js";
@@ -54,7 +55,7 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
   };
 }
 
-function applyConvergencePolicy(judge: JudgeDecision, unresolvedQuestions: number, criticalAttacks: number, finalRound: boolean): JudgeDecision {
+export function applyConvergencePolicy(judge: JudgeDecision, unresolvedQuestions: number, criticalAttacks: number, finalRound: boolean): JudgeDecision {
   const scored = finalizeJudgeScore(judge, unresolvedQuestions, criticalAttacks);
   return buildActionableDecision(scored, scored.evidenceAudit ?? { records: [], unsupportedCriticalClaims: [], unsupportedHighImpactClaims: [], confidence: 1, blocking: false, nextTests: [] }, finalRound);
 }
@@ -149,37 +150,117 @@ function buildContinuityDebate(question: string, context: string | undefined, co
   return { id: randomUUID(), question, context, status: "provisional", rounds: [round], finalDecision: judge, config };
 }
 
-export async function runDebate(question: string, context: string | undefined, config: DebateConfig): Promise<Debate> {
+export async function runDebate(question: string, context: string | undefined, config: DebateConfig, modelCaller: typeof callModel = callModel): Promise<Debate> {
   const debate: Debate = { id: randomUUID(), question, context, status: "running", rounds: [], config };
   for (let roundNo = 1; roundNo <= config.maxRounds; roundNo++) {
     const finalRound = roundNo === config.maxRounds;
     let architect: Proposal;
     try {
-      architect = await callModel<Proposal>({ ...config.architect, system: ARCHITECT_SYSTEM, prompt: architectPrompt(question, context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective), schemaName: "architect_proposal", schema: proposalSchema });
+      architect = await modelCaller<Proposal>({ ...config.architect, system: ARCHITECT_SYSTEM, prompt: architectPrompt(question, context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective), schemaName: "architect_proposal", schema: proposalSchema });
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      return terminalFromLastRound(debate, `continuité automatique activée (${reason})`);
+      throw new Error(`ARCHITECT_AGENT_FAILED (tour ${roundNo}): ${error instanceof Error ? error.message : String(error)}`);
     }
 
     const evidenceAudit = auditClaims(architect.claims);
-    const partial: DebateRound = { round: roundNo, architect, evidenceAudit, redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] }, judge: { status: "revise", winner: "neither", architectScore: 0, redTeamScore: 0, architectScorecard: emptyScorecard(), redTeamScorecard: emptyScorecard(), acceptedClaims: [], rejectedClaims: [], criticalDisagreements: [], decision: "", rationale: [], evidenceAudit }, createdAt: new Date().toISOString() };
+    const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(question));
+    const partial: DebateRound = { round: roundNo, architect, evidenceAudit, quantitativeAudit, redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] }, redTeamCompleted: false, judge: { status: "revise", winner: "neither", architectScore: 0, redTeamScore: 0, architectScorecard: emptyScorecard(), redTeamScorecard: emptyScorecard(), acceptedClaims: [], rejectedClaims: [], criticalDisagreements: [], decision: "", rationale: [], evidenceAudit }, createdAt: new Date().toISOString() };
     try {
-      partial.redTeam = await callModel<Critique>({ ...config.redTeam, system: RED_TEAM_SYSTEM, prompt: redTeamPrompt(question, context, partial), schemaName: "red_team_critique", schema: critiqueSchema });
+      partial.redTeam = await modelCaller<Critique>({ ...config.redTeam, system: RED_TEAM_SYSTEM, prompt: redTeamPrompt(question, context, partial), schemaName: "red_team_critique", schema: critiqueSchema });
     } catch (error) {
-      if (debate.rounds.length) return terminalFromLastRound(debate, "la Red Team n'a pas pu terminer l'analyse; dernière décision conservée");
-      return buildContinuityDebate(question, context, config, "la Red Team n'a pas pu terminer l'analyse");
+      throw new Error(`RED_TEAM_AGENT_FAILED (tour ${roundNo}): ${error instanceof Error ? error.message : String(error)}`);
     }
     try {
-      const rawJudge = await callModel<JudgeDecision>({ ...config.judge, system: JUDGE_SYSTEM, prompt: judgePrompt(question, context, partial, config.convergenceScore), schemaName: "judge_decision", schema: judgeSchema });
-      partial.judge = applyConvergencePolicy({ ...rawJudge, evidenceAudit }, partial.redTeam.unresolvedQuestions.length, partial.redTeam.attacks.filter((attack) => attack.severity === "critical").length, finalRound);
+      const rawJudge = await modelCaller<JudgeDecision>({ ...config.judge, system: JUDGE_SYSTEM, prompt: judgePrompt(question, context, partial, config.convergenceScore), schemaName: "judge_decision", schema: judgeSchema });
+      const arbitrated = applyConvergencePolicy({ ...rawJudge, evidenceAudit }, partial.redTeam.unresolvedQuestions.length, partial.redTeam.attacks.filter((attack) => attack.severity === "critical").length, finalRound);
+      const quantitativeGateRequired = quantitativeAudit.applicable;
+      partial.judge = quantitativeGateRequired && !canDeclareEconomicWinner(quantitativeAudit)
+        ? {
+            ...arbitrated, status: finalRound ? "unresolved" : "revise", winner: "neither", confidence: "low",
+            decision: "Arbitrage économique suspendu : les données quantitatives obligatoires sont incomplètes ou la comparaison calculée est indisponible.",
+            rationale: [...arbitrated.rationale, ...quantitativeAudit.instructions, "Aucun gagnant économique ne peut être désigné avant une comparaison déterministe complète."],
+            risks: [...(arbitrated.risks ?? []), "Données quantitatives insuffisantes pour départager économiquement les options."],
+            tests: [...new Set([...(arbitrated.tests ?? []), ...quantitativeAudit.options.flatMap(option => option.missingInputs.map(input => `Renseigner : ${input} (${option.label})`))])]
+          }
+        : arbitrated;
     } catch (error) {
-      if (debate.rounds.length) return terminalFromLastRound(debate, "l'Arbitre n'a pas pu terminer l'analyse; dernière décision conservée");
-      return buildContinuityDebate(question, context, config, "l'Arbitre n'a pas pu terminer l'analyse");
+      throw new Error(`JUDGE_AGENT_FAILED (tour ${roundNo}): ${error instanceof Error ? error.message : String(error)}`);
     }
     debate.rounds.push(partial);
-    if (partial.judge.status === "converged" || partial.judge.status === "provisional") { debate.status = partial.judge.status; debate.finalDecision = partial.judge; return debate; }
+    // Always complete the configured debate rounds. An intermediate provisional decision is not a stop condition.
   }
   debate.status = "unresolved";
   debate.finalDecision = debate.rounds.at(-1)?.judge;
   return debate;
+}
+
+/**
+ * Executes exactly one agent in a debate. The returned debate contains the
+ * durable intermediate state needed by the next invocation.
+ */
+export async function runDebateAgentStep(
+  debate: Debate,
+  role: "architect" | "red_team" | "judge",
+  roundNo: number,
+  modelCaller: typeof callModel = callModel
+): Promise<Debate> {
+  const finalRound = roundNo >= (debate.config ?? defaultConfig()).maxRounds;
+  const cfg = debate.config ?? defaultConfig();
+  let round = debate.rounds.find(item => item.round === roundNo);
+  if (role === "architect") {
+    if (round?.architect) throw new Error("STEP_ALREADY_COMPLETED");
+    const architect = await modelCaller<Proposal>({
+      ...cfg.architect, system: ARCHITECT_SYSTEM,
+      prompt: architectPrompt(debate.question, debate.context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective),
+      schemaName: "architect_proposal", schema: proposalSchema
+    });
+    const evidenceAudit = auditClaims(architect.claims);
+    const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(debate.question));
+    round = {
+      round: roundNo, architect, evidenceAudit, quantitativeAudit,
+      redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] },
+      judge: { status: "revise", winner: "neither", architectScore: 0, redTeamScore: 0,
+        architectScorecard: emptyScorecard(), redTeamScorecard: emptyScorecard(),
+        acceptedClaims: [], rejectedClaims: [], criticalDisagreements: [], decision: "",
+        rationale: [], evidenceAudit }, createdAt: new Date().toISOString()
+    };
+  } else {
+    if (!round?.architect) throw new Error("ARCHITECT_STEP_REQUIRED");
+    if (role === "red_team") {
+      if (round.redTeamCompleted || round.redTeam.attacks.length > 0 || round.redTeam.unresolvedQuestions.length > 0 || round.redTeam.verdict !== "challenge") throw new Error("STEP_ALREADY_COMPLETED");
+      const redTeam = await modelCaller<Critique>({
+        ...cfg.redTeam, system: RED_TEAM_SYSTEM,
+        prompt: redTeamPrompt(debate.question, debate.context, round),
+        schemaName: "red_team_critique", schema: critiqueSchema
+      });
+      round = { ...round, redTeam, redTeamCompleted: true };
+    } else {
+      if (round.judge.decision) throw new Error("STEP_ALREADY_COMPLETED");
+      const rawJudge = await modelCaller<JudgeDecision>({
+        ...cfg.judge, system: JUDGE_SYSTEM,
+        prompt: judgePrompt(debate.question, debate.context, round, cfg.convergenceScore),
+        schemaName: "judge_decision", schema: judgeSchema
+      });
+      const arbitrated = applyConvergencePolicy(
+        { ...rawJudge, evidenceAudit: round.evidenceAudit },
+        round.redTeam.unresolvedQuestions.length,
+        round.redTeam.attacks.filter(attack => attack.severity === "critical").length,
+        finalRound
+      );
+      const qa = round.quantitativeAudit;
+      round = { ...round, judge: qa?.applicable && !canDeclareEconomicWinner(qa) ? {
+        ...arbitrated, status: finalRound ? "unresolved" : "revise", winner: "neither", confidence: "low",
+        decision: "Arbitrage économique suspendu : les données quantitatives obligatoires sont incomplètes ou la comparaison calculée est indisponible.",
+        rationale: [...arbitrated.rationale, ...qa.instructions, "Aucun gagnant économique ne peut être désigné avant une comparaison déterministe complète."],
+        risks: [...(arbitrated.risks ?? []), "Données quantitatives insuffisantes pour départager économiquement les options."],
+        tests: [...new Set([...(arbitrated.tests ?? []), ...qa.options.flatMap(option => option.missingInputs.map(input => `Renseigner : ${input} (${option.label})`))])]
+      } : arbitrated };
+    }
+  }
+  const rounds = debate.rounds.filter(item => item.round !== roundNo).concat(round).sort((a,b)=>a.round-b.round);
+  const updated: Debate = { ...debate, rounds, status: "running" };
+  if (role === "judge" && finalRound) {
+    updated.finalDecision = round.judge;
+    updated.status = round.judge.status === "converged" || round.judge.status === "provisional" ? round.judge.status : "unresolved";
+  }
+  return updated;
 }
