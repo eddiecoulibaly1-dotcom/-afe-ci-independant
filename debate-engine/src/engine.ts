@@ -163,7 +163,7 @@ export async function runDebate(question: string, context: string | undefined, c
 
     const evidenceAudit = auditClaims(architect.claims);
     const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(question));
-    const partial: DebateRound = { round: roundNo, architect, evidenceAudit, quantitativeAudit, redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] }, judge: { status: "revise", winner: "neither", architectScore: 0, redTeamScore: 0, architectScorecard: emptyScorecard(), redTeamScorecard: emptyScorecard(), acceptedClaims: [], rejectedClaims: [], criticalDisagreements: [], decision: "", rationale: [], evidenceAudit }, createdAt: new Date().toISOString() };
+    const partial: DebateRound = { round: roundNo, architect, evidenceAudit, quantitativeAudit, redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] }, redTeamCompleted: false, judge: { status: "revise", winner: "neither", architectScore: 0, redTeamScore: 0, architectScorecard: emptyScorecard(), redTeamScorecard: emptyScorecard(), acceptedClaims: [], rejectedClaims: [], criticalDisagreements: [], decision: "", rationale: [], evidenceAudit }, createdAt: new Date().toISOString() };
     try {
       partial.redTeam = await modelCaller<Critique>({ ...config.redTeam, system: RED_TEAM_SYSTEM, prompt: redTeamPrompt(question, context, partial), schemaName: "red_team_critique", schema: critiqueSchema });
     } catch (error) {
@@ -226,12 +226,13 @@ export async function runDebateAgentStep(
   } else {
     if (!round?.architect) throw new Error("ARCHITECT_STEP_REQUIRED");
     if (role === "red_team") {
-      if (round.redTeam.attacks.length || round.redTeam.unresolvedQuestions.length || round.redTeam.verdict !== "challenge") throw new Error("STEP_ALREADY_COMPLETED");
-      round = { ...round, redTeam: await modelCaller<Critique>({
+      if (round.redTeamCompleted || round.redTeam.attacks.length > 0 || round.redTeam.unresolvedQuestions.length > 0 || round.redTeam.verdict !== "challenge") throw new Error("STEP_ALREADY_COMPLETED");
+      const redTeam = await modelCaller<Critique>({
         ...cfg.redTeam, system: RED_TEAM_SYSTEM,
         prompt: redTeamPrompt(debate.question, debate.context, round),
         schemaName: "red_team_critique", schema: critiqueSchema
-      }) };
+      });
+      round = { ...round, redTeam, redTeamCompleted: true };
     } else {
       if (round.judge.decision) throw new Error("STEP_ALREADY_COMPLETED");
       const rawJudge = await modelCaller<JudgeDecision>({
