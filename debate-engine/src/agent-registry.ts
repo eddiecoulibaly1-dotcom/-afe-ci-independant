@@ -21,11 +21,11 @@ export const AGENT_REGISTRY: readonly AgentDefinition[] = [
 /** Selects only agents relevant to the route; no provider call is made here. */
 export function selectAgents(route: DecisionRoute): AgentDefinition[] {
   return AGENT_REGISTRY.filter(agent =>
-    agent.required || (
-      agent.modes.includes(route.mode) &&
-      ((agent.role === "evidence" && route.requiresEvidence) ||
-       (agent.role === "scenario" && route.requiresScenarios) ||
-       (agent.role === "risk" && route.requiresRiskAssessment))
+    agent.modes.includes(route.mode) && (
+      agent.required ||
+      (agent.role === "evidence" && route.requiresEvidence) ||
+      (agent.role === "scenario" && route.requiresScenarios) ||
+      (agent.role === "risk" && route.requiresRiskAssessment)
     )
   );
 }
