@@ -41,7 +41,7 @@ export function auditClaims(claims: Claim[]): EvidenceAudit {
         classification: claim.type,
         status: "not_required",
         evidenceRefs: refs,
-        rationale: "This claim is an opinion or explicitly does not require external evidence.",
+        rationale: "Cette affirmation est une opinion ou ne nécessite explicitement pas de preuve externe.",
         confidence: claim.confidence,
         impact: "low"
       };
@@ -53,7 +53,7 @@ export function auditClaims(claims: Claim[]): EvidenceAudit {
         classification: claim.type,
         status: "unsupported",
         evidenceRefs: [],
-        rationale: "No evidence reference was declared. The claim cannot be treated as established evidence.",
+        rationale: "Aucune référence justificative n'a été fournie. Cette affirmation ne peut pas être considérée comme un fait établi.",
         confidence: 0,
         impact
       };
@@ -64,7 +64,7 @@ export function auditClaims(claims: Claim[]): EvidenceAudit {
       classification: claim.type,
       status: "supported",
       evidenceRefs: refs,
-      rationale: "The proposal declares evidence references; external verification remains a separate validation step.",
+      rationale: "La proposition déclare des références justificatives ; leur vérification externe reste une étape distincte.",
       confidence: claim.confidence,
       impact
     };
@@ -84,6 +84,6 @@ export function auditClaims(claims: Claim[]): EvidenceAudit {
     unsupportedHighImpactClaims: [...new Set(unsupportedHighImpactClaims)],
     confidence,
     blocking: unsupportedCriticalClaims.length > 0 || unsupportedHighImpactClaims.length > 0,
-    nextTests: unsupported.map((record) => `Obtain or verify evidence for ${record.claimId}.`)
+    nextTests: unsupported.map((record) => `Obtenir ou vérifier une preuve pour l'affirmation ${record.claimId}.`)
   };
 }
