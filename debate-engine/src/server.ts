@@ -1,12 +1,13 @@
 import "node:process";
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { runDebate } from "./engine.js";
+import { runDebateAgentStep } from "./engine.js";
 import { assessMarketEvidence } from "./market-intelligence.js";
 import { CHICK_PRICE_SUPPLIERS, CHICK_QUOTATION_FIELDS } from "./chick-market-catalog.js";
 import { fetchConfiguredMarketFeed } from "./market-sources.js";
 import { correctMarketPrice, getMarketPriceHistory, importMarketCsv, listMarketPrices, marketPriceStorageEnabled } from "./market-price-store.js";
 import { getDebate, listDebates, saveDebate } from "./store.js";
-import { assertSupabaseSchemaReady, supabasePersistenceEnabled } from "./supabase-store.js";
+import { assertSupabaseSchemaReady, supabasePersistenceEnabled, claimDebateExecutionStep, completeDebateExecutionStep, failDebateExecutionStep, listDebateExecutionSteps } from "./supabase-store.js";
 import { LAB_HTML, LAB_MANIFEST, LAB_SW, LAB_ICON } from "./lab-v106.js";
 import { authenticateRequest, publicAuthConfig } from "./auth.js";
 import { addWorkspaceMember, createWorkspace, getMe, getWorkspace, listDebateShares, listWorkspaces, removeDebateShare, removeWorkspaceMember, setDebateWorkspace, shareDebate, updateProfile, updateWorkspaceMember } from "./workspace-store.js";
@@ -96,8 +97,52 @@ const sl=path.match(/^\/debates\/([^/]+)\/share-links$/);if(sl){const id=decodeU
 const slr=path.match(/^\/debates\/([^/]+)\/share-links\/([^/]+)$/);if(slr&&req.method==="DELETE"){const id=decodeURIComponent(slr[1]);if(!await getDebate(id,user.id))throw new Error("Débat introuvable ou accès refusé");await revokeShareLink(id,user.id,decodeURIComponent(slr[2]));send(res,200,{ok:true});return;}
 const dw=path.match(/^\/debates\/([^/]+)\/workspace$/);if(dw&&req.method==="POST"){const id=decodeURIComponent(dw[1]),i=await body(req) as {workspaceId?:string|null};await setDebateWorkspace(id,user.id,i.workspaceId??null);send(res,200,await getDebate(id,user.id));return;}
 if(req.method==="GET"&&path==="/debates"){send(res,200,await listDebates(user.id));return;}if(req.method==="GET"&&/^\/debates\/[^/]+$/.test(path)){const id=decodeURIComponent(path.slice(9)),d=await getDebate(id,user.id);if(!d){send(res,404,{error:"Debate not found"});return;}send(res,200,d);return;}
+const advanceMatch=path.match(/^\/debates\/([^/]+)\/advance$/);
+const progressMatch=path.match(/^\/debates\/([^/]+)\/progress$/);
+if(progressMatch&&req.method==="GET"){
+ const id=decodeURIComponent(progressMatch[1]),debate=await getDebate(id,user.id);
+ if(!debate){send(res,404,{error:"Débat introuvable"});return;}
+ const steps=supabasePersistenceEnabled()?await listDebateExecutionSteps(id):[];
+ send(res,200,{debate,steps,complete:debate.status!=="running"});
+ return;
+}
+if(advanceMatch&&req.method==="POST"){
+ if(!supabasePersistenceEnabled()){send(res,503,{error:"L’orchestration durable exige le stockage Supabase configuré."});return;}
+ const id=decodeURIComponent(advanceMatch[1]),debate=await getDebate(id,user.id);
+ if(!debate){send(res,404,{error:"Débat introuvable"});return;}
+ if(debate.status!=="running"){send(res,200,{debate,complete:true,steps:await listDebateExecutionSteps(id)});return;}
+ const steps=await listDebateExecutionSteps(id);
+ // Recover a completed step's snapshot if the process stopped after journal commit but before debate save.
+ const recovered=steps.filter(s=>s.status==="completed"&&s.output_payload&&typeof s.output_payload.debate==="object").sort((a,b)=>a.round_number-b.round_number)[0];
+ let state=debate;
+ for(const s of steps){const snap=s.output_payload?.debate;if(s.status==="completed"&&snap&&typeof snap==="object")state=snap as typeof debate;}
+ const roles=["architect","red_team","judge"] as const;
+ let round=1,role:typeof roles[number]="architect";
+ outer: for(let r=1;r<=(state.config?.maxRounds??3);r++){
+   for(const candidate of roles){
+     const found=steps.find(s=>s.round_number===r&&s.agent_role===candidate&&s.status==="completed");
+     if(!found){round=r;role=candidate;break outer;}
+   }
+ }
+ if(state.status!=="running"){send(res,200,{debate:state,complete:true,steps});return;}
+ const claimed=await claimDebateExecutionStep({debateId:id,roundNumber:round,agentRole:role,inputSnapshot:{question:state.question,round,role},leaseSeconds:120});
+ if(!claimed){send(res,202,{debate:state,complete:false,busy:true,steps:await listDebateExecutionSteps(id)});return;}
+ try{
+   const next=await runDebateAgentStep(state,role,round);
+   const ok=await completeDebateExecutionStep(claimed.id,claimed.claim_token!,{debate:next as unknown as Record<string,unknown>});
+   if(!ok){send(res,409,{error:"La réservation de cette étape a expiré. Relance la progression pour reprendre sans écraser un autre traitement."});return;}
+   await saveDebate({...next,userId:user.id,workspaceId:state.workspaceId??null});
+   const latest=await listDebateExecutionSteps(id);
+   send(res,200,{debate:next,complete:next.status!=="running",steps:latest});
+ }catch(error){
+   const message=error instanceof Error?error.message:String(error);
+   await failDebateExecutionStep(claimed.id,claimed.claim_token!,/timeout|temporar|429|503/i.test(message)?"TRANSIENT_AGENT_ERROR":"AGENT_STEP_FAILED",message.slice(0,1000));
+   send(res,503,{error:"Cette étape n’a pas abouti. Le journal a conservé l’échec ; une nouvelle tentative pourra reprendre à cette étape.",code:"AGENT_STEP_FAILED",step:{round,role}});
+ }
+ return;
+}
 if(req.method!=="POST"||(path!=="/debates/run"&&path!=="/api/debates/run")){send(res,404,{error:"Not found"});return;}
-const input=await body(req) as {question?:string;context?:string;workspaceId?:string|null;config?:Partial<DebateConfig>};if(!input.question?.trim()){send(res,400,{error:"question is required"});return;}if(supabasePersistenceEnabled()){await assertSupabaseSchemaReady();}if(input.workspaceId){const workspace=await getWorkspace(input.workspaceId,user.id);if(!workspace||!["owner","admin","editor"].includes(workspace.role)){send(res,403,{error:"Tu ne disposes pas des droits nécessaires dans cet espace de travail."});return;}}const cfg={...config(),...(input.config??{})} as DebateConfig;const debate=await runDebate(input.question.trim(),input.context?.trim()??"",cfg);const savedDebate={...debate,userId:user.id,workspaceId:input.workspaceId??null};await saveDebate(savedDebate);send(res,200,savedDebate);
+const input=await body(req) as {question?:string;context?:string;workspaceId?:string|null;config?:Partial<DebateConfig>};if(!input.question?.trim()){send(res,400,{error:"question is required"});return;}if(!supabasePersistenceEnabled()){send(res,503,{error:"Le lancement progressif nécessite Supabase durablement configuré."});return;}await assertSupabaseSchemaReady();if(input.workspaceId){const workspace=await getWorkspace(input.workspaceId,user.id);if(!workspace||!["owner","admin","editor"].includes(workspace.role)){send(res,403,{error:"Tu ne disposes pas des droits nécessaires dans cet espace de travail."});return;}}const base=config();const cfg:DebateConfig={...base,...(input.config??{}),architect:{...base.architect,...(input.config?.architect??{})},redTeam:{...base.redTeam,...(input.config?.redTeam??{})},judge:{...base.judge,...(input.config?.judge??{})}};const created={id:randomUUID(),userId:user.id,workspaceId:input.workspaceId??null,question:input.question.trim(),context:input.context?.trim()??"",status:"running" as const,rounds:[],config:cfg};await saveDebate(created);send(res,202,{debate:created,complete:false,accepted:true});
 }catch(e){const msg=e instanceof Error?e.message:String(e);console.error("[afe-ci-debate-engine] request failed",e);const providerUnavailable=/DEBATE_PROVIDER_CHAIN_FAILED|_AGENT_FAILED|OPENAI_CONFIG_ERROR|GEMINI_CONFIG_ERROR|_AUTH_ERROR|_PROVIDER_ERROR|_EMPTY_RESPONSE/i.test(msg);const status=/too large/i.test(msg)?413:providerUnavailable?503:/required|invalid|insufficient|refus|not found|introuvable/i.test(msg)?400:500;send(res,status,{error:status===503?"Le service d’intelligence artificielle est indisponible : aucun agent n’a pu terminer son analyse. Réessaie après vérification des fournisseurs configurés.":status===500?"Erreur interne du serveur. Consultez les journaux du déploiement.":msg,code:status===503?"AI_PROVIDER_UNAVAILABLE":undefined});}}
 
 export default handler;
