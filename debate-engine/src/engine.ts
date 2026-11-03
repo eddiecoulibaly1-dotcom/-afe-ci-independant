@@ -158,8 +158,7 @@ export async function runDebate(question: string, context: string | undefined, c
     try {
       architect = await modelCaller<Proposal>({ ...config.architect, system: ARCHITECT_SYSTEM, prompt: architectPrompt(question, context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective), schemaName: "architect_proposal", schema: proposalSchema });
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      return terminalFromLastRound(debate, `continuité automatique activée (${reason})`);
+      throw new Error(`ARCHITECT_AGENT_FAILED (tour ${roundNo}): ${error instanceof Error ? error.message : String(error)}`);
     }
 
     const evidenceAudit = auditClaims(architect.claims);
@@ -168,8 +167,7 @@ export async function runDebate(question: string, context: string | undefined, c
     try {
       partial.redTeam = await modelCaller<Critique>({ ...config.redTeam, system: RED_TEAM_SYSTEM, prompt: redTeamPrompt(question, context, partial), schemaName: "red_team_critique", schema: critiqueSchema });
     } catch (error) {
-      if (debate.rounds.length) return terminalFromLastRound(debate, "la Red Team n'a pas pu terminer l'analyse; dernière décision conservée");
-      return buildContinuityDebate(question, context, config, "la Red Team n'a pas pu terminer l'analyse");
+      throw new Error(`RED_TEAM_AGENT_FAILED (tour ${roundNo}): ${error instanceof Error ? error.message : String(error)}`);
     }
     try {
       const rawJudge = await modelCaller<JudgeDecision>({ ...config.judge, system: JUDGE_SYSTEM, prompt: judgePrompt(question, context, partial, config.convergenceScore), schemaName: "judge_decision", schema: judgeSchema });
@@ -185,8 +183,7 @@ export async function runDebate(question: string, context: string | undefined, c
           }
         : arbitrated;
     } catch (error) {
-      if (debate.rounds.length) return terminalFromLastRound(debate, "l'Arbitre n'a pas pu terminer l'analyse; dernière décision conservée");
-      return buildContinuityDebate(question, context, config, "l'Arbitre n'a pas pu terminer l'analyse");
+      throw new Error(`JUDGE_AGENT_FAILED (tour ${roundNo}): ${error instanceof Error ? error.message : String(error)}`);
     }
     debate.rounds.push(partial);
     if (partial.judge.status === "converged" || partial.judge.status === "provisional") { debate.status = partial.judge.status; debate.finalDecision = partial.judge; return debate; }
