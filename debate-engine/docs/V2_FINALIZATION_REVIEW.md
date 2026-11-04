@@ -78,6 +78,8 @@ Les advisors en lecture seule ont signalé notamment :
 
 Les quatre doublons d'index sont confirmés par introspection SQL : `debate_events_round_idx` / `idx_debate_events_round_id`, `debate_evidence_round_idx` / `idx_debate_evidence_round_id`, `debate_share_links_created_by_idx` / `idx_debate_share_links_created_by`, `debate_shares_shared_by_idx` / `idx_debate_shares_shared_by`. Les définitions sont identiques. Le projet de nettoyage doit conserver un index par paire, après vérification des dépendances et en tenant compte du fait que la base de test ne possède pas les mêmes noms canoniques.
 
+L'introspection des politiques confirme aussi un écart entre environnements : en production, `debates_select_access` et `debates_select_v09_access` ont des prédicats identiques ; `debates_update_access` et `debates_update_v09_access` ont également des prédicats identiques. La base de test ne présente pas ces doublons. La correction de production peut retirer uniquement les deux politiques `*_v09_*` après validation des dépendances, sans modifier les politiques actives ; ne pas exécuter cette correction pendant la présente étape.
+
 Ces constats doivent être traités dans des migrations correctives séparées, avec vérification de l'usage et des autorisations. Aucun index ni aucune politique n'a été supprimé ou modifié ici.
 
 ## 6. Divergence Git avec main
