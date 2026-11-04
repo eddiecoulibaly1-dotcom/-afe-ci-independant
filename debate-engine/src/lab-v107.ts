@@ -21,6 +21,7 @@ let h='<div class="report-box">';
 h+='<div class="report-verdict '+E(r.decisionLabel.toLowerCase())+'">'+E(r.decisionLabel.replace('_',' '))+'</div>';
 h+='<h2>Synthèse exécutive</h2><p>'+E(r.executiveSummary)+'</p><div class="report-note">'+E(r.decisionRationale)+'</div>';
 h+='<p class="muted">Niveau de confiance : '+E(r.confidence)+'</p>';
+if(r.reasoning){h+='<h2>Analyse du raisonnement contradictoire</h2><div class="report-grid">'+[['Décomposition de la question',r.reasoning.questionDecomposition],['Meilleurs arguments en faveur',r.reasoning.strongestCaseFor],['Meilleurs arguments contre',r.reasoning.strongestCaseAgainst],['Désaccords décisifs',r.reasoning.decisiveDisagreements],['Hypothèses falsifiables',r.reasoning.falsifiableHypotheses],['Mécanismes causaux',r.reasoning.causalMechanisms],['Conditions de renversement',r.reasoning.decisionReversalConditions]].map(x=>'<div class="report-item"><b>'+E(x[0])+'</b>'+UL(x[1])+'</div>').join('')+'</div>'}
 h+='<h2>1. Évaluation des preuves</h2><div class="report-grid">';
 h+='<div class="report-item"><b>Faits étayés</b>'+UL(r.evidence.verified)+'</div><div class="report-item"><b>Hypothèses</b>'+UL(r.evidence.hypotheses)+'</div><div class="report-item"><b>Non vérifié</b>'+UL(r.evidence.unverified)+'</div><div class="report-item"><b>Données manquantes</b>'+UL(r.evidence.gaps)+'</div></div>';
 if(r.evidence.references?.length){h+='<h3>Traçabilité des références</h3><ul>'+r.evidence.references.map(x=>'<li><b>'+E(x.claim)+'</b> — '+E(x.status)+' : '+UL(x.references)+'</li>').join('')+'</ul>'}
