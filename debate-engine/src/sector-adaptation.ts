@@ -12,16 +12,10 @@ export interface SectorProfile {
   analysisInstructions: string[];
 }
 
-const COMMON = [
-  { id: "impact", label: "Impact sur les bénéficiaires", weight: 15, evidenceNeeded: ["bénéficiaires", "résultats mesurés", "effets distributifs"] },
-  { id: "economics", label: "Viabilité économique et efficience", weight: 15, evidenceNeeded: ["coûts complets", "bénéfices", "coût unitaire"] },
-  { id: "feasibility", label: "Faisabilité opérationnelle et technique", weight: 15, evidenceNeeded: ["capacités", "délais", "dépendances"] },
-  { id: "governance", label: "Conformité, gouvernance et intégrité", weight: 15, evidenceNeeded: ["règles applicables", "autorisations", "contrôles"] },
-  { id: "evidence", label: "Solidité et actualité des preuves", weight: 15, evidenceNeeded: ["sources primaires", "dates", "méthodologies"] },
-  { id: "risk", label: "Maîtrise des risques et résilience", weight: 10, evidenceNeeded: ["risques critiques", "sensibilités", "plans de repli"] },
-  { id: "execution", label: "Capacité d'exécution et adoption", weight: 10, evidenceNeeded: ["acteurs", "incitations", "indicateurs d'adoption"] },
-  { id: "optionality", label: "Réversibilité et valeur des options", weight: 5, evidenceNeeded: ["coûts irrécupérables", "jalons", "conditions d'arrêt"] }
-] as const;
+const WEIGHTS = [15, 15, 15, 15, 10, 10, 10, 5, 5] as const;
+const IDS = ["buyerValue","sellerValue","coteDIvoireFit","marketplaceLiquidity","differentiation","trustFraud","technicalFeasibility","acquisition","monetization"] as const;
+const COMMON_LABELS = ["Valeur pour les bénéficiaires","Valeur pour les opérateurs et partenaires","Adéquation au contexte local","Demande, capacité et dynamique du marché","Avantage distinctif","Conformité, confiance et intégrité","Faisabilité technique et opérationnelle","Adoption et mobilisation des acteurs","Viabilité économique et financement"] as const;
+const COMMON = IDS.map((id,i)=>({id,label:COMMON_LABELS[i],weight:WEIGHTS[i],evidenceNeeded:["indicateurs observés","sources primaires","méthode et période de mesure"]}));
 
 const PROFILES: Record<Sector, Omit<SectorProfile, "sector">> = {
   public_policy: { label:"Politiques publiques",scope:"efficacité, équité, soutenabilité budgétaire et capacité institutionnelle",criteria:[...COMMON].map(x=>({...x})),indicators:["coût public total","coût par bénéficiaire","couverture","effet distributif","efficacité budgétaire","impact mesuré"],sourceDomains:["gouv.ci","ins.ci","bceao.int","worldbank.org","imf.org","afdb.org","un.org"],analysisInstructions:["Distinguer annonce politique, budget voté, engagement, décaissement et réalisation.","Examiner les effets distributifs, les coûts récurrents et les capacités institutionnelles."] },
