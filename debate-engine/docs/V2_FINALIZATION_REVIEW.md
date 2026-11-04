@@ -76,6 +76,8 @@ Les advisors en lecture seule ont signalé notamment :
 - quatre paires d'index dupliqués sur `debate_events`, `debate_evidence`, `debate_share_links` et `debate_shares` ;
 - plusieurs politiques permissives concurrentes, y compris sur `debates`.
 
+Les quatre doublons d'index sont confirmés par introspection SQL : `debate_events_round_idx` / `idx_debate_events_round_id`, `debate_evidence_round_idx` / `idx_debate_evidence_round_id`, `debate_share_links_created_by_idx` / `idx_debate_share_links_created_by`, `debate_shares_shared_by_idx` / `idx_debate_shares_shared_by`. Les définitions sont identiques. Le projet de nettoyage doit conserver un index par paire, après vérification des dépendances et en tenant compte du fait que la base de test ne possède pas les mêmes noms canoniques.
+
 Ces constats doivent être traités dans des migrations correctives séparées, avec vérification de l'usage et des autorisations. Aucun index ni aucune politique n'a été supprimé ou modifié ici.
 
 ## 6. Divergence Git avec main
@@ -93,16 +95,16 @@ Le contenu de plusieurs fichiers critiques de la branche de travail correspond d
 - `src/auth.ts` : conserver la clé publique uniquement pour la vérification du jeton ; les clés secrètes restent strictement côté serveur.
 - `src/schema.ts` : maintenir l'égalité récursive entre propriétés déclarées et champs requis pour les schémas stricts.
 
-## 8. Critères de clôture encore obligatoires
+## 8. Vérifications exécutées et points restant à clôturer
 
-Cette branche ne peut être déclarée prête à fusionner qu'après :
+<PRIVATE_REVIEW>La CI GitHub Actions a exécuté `npm ci`, `npm run typecheck` et `npm test` sur le commit `b2fba4038d8347422c9dc707bea84e938fb00410` : installation réussie, TypeScript réussi, 56 tests réussis, 0 échec. Le premier passage avait révélé le défaut de détection des intentions financières ; le correctif a été intégré puis confirmé par le second passage.</PRIVATE_REVIEW>
 
-1. Exécution réussie de `npm ci`, `npm run typecheck` et `npm test` sur la branche d'audit.
-2. Vérification des résultats CI et correction de tout échec.
-3. Revue détaillée des politiques RLS et fonctions RPC réellement présentes dans les deux bases.
-4. Réconciliation contrôlée des six commits d'ascendance absents de la branche V2.
-5. Vérification du déploiement Preview et de la version servie par `/health`.
-6. Validation humaine avant toute fusion vers `main`, migration ou promotion Production.
+Restent obligatoires avant fusion :
+
+1. Revue détaillée des politiques RLS et fonctions RPC réellement présentes dans les deux bases.
+2. Réconciliation contrôlée des six commits d'ascendance absents de la branche V2 (sans fusion automatique tant que l'équivalence de contenu n'est pas démontrée).
+3. Vérification de la version `/health` sur le Preview ; les statuts Vercel de déploiement Preview sont distincts de la validation CI.
+4. Validation humaine avant toute fusion vers `main`, migration ou promotion Production.
 
 ## 9. Interdictions de cette passe
 
