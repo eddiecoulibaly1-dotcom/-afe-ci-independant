@@ -57,6 +57,25 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
   };
 }
 
+function applyResearchQualityGate(judge: JudgeDecision, research: import("./research-intelligence.js").ResearchBundle | undefined, finalRound: boolean): JudgeDecision {
+  const sources = research?.sources ?? [];
+  const independentDomains = new Set(sources.filter(source => source.contentRetrieved).map(source => source.domain));
+  const institutional = sources.some(source => source.contentRetrieved && (source.sourceClass === "official" || source.sourceClass === "international"));
+  if (independentDomains.size >= 2 && institutional) return judge;
+  const reason = research?.status === "not_configured"
+    ? "La recherche documentaire externe n'est pas configurée sur le serveur."
+    : "Le dossier documentaire ne contient pas encore au moins deux sources indépendantes ouvertes, dont une source institutionnelle ou internationale.";
+  return {
+    ...judge,
+    status: judge.winner === "neither" ? "unresolved" : (finalRound ? "provisional" : "revise"),
+    confidence: "low",
+    decision: (judge.winner === "neither" ? "Arbitrage non tranché. " : "Décision provisoire. ") + reason,
+    rationale: [...judge.rationale, reason, "La consultation de pages web ne constitue pas à elle seule une validation sémantique des affirmations."],
+    risks: [...(judge.risks ?? []), "Risque de conclusion insuffisamment documentée."],
+    tests: [...new Set([...(judge.tests ?? []), "Compléter la recherche, ouvrir les sources primaires et corroborer les affirmations décisives auprès de domaines indépendants."])]
+  };
+}
+
 export function applyConvergencePolicy(judge: JudgeDecision, unresolvedQuestions: number, criticalAttacks: number, finalRound: boolean): JudgeDecision {
   const scored = finalizeJudgeScore(judge, unresolvedQuestions, criticalAttacks);
   return buildActionableDecision(scored, scored.evidenceAudit ?? { records: [], unsupportedCriticalClaims: [], unsupportedHighImpactClaims: [], pendingVerificationClaims: [], confidence: 1, blocking: false, nextTests: [] }, finalRound);
@@ -245,12 +264,12 @@ export async function runDebateAgentStep(
         prompt: judgePrompt(debate.question, debate.context, round, cfg.convergenceScore) + researchContext,
         schemaName: "judge_decision", schema: judgeSchema
       });
-      const arbitrated = applyConvergencePolicy(
+      const arbitrated = applyResearchQualityGate(applyConvergencePolicy(
         { ...rawJudge, evidenceAudit: round.evidenceAudit },
         round.redTeam.unresolvedQuestions.length,
         round.redTeam.attacks.filter(attack => attack.severity === "critical").length,
         finalRound
-      );
+      ), research, finalRound);
       const qa = round.quantitativeAudit;
       round = { ...round, judge: qa?.applicable && !canDeclareEconomicWinner(qa) ? {
         ...arbitrated, status: finalRound ? "unresolved" : "revise", winner: "neither", confidence: "low",
