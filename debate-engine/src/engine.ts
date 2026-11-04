@@ -6,6 +6,8 @@ import { callModel } from "./providers.js";
 import { ARCHITECT_SYSTEM, RED_TEAM_SYSTEM, JUDGE_SYSTEM, architectPrompt, redTeamPrompt, judgePrompt } from "./prompts.js";
 import { finalizeJudgeScore, scoreDelta } from "./scoring.js";
 import { auditClaims } from "./evidence.js";
+import { detectSector, sectorPromptGuidance } from "./sector-adaptation.js";
+import { researchForDebate, researchPromptContext } from "./research-intelligence.js";
 
 const emptyScorecard = (): Scorecard => ({ buyerValue: 0, sellerValue: 0, coteDIvoireFit: 0, marketplaceLiquidity: 0, differentiation: 0, trustFraud: 0, technicalFeasibility: 0, acquisition: 0, monetization: 0 });
 const DECISION_GAP = 2.5;
@@ -205,12 +207,15 @@ export async function runDebateAgentStep(
 ): Promise<Debate> {
   const finalRound = roundNo >= (debate.config ?? defaultConfig()).maxRounds;
   const cfg = debate.config ?? defaultConfig();
+  const sectorProfile = detectSector(debate.question, debate.context ?? "");
+  const research = await researchForDebate({ question: debate.question, context: debate.context, role, profile: sectorProfile, previous: debate.research });
+  const researchContext = "\\n\\n" + sectorPromptGuidance(sectorProfile) + "\\n\\n" + researchPromptContext(research);
   let round = debate.rounds.find(item => item.round === roundNo);
   if (role === "architect") {
     if (round?.architect) throw new Error("STEP_ALREADY_COMPLETED");
     const architect = await modelCaller<Proposal>({
       ...cfg.architect, system: ARCHITECT_SYSTEM,
-      prompt: architectPrompt(debate.question, debate.context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective),
+      prompt: architectPrompt(debate.question, debate.context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective) + researchContext,
       schemaName: "architect_proposal", schema: proposalSchema
     });
     const evidenceAudit = auditClaims(architect.claims);
@@ -229,7 +234,7 @@ export async function runDebateAgentStep(
       if (round.redTeamCompleted || round.redTeam.attacks.length > 0 || round.redTeam.unresolvedQuestions.length > 0 || round.redTeam.verdict !== "challenge") throw new Error("STEP_ALREADY_COMPLETED");
       const redTeam = await modelCaller<Critique>({
         ...cfg.redTeam, system: RED_TEAM_SYSTEM,
-        prompt: redTeamPrompt(debate.question, debate.context, round),
+        prompt: redTeamPrompt(debate.question, debate.context, round) + researchContext,
         schemaName: "red_team_critique", schema: critiqueSchema
       });
       round = { ...round, redTeam, redTeamCompleted: true };
@@ -237,7 +242,7 @@ export async function runDebateAgentStep(
       if (round.judge.decision) throw new Error("STEP_ALREADY_COMPLETED");
       const rawJudge = await modelCaller<JudgeDecision>({
         ...cfg.judge, system: JUDGE_SYSTEM,
-        prompt: judgePrompt(debate.question, debate.context, round, cfg.convergenceScore),
+        prompt: judgePrompt(debate.question, debate.context, round, cfg.convergenceScore) + researchContext,
         schemaName: "judge_decision", schema: judgeSchema
       });
       const arbitrated = applyConvergencePolicy(
@@ -257,7 +262,7 @@ export async function runDebateAgentStep(
     }
   }
   const rounds = debate.rounds.filter(item => item.round !== roundNo).concat(round).sort((a,b)=>a.round-b.round);
-  const updated: Debate = { ...debate, rounds, status: "running" };
+  const updated: Debate = { ...debate, sector: sectorProfile.sector, research, rounds, status: "running" };
   if (role === "judge" && finalRound) {
     updated.finalDecision = round.judge;
     updated.status = round.judge.status === "converged" || round.judge.status === "provisional" ? round.judge.status : "unresolved";
