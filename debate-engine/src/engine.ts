@@ -238,7 +238,7 @@ export async function runDebateAgentStep(
       schemaName: "architect_proposal", schema: proposalSchema
     });
     const evidenceAudit = auditClaims(architect.claims);
-    const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(debate.question));
+    const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(debate.question) && sectorProfile.sector === "agriculture" && /volaille|poulet|pintade|élevage|avicole|sujet animal/i.test(debate.question + " " + (debate.context ?? "")));
     round = {
       round: roundNo, architect, evidenceAudit, quantitativeAudit,
       redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] },
