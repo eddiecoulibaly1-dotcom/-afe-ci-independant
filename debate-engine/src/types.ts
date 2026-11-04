@@ -14,7 +14,7 @@ export interface Proposal { position:string; claims:Claim[]; assumptions:string[
 export interface Attack { claimId?:string; severity:"low"|"medium"|"high"|"critical"; argument:string; evidenceNeeded:string[]; counterproposal?:string; confidence:number; }
 export interface Critique { verdict:"challenge"|"accept"|"mixed"; attacks:Attack[]; strongestAlternative?:string; unresolvedQuestions:string[]; }
 export interface EvidenceRecord { claimId:string; classification:"fact"|"hypothesis"|"opinion"; status:"supported"|"pending_verification"|"unsupported"|"not_required"; evidenceRefs:string[]; rationale:string; confidence:number; impact:"low"|"medium"|"high"|"critical"; }
-export interface EvidenceAudit { records:EvidenceRecord[]; unsupportedCriticalClaims:string[]; unsupportedHighImpactClaims:string[]; pendingVerificationClaims?:string[]; confidence:number; blocking:boolean; nextTests:string[]; }
+export interface EvidenceAudit { records:EvidenceRecord[]; unsupportedCriticalClaims:string[]; unsupportedHighImpactClaims:string[]; pendingVerificationClaims:string[]; confidence:number; blocking:boolean; nextTests:string[]; }
 export interface StrategicReport {
   financialCalculations?: StrategicFinancialCalculation;
   decisionLabel: "GO" | "CONDITIONAL_GO" | "NO_GO";
