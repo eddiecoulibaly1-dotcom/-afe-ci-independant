@@ -82,11 +82,20 @@ L'introspection des politiques confirme aussi un écart entre environnements : e
 
 Ces constats doivent être traités dans des migrations correctives séparées, avec vérification de l'usage et des autorisations. Aucun index ni aucune politique n'a été supprimé ou modifié ici.
 
-## 6. Divergence Git avec main
+## 6. Réconciliation de contenu entre main et feature — vérification effectuée
 
-Au moment du contrôle, `main` et `feature/debate-engine-v2-1` étaient divergentes : la branche V2 avait 175 commits d'avance et 6 commits d'ascendance manquants. Les six changements repérés concernent l'orchestration durable, le schéma strict des propositions, la stratégie de reprise des fournisseurs, la limite de tentatives et les tests de compatibilité.
+La comparaison des arbres Git complets a été exécutée entre `main` (`15e1e6b...`) et `feature/debate-engine-v2-1` (`1a3dcba...`). Résultat :
 
-Le contenu de plusieurs fichiers critiques de la branche de travail correspond déjà à des changements observés dans `main` (notamment le code de fournisseurs et les contraintes de schéma), mais une équivalence complète de l'arbre n'a pas été démontrée. Ne pas fusionner les branches sur la seule base des messages de commits. Une comparaison de contenu ciblée des six changements doit précéder toute réconciliation d'historique.
+- Arbre main : 85 fichiers suivis ; arbre feature : 96 fichiers suivis.
+- Dans le périmètre `debate-engine/` et `.github/workflows/`, 88 chemins ont été comparés.
+- 12 différences seulement : 11 fichiers propres à la branche V2 (modules de risque, arbitrage, scénarios, audit, reporting, routeur, registre d'agents et documents V2), plus un seul fichier différent déjà existant dans les deux branches : `debate-engine/src/server.ts`.
+- Les 84 autres fichiers suivis par main sont strictement identiques (même empreinte Git blob) dans la branche feature.
+
+Les six commits d'ascendance absents sont donc **déjà représentés dans le contenu de la branche V2** pour leurs changements utiles : CI, schéma JSON strict, retries multi-fournisseurs, reprise bornée des étapes, tests de compatibilité, migrations et documentation. Aucun cherry-pick de ces six commits n'est nécessaire ; il risquerait de réintroduire des versions anciennes ou des doublons.
+
+Le seul fichier divergent est `server.ts`. La version V2 utilise `gemini-3.8-flash` comme modèle par défaut, cohérent avec `providers.ts`, tandis que la version main utilise encore `gemini-2.5-flash`. La version feature est donc retenue. La documentation officielle Google confirme que `gemini-3.8-flash` est un modèle stable et le modèle Flash recommandé actuellement. <https://ai.google.dev/gemini-api/docs/models>
+
+**Décision : réconciliation du contenu validée ; réconciliation de l'historique Git non effectuée.** Les branches restent divergentes de 175 commits d'avance côté feature et 6 commits d'avance côté main. Une fusion de l'historique n'est pas requise pour récupérer les modifications, et ne doit pas être faite avant la revue des protections Git et la décision de stratégie de branche.
 
 ## 7. Fichiers modifiés/ajoutés à conserver sous surveillance
 
@@ -104,7 +113,7 @@ La CI GitHub Actions a exécuté `npm ci`, `npm run typecheck` et `npm test` sur
 Restent obligatoires avant fusion :
 
 1. Revue détaillée des politiques RLS et fonctions RPC réellement présentes dans les deux bases.
-2. Réconciliation contrôlée des six commits d'ascendance absents de la branche V2 (sans fusion automatique tant que l'équivalence de contenu n'est pas démontrée).
+2. Décision explicite sur la stratégie d'historique Git (merge commit, rebase ou conservation des branches) ; les six changements main sont déjà présents dans l'arbre V2, donc aucun cherry-pick de contenu n'est requis.
 3. Vérification de la version `/health` sur le Preview ; les statuts Vercel de déploiement Preview sont distincts de la validation CI.
 4. Validation humaine avant toute fusion vers `main`, migration ou promotion Production.
 
