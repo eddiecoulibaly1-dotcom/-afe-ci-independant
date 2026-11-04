@@ -2,6 +2,7 @@ import { callModel } from "./providers.js";
 import type { Debate, StrategicReport } from "./types.js";
 import { buildStrategicEvidenceSummary } from "./strategic-evidence.js";
 import { calculateStrategicFinancialModel, type StrategicFinancialInputs } from "./strategic-financial.js";
+import { detectSector } from "./sector-adaptation.js";
 
 const nullableNumber = { anyOf: [{ type: "number" }, { type: "null" }] } as const;
 const strings = { type: "array", items: { type: "string" } } as const;
@@ -71,6 +72,7 @@ export function buildStrategicReportPrompt(debate: Debate, financialInputs: Stra
     })),
     financialInputs,
     sector: debate.sector ?? "general",
+    sectorProfile: detectSector(debate.question, debate.context ?? ""),
     research: debate.research ?? null,
     finalDecision: debate.finalDecision ? {
       status: debate.finalDecision.status,
@@ -89,7 +91,7 @@ export function buildStrategicReportPrompt(debate: Debate, financialInputs: Stra
     JSON.stringify(payload, null, 2) +
     "\n\nProduis un rapport de décision stratégique complet, substantiel et exploitable, dans le style d'une note de comité d'investissement. " +
     "Le rapport doit être comparable à une analyse professionnelle comprenant synthèse exécutive, verdict explicite, preuves, comparaison des options, modèle financier, scénarios, économie unitaire, risques, feuille de route, expérimentation et décisions immédiates. " +
-    "Ne répète pas simplement les tours : transforme-les en analyse structurée, hiérarchisée et actionnable. Décompose la question, formule le meilleur argument de chaque camp, isole les désaccords décisifs, les mécanismes causaux, les hypothèses falsifiables et les conditions concrètes qui inverseraient la décision. Signale explicitement les raisonnements circulaires, les glissements de causalité, les comparaisons non homogènes et les conclusions plus fortes que leurs prémisses. " +
+    "Ne répète pas simplement les tours : transforme-les en analyse structurée, hiérarchisée et actionnable. Identifie toutes les options explicitement présentes dans la question, le contexte, les alternatives de l'Architecte et la meilleure alternative de la Red Team. Évalue chacune dans optionsComparison avec les mêmes critères sectoriels, le même horizon, la même géographie et les mêmes unités ; n'en omets aucune et ne fusionne pas artificiellement des options distinctes. Décompose la question, formule le meilleur argument de chaque camp, isole les désaccords décisifs, les mécanismes causaux, les hypothèses falsifiables et les conditions concrètes qui inverseraient la décision. Signale explicitement les raisonnements circulaires, les glissements de causalité, les comparaisons non homogènes et les conclusions plus fortes que leurs prémisses. " +
     "RÈGLES DE PREUVE : exploite le dossier research fourni. Cite exclusivement les identifiants SRC présents et leurs URL exactes. Distingue une page effectivement ouverte d’un simple extrait de recherche. L’ouverture d’une page ne prouve pas automatiquement chaque affirmation qu’elle contient. Vérifie date, période, géographie, unité, méthode et indépendance des sources. N’invente aucun lien, organisme, étude, citation, source ou donnée. Recherche les éléments contradictoires. Si la recherche est désactivée ou incomplète, indique-le explicitement. " +
     "RÈGLES FINANCIÈRES : n'invente aucun chiffre, prix, coût, taux, volume, revenu, CAC, LTV ou résultat. Reprends les chiffres explicitement fournis. Une valeur inconnue doit être null et son statut doit être unknown. Les scénarios qualitatifs restent possibles avec des valeurs numériques nulles. Tout chiffre calculé doit être une opération arithmétique directe sur des valeurs fournies et doit être expliqué. Les calculs financiers de référence seront recalculés par un module déterministe ; ne prétends pas avoir effectué de calcul que les entrées ne permettent pas. Les hypothèses de travail explicitement proposées par l'utilisateur doivent être identifiées comme telles, jamais comme des observations. " +
     "DÉCISION : choisis obligatoirement GO, CONDITIONAL_GO ou NO_GO. Si les données sont insuffisantes, choisis CONDITIONAL_GO ou NO_GO selon les éléments disponibles et précise les conditions vérifiables, plutôt que de produire une conclusion indéterminée. " +
