@@ -98,6 +98,17 @@ const sl=path.match(/^\/debates\/([^/]+)\/share-links$/);if(sl){const id=decodeU
 const slr=path.match(/^\/debates\/([^/]+)\/share-links\/([^/]+)$/);if(slr&&req.method==="DELETE"){const id=decodeURIComponent(slr[1]);if(!await getDebate(id,user.id))throw new Error("Débat introuvable ou accès refusé");await revokeShareLink(id,user.id,decodeURIComponent(slr[2]));send(res,200,{ok:true});return;}
 const dw=path.match(/^\/debates\/([^/]+)\/workspace$/);if(dw&&req.method==="POST"){const id=decodeURIComponent(dw[1]),i=await body(req) as {workspaceId?:string|null};await setDebateWorkspace(id,user.id,i.workspaceId??null);send(res,200,await getDebate(id,user.id));return;}
 if(req.method==="GET"&&path==="/debates"){send(res,200,await listDebates(user.id));return;}if(req.method==="GET"&&/^\/debates\/[^/]+$/.test(path)){const id=decodeURIComponent(path.slice(9)),d=await getDebate(id,user.id);if(!d){send(res,404,{error:"Debate not found"});return;}send(res,200,d);return;}
+const reportMatch=path.match(/^\\/debates\\/([^/]+)\\/report$/);
+if(reportMatch&&req.method==="POST"){
+ const id=decodeURIComponent(reportMatch[1]),debate=await getDebate(id,user.id);
+ if(!debate){send(res,404,{error:"Débat introuvable"});return;}
+ if(debate.status==="running"||!debate.finalDecision){send(res,409,{error:"Le débat doit être terminé avant la génération du rapport stratégique."});return;}
+ const report=await generateStrategicReport(debate);
+ const updated={...debate,finalDecision:{...debate.finalDecision,strategicReport:report}};
+ await saveDebate(updated);
+ send(res,200,{debateId:id,report});
+ return;
+}
 const advanceMatch=path.match(/^\/debates\/([^/]+)\/advance$/);
 const progressMatch=path.match(/^\/debates\/([^/]+)\/progress$/);
 if(progressMatch&&req.method==="GET"){
