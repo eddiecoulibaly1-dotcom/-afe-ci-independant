@@ -110,10 +110,31 @@ export async function researchForDebate(args:{question:string;context?:string;ro
  if(sources.every(s=>!s.contentRetrieved))gaps.push("Les pages des résultats n'ont pas pu être ouvertes ; seuls des extraits de moteur de recherche sont disponibles.");
  return {status:retrieved.length?"ready":sources.length?"partial":"unavailable",provider:"tavily",generatedAt:new Date().toISOString(),sector:args.profile.label,queries,sources,gaps,notes:[...new Set(notes)].slice(0,8)};
 }
+export function sanitizeResearchFindings(findings:ResearchFinding[]|undefined,sources:ResearchSource[]):ResearchFinding[] {
+ const available=new Set(sources.filter(s=>s.contentRetrieved).map(s=>s.id));
+ return (findings??[]).slice(0,40).map(item=>{
+  const sourceIds=[...new Set((item.sourceIds??[]).filter(id=>available.has(id)))];
+  const hasValue=typeof item.value==="number"&&Number.isFinite(item.value);
+  const sourceBacked=item.basis==="source_extracted"&&sourceIds.length>0;
+  return {
+   ...item, metric:String(item.metric??"").trim().slice(0,180),
+   unit:String(item.unit??"").trim().slice(0,60),
+   currency:typeof item.currency==="string"?item.currency.trim().slice(0,12):null,
+   geography:String(item.geography??"").trim().slice(0,120),
+   referencePeriod:String(item.referencePeriod??"").trim().slice(0,80),
+   publishedAt:typeof item.publishedAt==="string"&&Number.isFinite(Date.parse(item.publishedAt))?new Date(item.publishedAt).toISOString():null,
+   sourceIds, value:hasValue&&(item.basis!=="source_extracted"||sourceBacked)?item.value:null,
+   basis:hasValue&&(item.basis==="source_extracted"&&!sourceBacked)?"unknown":item.basis,
+   methodology:String(item.methodology??"").trim().slice(0,500),
+   caveat:String(item.caveat??"").trim().slice(0,500)
+  };
+ }).filter(item=>item.metric.length>0);
+}
 export function researchPromptContext(bundle?:ResearchBundle):string {
  if(!bundle)return "DOSSIER DOCUMENTAIRE : aucune recherche intégrée à cette étape.";
  const lines=["DOSSIER DOCUMENTAIRE EXTERNE — "+bundle.status,"Secteur : "+bundle.sector,"Recherches : "+bundle.queries.join(" | "),"Sources disponibles :"];
  for(const s of bundle.sources.slice(0,7)){lines.push("["+s.id+"] "+s.title+" | "+s.url+" | domaine="+s.domain+" | classe="+s.sourceClass+" | publication="+(s.publishedAt??"date inconnue")+" | consultée="+s.retrievedAt+" | contenu ouvert="+s.contentRetrieved);if(s.content)lines.push("Extrait consulté : "+s.content.slice(0,1800));}
+ if(bundle.findings?.length){lines.push("DONNÉES CHIFFRÉES EXTRAITES (non encore validées sémantiquement) :");for(const f of bundle.findings.slice(0,40))lines.push(f.metric+" = "+(f.value===null?"inconnue":f.value)+" "+f.unit+" | devise="+(f.currency??"sans objet")+" | zone="+f.geography+" | période="+f.referencePeriod+" | publication="+(f.publishedAt??"inconnue")+" | nature="+f.basis+" | sources="+f.sourceIds.join(",")+" | méthode="+f.methodology+" | réserve="+f.caveat);}
  lines.push("LACUNES : "+bundle.gaps.join(" | "),"NOTES : "+bundle.notes.join(" | "));
  lines.push("RÈGLES : cite les identifiants [SRC-...] pour les affirmations soutenues. L'ouverture d'une page prouve uniquement que son contenu a été récupéré, pas que toutes ses affirmations sont exactes. Vérifie date, période, géographie, unité et méthodologie. Recherche aussi les preuves contraires. Une seule source ne constitue pas une corroboration indépendante. Ne transforme jamais un extrait en donnée certaine sans contrôle.");
  return lines.join("\n");
