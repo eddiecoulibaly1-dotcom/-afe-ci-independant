@@ -182,8 +182,6 @@ export async function runDebate(question: string, context: string | undefined, c
       throw new Error(`ARCHITECT_AGENT_FAILED (tour ${roundNo}): ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    const extractedFindings = sanitizeResearchFindings(architect.researchFindings, research.sources);
-    research = { ...research, findings: [...(research.findings ?? []), ...extractedFindings].slice(0, 40) };
     const evidenceAudit = auditClaims(architect.claims);
     const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(question));
     const partial: DebateRound = { round: roundNo, architect, evidenceAudit, quantitativeAudit, redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] }, redTeamCompleted: false, judge: { status: "revise", winner: "neither", architectScore: 0, redTeamScore: 0, architectScorecard: emptyScorecard(), redTeamScorecard: emptyScorecard(), acceptedClaims: [], rejectedClaims: [], criticalDisagreements: [], decision: "", rationale: [], evidenceAudit }, createdAt: new Date().toISOString() };
@@ -239,6 +237,8 @@ export async function runDebateAgentStep(
       prompt: architectPrompt(debate.question, debate.context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective) + researchContext,
       schemaName: "architect_proposal", schema: proposalSchema
     });
+    const extractedFindings = sanitizeResearchFindings(architect.researchFindings, research.sources);
+    research = { ...research, findings: [...(research.findings ?? []), ...extractedFindings].slice(0, 40) };
     const evidenceAudit = auditClaims(architect.claims);
     const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(debate.question) && sectorProfile.sector === "agriculture" && /volaille|poulet|pintade|élevage|avicole|sujet animal/i.test(debate.question + " " + (debate.context ?? "")));
     round = {
