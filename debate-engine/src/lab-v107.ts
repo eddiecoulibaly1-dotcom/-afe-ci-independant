@@ -60,7 +60,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
 export const LAB_HTML = BASE_HTML
   .replace("const app=$('app');if(app){app.innerHTML=", "const app=$('app');if(app){app.dataset.debateId=id;app.innerHTML=")
-  .replace("AFE-CI · V1.1.1", "AFE-CI · V1.1.4")
+  .replace("AFE-CI · V1.1.1", "AFE-CI · V1.2.0")
   .replace("</body>", REPORT_UI + "</body>");
 
 const LAB_SW = BASE_SW.replace("afe-ci-v109", "afe-ci-v114");
