@@ -212,3 +212,44 @@ Cela explique la divergence de 175 commits d'avance / 6 commits en retard : elle
 Ne pas cherry-pick ni fusionner les six commits de `main` en bloc : cela risquerait de rejouer des modifications déjà présentes et de créer des conflits inutiles. Conserver le `server.ts` de la branche V2, car son défaut Gemini `3.8-flash` est cohérent avec le défaut de `providers.ts` ; la version `main` utilise `2.5-flash` dans ce seul point, créant une incohérence avec le fournisseur. Cette différence est intentionnelle et doit rester couverte par un test de configuration.
 
 **Conclusion :** réconciliation de contenu validée en lecture seule. La divergence d'historique ne nécessite pas de fusion de code à ce stade. La prochaine réconciliation devra porter sur la protection des branches et la référence de baseline, avec confirmation humaine avant tout déplacement de référence.
+
+
+## 11. Addendum de réconciliation — 2026-11-04
+
+### Protections GitHub
+
+L'utilisateur a confirmé la création et l'activation des deux Rulesets visibles dans GitHub :
+- `PROTECTION-BASELINE-V1.0.7`, ciblant `baseline/v1.0.7-final` ;
+- `PROTECTION-ARCHIVE-V1.0.7`, ciblant `archive/v1.0.7-immutable`.
+
+Les captures montrent les deux règles en statut **Active**, une liste de bypass vide et trois règles de branche par Ruleset. Les captures précédentes montrent les règles restrict updates, restrict deletions et block force pushes sélectionnées. Cette protection ne doit pas être étendue à `main` ou à la branche d'audit par cette passe.
+
+### Réconciliation Supabase effectuée en Test
+
+Deux écarts effectifs ont été corrigés sur `afe-ci-test` :
+1. La fonction `claim_debate_execution_step` limitait les tentatives à 3 alors que le code SQL versionné et Production utilisent 8. La migration `20261103231000_afe_ci_debate_execution_step_recovery_limit` a été appliquée ; l'introspection confirme désormais `attempt_count < 8`.
+2. Les politiques de gestion des membres workspace étaient owner-only en Test, contrairement à Production et au contrôle d'accès applicatif owner/admin. La migration `20261104130000_afe_ci_workspace_admin_membership_alignment` a été appliquée ; les politiques `admin_insert/update/delete` sont présentes. Cette migration ne donne aucun nouveau privilège SQL à `authenticated`.
+
+Les deux opérations sont enregistrées dans l'historique des migrations Test. Les index et politiques redondants ciblés par la migration de nettoyage sont absents de Test.
+
+### Production — aucun changement appliqué
+
+L'introspection confirme toujours en Production les quatre index redondants et les deux paires de politiques RLS redondantes sur `debates`. La migration `20261104120000_afe_ci_debate_duplicate_policy_index_cleanup.sql` est prête dans la branche d'audit, mais elle n'a pas été exécutée. Son exécution nécessite une sauvegarde récente dont la restauration est vérifiée, une fenêtre calme et une autorisation explicite, car les suppressions d'index prennent des verrous.
+
+La fonction Production limite déjà les tentatives à 8, mais l'historique Supabase ne contient pas la migration correspondante : l'état fonctionnel est bon, la traçabilité historique reste à documenter. Aucune ligne de `schema_migrations` ne doit être ajoutée manuellement.
+
+### CI et baseline de code
+
+Le commit `64c2237bdf259fd81aedae8457ae15817300de4d` a été vérifié par le workflow affiché par l'utilisateur : installation, TypeScript et 60 tests réussis. Depuis ce commit, deux tests statiques supplémentaires ont été ajoutés pour verrouiller les migrations de recovery limit et d'alignement des politiques workspace. Le résultat CI de ce nouveau HEAD doit être vérifié avant de déclarer la passe technique complètement verte.
+
+Le registre exhaustif des migrations et des états observés est maintenu dans `debate-engine/docs/SUPABASE_MIGRATION_RECONCILIATION_REGISTER.md`.
+
+### Points de sortie restant obligatoires
+
+- CI sur le HEAD courant après ajout des deux tests.
+- Tests RLS multi-utilisateurs (owner, admin, editor, viewer, utilisateur extérieur), au-delà de la simple introspection des politiques.
+- Sauvegarde/restauration vérifiée et autorisation avant nettoyage des index/politiques Production.
+- Traçabilité de l'état à 8 déjà présent dans la fonction Production.
+- Durcissement de `debates_update_access` avant tout octroi futur de `UPDATE` à `authenticated` ; ce privilège n'est actuellement pas accordé.
+
+**Statut :** la réconciliation du code et des migrations en Test a progressé et deux écarts ont été corrigés. La clôture globale de l'étape Supabase n'est pas prononcée tant que les points de sortie ci-dessus ne sont pas validés. Aucune fusion vers `main` ni promotion Production n'est autorisée par cet addendum.
