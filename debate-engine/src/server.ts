@@ -54,6 +54,8 @@ catch(e){console.error("[afe-ci-auth-proxy] Supabase Auth request failed",e);sen
 return;
 }
 const user=await authenticateRequest(req);if(!user){send(res,401,{error:"Authentication required"});return;}
+// Market Intelligence is an optional subsystem. Keep its HTTP surface disabled unless explicitly enabled.
+if(path.startsWith("/market-prices")&&process.env.MARKET_INTELLIGENCE_ENABLED!=="true"){send(res,404,{error:"Le module Market Intelligence est désactivé sur cet environnement."});return;}
 if(req.method==="GET"&&path==="/market-prices/chick-catalog"){
 send(res,200,{category:"chick",currency:"XOF",unit:"FCFA/sujet",suppliers:CHICK_PRICE_SUPPLIERS,quotationFields:CHICK_QUOTATION_FIELDS,priceStatus:"No current supplier tariff is assumed; only dated, sourced quotations are displayed."});return;
 }
