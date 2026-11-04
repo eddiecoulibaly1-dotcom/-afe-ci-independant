@@ -1,6 +1,6 @@
 import { LAB_HTML as BASE_HTML, LAB_MANIFEST, LAB_SW as BASE_SW, LAB_ICON } from "./lab-v106.js";
 
-const REPORT_UI = String.raw\`<style>
+const REPORT_UI = String.raw`<style>
 .report-actions{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}.report-actions button{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#122238;color:var(--text);font-weight:800}.report-actions button.primary{background:var(--ok);color:#04130c;border-color:var(--ok)}.report-box{margin-top:14px}.report-box h2{font-size:19px;margin:20px 0 8px}.report-box h3{font-size:15px;margin:14px 0 6px}.report-box p,.report-box li{line-height:1.55}.report-box ul{padding-left:20px}.report-table{width:100%;border-collapse:collapse;font-size:12px;display:block;overflow-x:auto}.report-table th,.report-table td{border:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}.report-table th{background:#102238}.report-verdict{display:inline-block;border-radius:999px;padding:7px 12px;font-weight:900;background:#27344b}.report-verdict.go{background:#123b2c;color:#8af0bd}.report-verdict.conditional_go{background:#493a17;color:#ffe18a}.report-verdict.no_go{background:#48202a;color:#ffabb6}.report-note{border-left:3px solid var(--blue);padding:9px 12px;background:#081321;border-radius:7px;color:var(--muted)}.report-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}.report-item{background:#081321;border:1px solid var(--line);border-radius:10px;padding:10px}.report-item b{display:block;margin-bottom:4px}.report-risk{border-left:3px solid var(--bad);padding:9px 12px;margin:8px 0;background:#101a2a;border-radius:8px}.report-risk.medium{border-color:#e8bc58}.report-risk.low{border-color:var(--ok)}.report-audio{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0;padding:10px;background:#081321;border:1px solid var(--line);border-radius:12px}.report-audio button{border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:#122238;color:var(--text);font-weight:800}.report-audio .audio-status{width:100%;font-size:12px;color:var(--muted)}
 </style>
 <script>(function(){
@@ -38,7 +38,7 @@ async function generate(button,app){const id=app.dataset.debateId;if(!id){button
 function attach(app){const final=app.querySelector('.final');if(!final)return;if(!app.dataset.debateId)return;if(app.querySelector('#strategicReportLaunch'))return;const row=document.createElement('div');row.className='report-actions';const b=document.createElement('button');b.id='strategicReportLaunch';b.className='primary';b.type='button';b.textContent='Générer le rapport stratégique complet';b.onclick=()=>generate(b,app);row.appendChild(b);final.appendChild(row)}
 function boot(){const app=$('app');if(!app)return;const obs=new MutationObserver(()=>attach(app));obs.observe(app,{childList:true,subtree:true});attach(app)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
-})();</script>\`;
+})();</script>`;
 
 export const LAB_HTML = BASE_HTML
   .replace("const app=$('app');if(app){app.innerHTML=", "const app=$('app');if(app){app.dataset.debateId=id;app.innerHTML=")
