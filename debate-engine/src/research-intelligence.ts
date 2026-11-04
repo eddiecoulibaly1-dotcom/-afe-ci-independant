@@ -14,18 +14,22 @@ export interface ResearchBundle {
 }
 type TavilyResult={title?:string;url?:string;content?:string;score?:number;published_date?:string};
 const MAX_RESULTS=8, MAX_PAGE_CHARS=6500, MAX_BODY_BYTES=1_200_000;
-const OFFICIAL_SUFFIXES=[".gov",".gouv",".int",".edu"];
-const OFFICIAL_DOMAINS=new Set(["gouv.ci","ins.ci","bceao.int","amf-umoa.org","ohada.org","anader.ci","who.int","fao.org","worldbank.org","imf.org","afdb.org","oecd.org","un.org","unesco.org","unicef.org","itu.int","iea.org","irena.org","unctad.org","itf-oecd.org","nist.gov","iso.org","ec.europa.eu","uis.unesco.org"]);
-function domainOf(raw:string):string { try{return new URL(raw).hostname.toLowerCase().replace(/^www\./,"")}catch{return ""} }
-function isOfficial(domain:string,profile:SectorProfile):boolean {
- return profile.sourceDomains.some(d=>domain===d||domain.endsWith("."+d))||[...OFFICIAL_DOMAINS].some(d=>domain===d||domain.endsWith("."+d))||OFFICIAL_SUFFIXES.some(s=>domain.endsWith(s));
+const OFFICIAL_SUFFIXES=[".gov",".gouv"];
+const OFFICIAL_DOMAINS=new Set(["gouv.ci","ins.ci","bceao.int","amf-umoa.org","crepmf.org","ohada.org","anader.ci","nist.gov","ec.europa.eu"]);
+const INTERNATIONAL_DOMAINS=new Set(["who.int","fao.org","worldbank.org","imf.org","afdb.org","oecd.org","un.org","unesco.org","unicef.org","itu.int","iea.org","irena.org","unctad.org","itf-oecd.org","uis.unesco.org","ifad.org","afro.who.int"]);
+function domainOf(raw:string):string { try{return new URL(raw).hostname.toLowerCase().replace(/^www\\./,"")}catch{return ""} }
+function matchesDomain(domain:string,domains:Set<string>):boolean {
+ return [...domains].some(d=>domain===d||domain.endsWith("."+d));
 }
-function sourceClass(domain:string,profile:SectorProfile):ResearchSource["sourceClass"] {
- if(isOfficial(domain,profile))return "official";
- if(/worldbank|imf|afdb|oecd|un\.|unctad|fao|who|unesco|unicef|itu|iea|irena/.test(domain))return "international";
- if(/edu$|arxiv|sciencedirect|springer|nature\.com|pubmed/.test(domain))return "academic";
- if(/reuters|apnews|bbc|ft\.com|theguardian/.test(domain))return "media";
- if(domain) return "professional";
+function isOfficial(domain:string):boolean {
+ return matchesDomain(domain,OFFICIAL_DOMAINS)||OFFICIAL_SUFFIXES.some(s=>domain.endsWith(s));
+}
+function sourceClass(domain:string):ResearchSource["sourceClass"] {
+ if(isOfficial(domain))return "official";
+ if(matchesDomain(domain,INTERNATIONAL_DOMAINS))return "international";
+ if(domain.endsWith(".edu")||domain.includes(".edu.")||/arxiv|sciencedirect|springer|nature\\.com|pubmed/.test(domain))return "academic";
+ if(/reuters|apnews|bbc|ft\\.com|theguardian/.test(domain))return "media";
+ if(domain)return "professional";
  return "unknown";
 }
 function validPublicHttps(raw:string):URL {
