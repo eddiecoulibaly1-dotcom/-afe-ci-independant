@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { runDebateAgentStep } from "./engine.js";
 import { generateStrategicReport } from "./report-engine.js";
+import type { StrategicFinancialInputs } from "./strategic-financial.js";
 import { assessMarketEvidence } from "./market-intelligence.js";
 import { CHICK_PRICE_SUPPLIERS, CHICK_QUOTATION_FIELDS } from "./chick-market-catalog.js";
 import { fetchConfiguredMarketFeed } from "./market-sources.js";
@@ -106,7 +107,7 @@ if(reportId&&req.method==="POST"){
  const requestBody=await body(req) as {financialInputs?:Record<string,unknown>};
  const raw=requestBody?.financialInputs??{};
  const allowed=["targetActiveUsers","fundingCap","activeUsersM12","activeUsersM24","activeUsersM36","pessimisticActiveUsersM36","optimisticActiveUsersM36","monthlyRevenuePerActive","monthlyVariableCostPerActive","monthlyFixedCosts","customerAcquisitionCost","monthlyChurnRatePct"] as const;
- const financialInputs:Record<string,number|string|null>={currency:typeof raw.currency==="string"&&/^[A-Z]{3}$/.test(raw.currency)?raw.currency:"XOF"};
+ const financialInputs:StrategicFinancialInputs={currency:typeof raw.currency==="string"&&/^[A-Z]{3}$/.test(raw.currency)?raw.currency:"XOF"};
  for(const key of allowed){const value=raw[key];if(value===null||value===undefined||value==="")financialInputs[key]=null;else if(typeof value==="number"&&Number.isFinite(value)&&value>=0&&value<=1_000_000_000_000)financialInputs[key]=value;else{send(res,400,{error:"Hypothèse financière invalide : "+key});return;}}
  if(typeof financialInputs.monthlyChurnRatePct==="number"&&financialInputs.monthlyChurnRatePct>100){send(res,400,{error:"Le taux d'attrition mensuel doit être compris entre 0 et 100 %."});return;}
  const report=await generateStrategicReport(debate,financialInputs);
