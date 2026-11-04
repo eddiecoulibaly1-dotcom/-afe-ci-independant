@@ -87,6 +87,6 @@ export function auditClaims(claims: Claim[]): EvidenceAudit {
     pendingVerificationClaims: [...new Set(pendingVerificationClaims)],
     confidence,
     blocking: unsupportedCriticalClaims.length > 0 || unsupportedHighImpactClaims.length > 0 || pendingVerificationClaims.length > 0,
-    nextTests: unsupported.map((record) => `Obtenir ou vérifier une preuve pour l'affirmation ${record.claimId}.`)
+    nextTests: records.filter((record) => record.status === "unsupported" || record.status === "pending_verification").map((record) => `Obtenir ou vérifier indépendamment une preuve pour l'affirmation ${record.claimId}.`)
   };
 }
