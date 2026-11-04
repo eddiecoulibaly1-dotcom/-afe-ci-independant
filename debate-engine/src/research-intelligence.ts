@@ -96,7 +96,7 @@ async function tavilySearch(query:string,apiKey:string,profile:SectorProfile,fet
 export async function researchForDebate(args:{question:string;context?:string;role:ResearchRole;profile:SectorProfile;previous?:ResearchBundle;fetcher?:typeof fetch;env?:Record<string,string|undefined>}):Promise<ResearchBundle>{
  const env=args.env??process.env,fetcher=args.fetcher??fetch,apiKey=env.TAVILY_API_KEY?.trim();
  const previous=args.previous;
- if(!apiKey)return {status:"not_configured",provider:"none",generatedAt:new Date().toISOString(),sector:args.profile.label,queries:[],sources:previous?.sources??[],gaps:["Recherche Internet non activée : la variable serveur TAVILY_API_KEY n'est pas configurée."],notes:["Aucune donnée externe n'a été inventée. Les sources déjà enregistrées sont conservées."]};
+ if(!apiKey)return {status:"not_configured",provider:"none",generatedAt:new Date().toISOString(),sector:args.profile.label,queries:[],sources:previous?.sources??[],findings:previous?.findings??[],gaps:["Recherche Internet non activée : la variable serveur TAVILY_API_KEY n'est pas configurée."],notes:["Aucune donnée externe n'a été inventée. Les sources déjà enregistrées sont conservées."]};
  const queries=args.role==="judge"?[]:querySet(args.question,args.context??"",args.role,args.profile);
  const notes:string[]=[],found:TavilyResult[]=[];
  try{for(let i=0;i<queries.length;i++)found.push(...await tavilySearch(queries[i],apiKey,args.profile,fetcher,i===0));}
@@ -115,7 +115,7 @@ export async function researchForDebate(args:{question:string;context?:string;ro
  if(!sources.length)gaps.push("Aucune source exploitable n'a été récupérée.");
  if(sources.every(s=>s.sourceClass!=="official"&&s.sourceClass!=="international"))gaps.push("Aucune source institutionnelle ou internationale n'a été trouvée dans cette recherche.");
  if(sources.every(s=>!s.contentRetrieved))gaps.push("Les pages des résultats n'ont pas pu être ouvertes ; seuls des extraits de moteur de recherche sont disponibles.");
- return {status:retrieved.length?"ready":sources.length?"partial":"unavailable",provider:"tavily",generatedAt:new Date().toISOString(),sector:args.profile.label,queries,sources,gaps,notes:[...new Set(notes)].slice(0,8)};
+ return {status:retrieved.length?"ready":sources.length?"partial":"unavailable",provider:"tavily",generatedAt:new Date().toISOString(),sector:args.profile.label,queries,sources,findings:previous?.findings??[],gaps,notes:[...new Set(notes)].slice(0,8)};
 }
 export function sanitizeResearchFindings(findings:ResearchFinding[]|undefined,sources:ResearchSource[]):ResearchFinding[] {
  const available=new Set(sources.filter(s=>s.contentRetrieved).map(s=>s.id));
