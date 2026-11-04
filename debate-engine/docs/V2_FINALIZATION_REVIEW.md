@@ -194,3 +194,21 @@ L'API GitHub confirme qu'aucun ruleset de dépôt n'est configuré (`rulesets=[]
 - Ne pas exécuter de migration sur Production.
 - Ne pas promouvoir de déploiement Vercel.
 - Ne pas supprimer les modules marché : ils sont isolés, pas abandonnés.
+
+## 10. Réconciliation de contenu Git — résultat exhaustif
+
+Une comparaison directe des arbres Git complets (85 blobs sur `main`, 96 sur `feature/debate-engine-v2-1`) confirme :
+
+- Les 85 fichiers présents sur `main` existent aussi sur la branche V2.
+- 84 de ces 85 fichiers ont exactement le même SHA de blob : leur contenu est identique octet pour octet.
+- Le seul fichier divergent parmi les fichiers communs est `debate-engine/src/server.ts`.
+- La branche V2 contient 11 fichiers supplémentaires : trois documents Blueprint/audit, sept modules décisionnels supplémentaires et `test/unified-architecture.test.ts`.
+- Aucun fichier présent sur `main` n'est absent de la branche V2.
+
+Cela explique la divergence de 175 commits d'avance / 6 commits en retard : elle est principalement une divergence d'ascendance Git, et non une perte des changements fonctionnels. Les changements de schéma strict, les retries fournisseurs, la migration de reprise bornée et le test de compatibilité strict sont déjà présents à l'identique dans les deux arbres.
+
+### Décision de réconciliation
+
+Ne pas cherry-pick ni fusionner les six commits de `main` en bloc : cela risquerait de rejouer des modifications déjà présentes et de créer des conflits inutiles. Conserver le `server.ts` de la branche V2, car son défaut Gemini `3.8-flash` est cohérent avec le défaut de `providers.ts` ; la version `main` utilise `2.5-flash` dans ce seul point, créant une incohérence avec le fournisseur. Cette différence est intentionnelle et doit rester couverte par un test de configuration.
+
+**Conclusion :** réconciliation de contenu validée en lecture seule. La divergence d'historique ne nécessite pas de fusion de code à ce stade. La prochaine réconciliation devra porter sur la protection des branches et la référence de baseline, avec confirmation humaine avant tout déplacement de référence.
