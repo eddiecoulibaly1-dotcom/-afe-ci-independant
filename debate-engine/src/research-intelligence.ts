@@ -71,7 +71,7 @@ function querySet(question:string,context:string,role:ResearchRole,profile:Secto
  return [...new Set(queries)].filter(Boolean).slice(0,2);
 }
 function rank(result:TavilyResult,profile:SectorProfile):number {
- const domain=domainOf(result.url??"");const cls=sourceClass(domain,profile);
+ const domain=domainOf(result.url??"");const cls=sourceClass(domain);
  const trust=cls==="official"?50:cls==="international"?44:cls==="academic"?38:cls==="professional"?24:cls==="media"?18:5;
  const relevance=Math.max(0,Math.min(1,Number(result.score)||0));
  return trust+relevance*35+(result.published_date?5:0);
