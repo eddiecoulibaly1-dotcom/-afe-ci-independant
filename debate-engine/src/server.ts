@@ -2,18 +2,19 @@ import "node:process";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { runDebateAgentStep } from "./engine.js";
+import { generateStrategicReport } from "./report-engine.js";
 import { assessMarketEvidence } from "./market-intelligence.js";
 import { CHICK_PRICE_SUPPLIERS, CHICK_QUOTATION_FIELDS } from "./chick-market-catalog.js";
 import { fetchConfiguredMarketFeed } from "./market-sources.js";
 import { correctMarketPrice, getMarketPriceHistory, importMarketCsv, listMarketPrices, marketPriceStorageEnabled } from "./market-price-store.js";
 import { getDebate, listDebates, saveDebate } from "./store.js";
 import { assertSupabaseSchemaReady, supabasePersistenceEnabled, claimDebateExecutionStep, completeDebateExecutionStep, failDebateExecutionStep, listDebateExecutionSteps } from "./supabase-store.js";
-import { LAB_HTML, LAB_MANIFEST, LAB_SW, LAB_ICON } from "./lab-v106.js";
+import { LAB_HTML, LAB_MANIFEST, LAB_SW, LAB_ICON } from "./lab-v107.js";
 import { authenticateRequest, publicAuthConfig } from "./auth.js";
 import { addWorkspaceMember, createWorkspace, getMe, getWorkspace, listDebateShares, listWorkspaces, removeDebateShare, removeWorkspaceMember, setDebateWorkspace, shareDebate, updateProfile, updateWorkspaceMember } from "./workspace-store.js";
 import { inviteWorkspaceUser, createNotification, listNotifications, markNotificationRead, markAllNotificationsRead, listAudit, createShareLink, listShareLinks, revokeShareLink, resolveShareLink, getSharedDebate } from "./v1-store.js";
 import type { DebateConfig, Provider } from "./types.js";
-const VERSION="1.1.2",port=Number(process.env.PORT??8787);
+const VERSION="1.1.3",port=Number(process.env.PORT??8787);
 const json=(v:unknown)=>JSON.stringify(v,null,2);
 const esc=(v:unknown)=>String(v??"").replace(/[&<>\"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m] ?? ""));
 function boundedNumber(raw:string|undefined,fallback:number,min:number,max:number):number{const value=Number(raw);return Number.isFinite(value)?Math.min(max,Math.max(min,value)):fallback;}
@@ -38,7 +39,7 @@ if(req.method==="GET"&&path==="/api/share"){const token=url.searchParams.get("to
 if(req.method==="GET"&&(path==="/"||path==="/lab"||path==="/lab/")){html(res,200,LAB_HTML);return;}
 if(req.method==="GET"&&path==="/lab/manifest.webmanifest"){res.writeHead(200,{"Content-Type":"application/manifest+json; charset=utf-8"});res.end(LAB_MANIFEST);return;}if(req.method==="GET"&&path==="/lab/sw.js"){res.writeHead(200,{"Content-Type":"application/javascript; charset=utf-8"});res.end(LAB_SW);return;}if(req.method==="GET"&&path==="/lab/icon.svg"){res.writeHead(200,{"Content-Type":"image/svg+xml; charset=utf-8"});res.end(LAB_ICON);return;}
 if(req.method==="GET"&&path==="/ready"){try{await assertSupabaseSchemaReady();send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,database:"ready"});}catch(e){send(res,503,{ok:false,service:"afe-ci-debate-engine",version:VERSION,database:"not_ready",error:e instanceof Error?e.message:"Database readiness check failed"});}return;}
-if(req.method==="GET"&&path==="/health"){send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,evidenceEngine:true,mobileLab:true,pwa:true,auth:true,privateHistory:true,workspaces:true,roles:true,controlledSharing:true,v1_0_3:true,v1_0_5:true,v1_0_6:true,v1_0_7:true,notifications:true,audit:true,secureShareLinks:true,publicShareViewer:true,visualShareViewer:true,shareCenter:true,serverBackedShareLinks:true,invitations:true,realtime:true,deployment:"healthy"});return;}
+if(req.method==="GET"&&path==="/health"){send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,evidenceEngine:true,mobileLab:true,pwa:true,auth:true,privateHistory:true,workspaces:true,roles:true,controlledSharing:true,v1_0_3:true,v1_0_5:true,v1_0_6:true,v1_0_7:true,notifications:true,audit:true,secureShareLinks:true,publicShareViewer:true,visualShareViewer:true,shareCenter:true,serverBackedShareLinks:true,invitations:true,realtime:true,strategicReports:true,audioPlayback:"browser-speech-synthesis",deployment:"healthy"});return;}
 if(req.method==="GET"&&path==="/auth/config"){const a=publicAuthConfig();if(!a){send(res,503,{error:"Supabase public auth is not configured"});return;}send(res,200,a);return;}
 if(req.method==="POST"&&path==="/auth/session"){
 const a=publicAuthConfig();if(!a){send(res,503,{error:"Supabase public auth is not configured"});return;}
@@ -97,6 +98,17 @@ const sl=path.match(/^\/debates\/([^/]+)\/share-links$/);if(sl){const id=decodeU
 const slr=path.match(/^\/debates\/([^/]+)\/share-links\/([^/]+)$/);if(slr&&req.method==="DELETE"){const id=decodeURIComponent(slr[1]);if(!await getDebate(id,user.id))throw new Error("Débat introuvable ou accès refusé");await revokeShareLink(id,user.id,decodeURIComponent(slr[2]));send(res,200,{ok:true});return;}
 const dw=path.match(/^\/debates\/([^/]+)\/workspace$/);if(dw&&req.method==="POST"){const id=decodeURIComponent(dw[1]),i=await body(req) as {workspaceId?:string|null};await setDebateWorkspace(id,user.id,i.workspaceId??null);send(res,200,await getDebate(id,user.id));return;}
 if(req.method==="GET"&&path==="/debates"){send(res,200,await listDebates(user.id));return;}if(req.method==="GET"&&/^\/debates\/[^/]+$/.test(path)){const id=decodeURIComponent(path.slice(9)),d=await getDebate(id,user.id);if(!d){send(res,404,{error:"Debate not found"});return;}send(res,200,d);return;}
+const reportId=path.startsWith("/debates/")&&path.endsWith("/report")?path.slice(9,-7):null;
+if(reportId&&req.method==="POST"){
+ const id=decodeURIComponent(reportId),debate=await getDebate(id,user.id);
+ if(!debate){send(res,404,{error:"Débat introuvable"});return;}
+ if(debate.status==="running"||!debate.finalDecision){send(res,409,{error:"Le débat doit être terminé avant la génération du rapport stratégique."});return;}
+ const report=await generateStrategicReport(debate);
+ const updated={...debate,finalDecision:{...debate.finalDecision,strategicReport:report}};
+ await saveDebate(updated);
+ send(res,200,{debateId:id,report});
+ return;
+}
 const advanceMatch=path.match(/^\/debates\/([^/]+)\/advance$/);
 const progressMatch=path.match(/^\/debates\/([^/]+)\/progress$/);
 if(progressMatch&&req.method==="GET"){
