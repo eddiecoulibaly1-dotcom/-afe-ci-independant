@@ -34,6 +34,6 @@ test("debate cleanup is idempotent and does not mutate data or table structure",
   const sql = await readFile(migrationUrl, "utf8");
   assert.match(sql, /begin\s*;/i);
   assert.match(sql, /commit\s*;/i);
-  assert.equal((sql.match(/^[ \\t]*drop\\s+(?:policy|index)\\s+if\\s+exists\\b/gim) ?? []).length, 6);
+  assert.equal((sql.match(/^[ \t]*drop\s+(?:policy|index)\s+if\s+exists\b/gim) ?? []).length, 6);
   assert.doesNotMatch(sql, /\b(delete from|truncate|drop table|alter table)\b/i);
 });
