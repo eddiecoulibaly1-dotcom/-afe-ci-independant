@@ -106,6 +106,65 @@ Le seul fichier divergent est `server.ts`. La version V2 utilise `gemini-3.8-fla
 - `src/auth.ts` : conserver la clé publique uniquement pour la vérification du jeton ; les clés secrètes restent strictement côté serveur.
 - `src/schema.ts` : maintenir l'égalité récursive entre propriétés déclarées et champs requis pour les schémas stricts.
 
+
+## 8. Réconciliation Supabase Test / Production — lecture seule
+
+Les deux bases ont été interrogées directement en SQL, sans aucune écriture.
+
+### 8.1 Schéma structurel
+
+Les signatures normalisées des colonnes et des contraintes des tables `debate*` sont identiques entre Test et Production. La différence d'ordre des colonnes de `debates` n'est qu'une différence physique d'ordre, pas de définition. Les tables du noyau, y compris `debate_execution_steps`, ont les mêmes colonnes, types, nullabilités, valeurs par défaut et contraintes.
+
+Conséquence : **ne pas rejouer la migration de création du schéma V1 sur Production**. Production possède déjà le schéma et une chaîne historique antérieure (`debate_engine_memory_v1`, `v08_debate_user_ownership`, `v1_0_6_debate_hardening`, etc.). Les journaux de migration ont des noms et des horodatages différents entre Test et Production ; ils ne doivent pas être rendus artificiellement identiques en insérant manuellement des lignes dans `schema_migrations`.
+
+### 8.2 Index dupliqués en Production
+
+Quatre index redondants existent uniquement en Production. Leurs définitions sont identiques aux index canoniques suivants :
+
+| Index legacy à retirer | Index canonique à conserver |
+|---|---|
+| `debate_events_round_idx` | `idx_debate_events_round_id` |
+| `debate_evidence_round_idx` | `idx_debate_evidence_round_id` |
+| `debate_share_links_created_by_idx` | `idx_debate_share_links_created_by` |
+| `debate_shares_shared_by_idx` | `idx_debate_shares_shared_by` |
+
+Les statistiques PostgreSQL indiquent que les quatre index legacy ont zéro scan depuis la remise à zéro des statistiques ; l'index canonique des événements a été utilisé 18 fois. La migration préparée `20261104120000_afe_ci_debate_duplicate_policy_index_cleanup.sql` retire uniquement les index legacy, avec `IF EXISTS`, et est sans effet sur Test où ils n'existent pas.
+
+### 8.3 Politiques RLS redondantes et dérive des rôles
+
+Production possède deux politiques redondantes sur `debates` :
+
+- `debates_select_v09_access`, identique à `debates_select_access` ;
+- `debates_update_v09_access`, identique à `debates_update_access`.
+
+Test ne possède que les politiques canoniques. La migration de nettoyage retire uniquement les deux doublons legacy.
+
+Une différence fonctionnelle demeure sur `debate_workspace_members` :
+- Production : politiques `admin_insert/update/delete`, permettant au propriétaire **ou à un membre owner/admin** de gérer les membres.
+- Test : politiques `owner_insert/update/delete`, réservées au propriétaire du workspace.
+
+Cette différence n'est pas automatiquement corrigée : elle touche à la délégation des droits d'administration. Elle doit être tranchée explicitement et les tests doivent refléter le comportement retenu.
+
+### 8.4 Privilèges SQL et risque latent
+
+Dans les privilèges de table observés :
+- Production : les tables du noyau examinées sont accessibles en écriture/lecture via `service_role`, sans privilège direct `UPDATE` pour `authenticated`.
+- Test : `authenticated` dispose notamment de `SELECT` sur `debates`, `debate_workspace_members` et `debate_shares`, mais pas de privilège `UPDATE` sur `debates`.
+
+La politique `debates_update_access` a un `WITH CHECK` qui contient `workspace_id IS NULL`. Cette condition est plus permissive que le contrôle de ligne de `USING`. Elle n'est pas directement exploitable via un UPDATE PostgREST par `authenticated` tant que ce rôle ne reçoit pas le privilège SQL UPDATE ; elle constitue néanmoins un risque latent. **Ne pas accorder UPDATE à authenticated** avant de revoir cette politique et de protéger explicitement les champs de propriété (`user_id`, `workspace_id`).
+
+La fonction trigger `handle_new_debate_profile` en `SECURITY DEFINER` n'est pas exécutable par `anon` ni `authenticated` dans les deux bases ; son exécution est limitée à `postgres`/`service_role`.
+
+### 8.5 Historique des migrations et périmètre Market
+
+Les deux environnements ont des journaux de migration différents, mais les signatures du schéma Debate Engine sont identiques. Test possède les migrations du registre de prix et les tables Market Intelligence ; Production ne possède pas ces tables. Le feature flag serveur reste donc désactivé par défaut. Ne pas appliquer les migrations marché en Production dans cette phase.
+
+### 8.6 Migration corrective préparée, non exécutée
+
+Le fichier `supabase/migrations/20261104120000_afe_ci_debate_duplicate_policy_index_cleanup.sql` a été ajouté à la branche d'audit. Il supprime seulement les deux politiques RLS en double et les quatre index legacy redondants. Il ne touche ni aux données, ni aux contraintes, ni aux index canoniques.
+
+**Statut : migration préparée uniquement. Aucune migration n'a été exécutée sur Test ou Production.** Avant exécution, prévoir une fenêtre calme, sauvegarder l'état, contrôler le diff SQL et vérifier les résultats post-migration. Le `DROP INDEX` normal prend un verrou de table ; ce nettoyage ne doit pas être lancé pendant un pic d'activité.
+
 ## 8. Vérifications exécutées et points restant à clôturer
 
 La CI GitHub Actions a exécuté `npm ci`, `npm run typecheck` et `npm test` sur le commit `b2fba4038d8347422c9dc707bea84e938fb00410` : installation réussie, TypeScript réussi, 56 tests réussis, 0 échec. Le premier passage avait révélé le défaut de détection des intentions financières ; le correctif a été intégré puis confirmé par le second passage.
