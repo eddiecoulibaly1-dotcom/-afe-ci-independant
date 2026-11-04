@@ -103,7 +103,13 @@ if(reportId&&req.method==="POST"){
  const id=decodeURIComponent(reportId),debate=await getDebate(id,user.id);
  if(!debate){send(res,404,{error:"Débat introuvable"});return;}
  if(debate.status==="running"||!debate.finalDecision){send(res,409,{error:"Le débat doit être terminé avant la génération du rapport stratégique."});return;}
- const report=await generateStrategicReport(debate);
+ const requestBody=await body(req) as {financialInputs?:Record<string,unknown>};
+ const raw=requestBody?.financialInputs??{};
+ const allowed=["targetActiveUsers","fundingCap","activeUsersM12","activeUsersM24","activeUsersM36","pessimisticActiveUsersM36","optimisticActiveUsersM36","monthlyRevenuePerActive","monthlyVariableCostPerActive","monthlyFixedCosts","customerAcquisitionCost","monthlyChurnRatePct"] as const;
+ const financialInputs:Record<string,number|string|null>={currency:typeof raw.currency==="string"&&/^[A-Z]{3}$/.test(raw.currency)?raw.currency:"XOF"};
+ for(const key of allowed){const value=raw[key];if(value===null||value===undefined||value==="")financialInputs[key]=null;else if(typeof value==="number"&&Number.isFinite(value)&&value>=0&&value<=1_000_000_000_000)financialInputs[key]=value;else{send(res,400,{error:"Hypothèse financière invalide : "+key});return;}}
+ if(typeof financialInputs.monthlyChurnRatePct==="number"&&financialInputs.monthlyChurnRatePct>100){send(res,400,{error:"Le taux d'attrition mensuel doit être compris entre 0 et 100 %."});return;}
+ const report=await generateStrategicReport(debate,financialInputs);
  const updated={...debate,finalDecision:{...debate.finalDecision,strategicReport:report}};
  await saveDebate(updated);
  send(res,200,{debateId:id,report});
