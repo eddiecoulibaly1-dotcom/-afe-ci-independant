@@ -30,7 +30,7 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
     };
   }
 
-  const evidenceRisk = evidenceAudit.unsupportedCriticalClaims.length + evidenceAudit.unsupportedHighImpactClaims.length;
+  const evidenceRisk = evidenceAudit.unsupportedCriticalClaims.length + evidenceAudit.unsupportedHighImpactClaims.length + (evidenceAudit.pendingVerificationClaims?.length ?? 0);
   const criticalAttacks = (judge.criticalDisagreements ?? []).length;
   const confidence: "high" | "moderate" | "low" = evidenceRisk === 0 && criticalAttacks === 0 && scoreDelta(judge) >= 8 ? "high" : scoreDelta(judge) >= 4 ? "moderate" : "low";
   const provisional = evidenceRisk > 0 || criticalAttacks > 0 || confidence !== "high";
