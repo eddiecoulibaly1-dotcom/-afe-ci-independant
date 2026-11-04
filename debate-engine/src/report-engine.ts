@@ -12,6 +12,10 @@ const reportSchema = {
     executiveSummary: { type: "string" },
     decisionRationale: { type: "string" },
     confidence: { type: "string", enum: ["high", "moderate", "low"] },
+    reasoning: { type: "object", additionalProperties: false, properties: {
+      questionDecomposition: strings, strongestCaseFor: strings, strongestCaseAgainst: strings,
+      decisiveDisagreements: strings, falsifiableHypotheses: strings, decisionReversalConditions: strings, causalMechanisms: strings
+    }, required: ["questionDecomposition", "strongestCaseFor", "strongestCaseAgainst", "decisiveDisagreements", "falsifiableHypotheses", "decisionReversalConditions", "causalMechanisms"] },
     evidence: { type: "object", additionalProperties: false, properties: {
       verified: strings, hypotheses: strings, unverified: strings, gaps: strings,
       references: { type: "array", items: { type: "object", additionalProperties: false, properties: {
@@ -50,7 +54,7 @@ const reportSchema = {
     missingData: strings,
     limitations: strings
   },
-  required: ["decisionLabel", "executiveSummary", "decisionRationale", "confidence", "evidence", "optionsComparison", "financialModel", "risks", "roadmap", "experiments", "immediateDecisions", "missingData", "limitations"]
+  required: ["decisionLabel", "executiveSummary", "decisionRationale", "confidence", "reasoning", "evidence", "optionsComparison", "financialModel", "risks", "roadmap", "experiments", "immediateDecisions", "missingData", "limitations"]
 } as const;
 
 export function buildStrategicReportPrompt(debate: Debate, financialInputs: StrategicFinancialInputs = {}): string {
@@ -83,7 +87,7 @@ export function buildStrategicReportPrompt(debate: Debate, financialInputs: Stra
     JSON.stringify(payload, null, 2) +
     "\n\nProduis un rapport de décision stratégique complet, substantiel et exploitable, dans le style d'une note de comité d'investissement. " +
     "Le rapport doit être comparable à une analyse professionnelle comprenant synthèse exécutive, verdict explicite, preuves, comparaison des options, modèle financier, scénarios, économie unitaire, risques, feuille de route, expérimentation et décisions immédiates. " +
-    "Ne répète pas simplement les tours : transforme-les en analyse structurée, hiérarchisée et actionnable. " +
+    "Ne répète pas simplement les tours : transforme-les en analyse structurée, hiérarchisée et actionnable. Décompose la question, formule le meilleur argument de chaque camp, isole les désaccords décisifs, les mécanismes causaux, les hypothèses falsifiables et les conditions concrètes qui inverseraient la décision. Signale explicitement les raisonnements circulaires, les glissements de causalité, les comparaisons non homogènes et les conclusions plus fortes que leurs prémisses. " +
     "RÈGLES DE PREUVE : les seules références disponibles sont celles présentes dans les données fournies. N'invente aucun lien, organisme, étude, citation, source ou donnée externe. Une affirmation factuelle n’est jamais dite vérifiée parce qu’un agent fournit simplement une chaîne de référence : elle doit être marquée en attente de vérification tant que la source n’a pas été ouverte et contrôlée. " +
     "RÈGLES FINANCIÈRES : n'invente aucun chiffre, prix, coût, taux, volume, revenu, CAC, LTV ou résultat. Reprends les chiffres explicitement fournis. Une valeur inconnue doit être null et son statut doit être unknown. Les scénarios qualitatifs restent possibles avec des valeurs numériques nulles. Tout chiffre calculé doit être une opération arithmétique directe sur des valeurs fournies et doit être expliqué. Les calculs financiers de référence seront recalculés par un module déterministe ; ne prétends pas avoir effectué de calcul que les entrées ne permettent pas. Les hypothèses de travail explicitement proposées par l'utilisateur doivent être identifiées comme telles, jamais comme des observations. " +
     "DÉCISION : choisis obligatoirement GO, CONDITIONAL_GO ou NO_GO. Si les données sont insuffisantes, choisis CONDITIONAL_GO ou NO_GO selon les éléments disponibles et précise les conditions vérifiables, plutôt que de produire une conclusion indéterminée. " +
