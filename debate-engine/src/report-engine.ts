@@ -131,6 +131,26 @@ export async function generateStrategicReport(debate: Debate, financialInputs: S
     ". Recommandation stratégique : " + decisionLabel + ". Ces deux niveaux sont distincts ; la recommandation ne remplace pas l'arbitrage contradictoire.";
   const decisionRationale = generated.decisionRationale + "\n\n" + alignment +
     (evidence.verified.length===0 ? "\nAucune affirmation factuelle n'a encore été vérifiée par ouverture et contrôle indépendant de ses sources ; le niveau GO n'est donc pas accordé." : "");
+  if (debate.sector !== "commerce") {
+    return {
+      ...generated,
+      decisionLabel,
+      decisionRationale,
+      confidence: evidence.verified.length === 0 ? "low" : generated.confidence,
+      evidence,
+      research: debate.research,
+      financialModel: {
+        currency: financialInputs.currency ?? "XOF",
+        warning: "Le calculateur financier disponible est spécialisé dans l'économie par commerçant et n'est pas applicable automatiquement à ce secteur. Aucun coût, revenu, investissement ou bénéfice sectoriel n'est supposé.",
+        assumptions: [],
+        scenarios: [],
+        unitEconomics: [],
+        limitations: [...generated.financialModel.limitations, "Calculateur sectoriel spécialisé non disponible pour ce domaine : les projections chiffrées doivent attendre des données sectorielles comparables et une méthode adaptée."]
+      },
+      financialCalculations: undefined,
+      missingData: [...new Set([...generated.missingData, ...evidence.gaps, "Données quantitatives sectorielles et modèle de calcul adapté au domaine"])]
+    };
+  }
   const unitEconomics = [
     ...calculations.formulas,
     "Marge contributive mensuelle par actif : " + formatAmount(calculations.contributionPerActive,calculations.currency),
