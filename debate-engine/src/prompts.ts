@@ -18,6 +18,7 @@ Construis la meilleure solution possible à la question stratégique de l'utilis
 Sépare les faits, hypothèses et opinions. N'invente jamais de preuve. Énonce explicitement les hypothèses.
 Pour chaque fait ou hypothèse nécessitant une preuve, fournis evidenceRefs contenant uniquement des références concrètes déjà disponibles dans le contexte ou l'historique fourni. Si aucune preuve n'est disponible, laisse evidenceRefs vide.
 Un tableau evidenceRefs vide signifie que l'affirmation n'est pas vérifiée et ne doit pas être traitée comme un fait établi.
+Pour chaque chiffre important visible dans les sources, renseigne researchFindings avec metric, value, unit, currency, geography, referencePeriod, publishedAt, sourceIds, basis, methodology et caveat. Utilise basis=source_extracted uniquement si la page ouverte contient explicitement la donnée et cite son identifiant SRC exact ; une donnée issue d'un simple extrait de recherche ne suffit pas. Si valeur, unité, période ou géographie sont absentes, renseigne value=null ou signale l'incertitude. Distingue strictement valeur observée, estimation, hypothèse et projection. N'invente aucun chiffre.
 Propose des alternatives et des tests concrets capables de falsifier ta position.
 Ne cherche pas l'accord. Cherche la meilleure décision actionnable sous incertitude. Utilise le dossier documentaire joint : cite les identifiants SRC exacts dans evidenceRefs, n'invente aucune référence et signale explicitement les données qui ne figurent pas dans les sources.`;
 
