@@ -76,8 +76,8 @@ function rank(result:TavilyResult,profile:SectorProfile):number {
  const relevance=Math.max(0,Math.min(1,Number(result.score)||0));
  return trust+relevance*35+(result.published_date?5:0);
 }
-async function tavilySearch(query:string,apiKey:string,profile:SectorProfile,fetcher:typeof fetch):Promise<TavilyResult[]> {
- const response=await fetcher("https://api.tavily.com/search",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:apiKey,query,search_depth:"advanced",max_results:MAX_RESULTS,include_answer:false,include_raw_content:false,include_domains:profile.sourceDomains}),signal:AbortSignal.timeout(18000)});
+async function tavilySearch(query:string,apiKey:string,profile:SectorProfile,fetcher:typeof fetch,officialOnly:boolean):Promise<TavilyResult[]> {
+ const response=await fetcher("https://api.tavily.com/search",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:apiKey,query,search_depth:"advanced",max_results:MAX_RESULTS,include_answer:false,include_raw_content:false,...(officialOnly?{include_domains:profile.sourceDomains}:{})}),signal:AbortSignal.timeout(18000)});
  if(!response.ok)throw new Error("Recherche documentaire indisponible (HTTP "+response.status+").");
  const payload=await response.json() as {results?:TavilyResult[]};
  return Array.isArray(payload.results)?payload.results:[];
@@ -88,7 +88,7 @@ export async function researchForDebate(args:{question:string;context?:string;ro
  if(!apiKey)return {status:"not_configured",provider:"none",generatedAt:new Date().toISOString(),sector:args.profile.label,queries:[],sources:previous?.sources??[],gaps:["Recherche Internet non activée : la variable serveur TAVILY_API_KEY n'est pas configurée."],notes:["Aucune donnée externe n'a été inventée. Les sources déjà enregistrées sont conservées."]};
  const queries=querySet(args.question,args.context??"",args.role,args.profile);
  const notes:string[]=[],found:TavilyResult[]=[];
- try{for(const q of queries)found.push(...await tavilySearch(q,apiKey,args.profile,fetcher));}
+ try{for(let i=0;i<queries.length;i++)found.push(...await tavilySearch(queries[i],apiKey,args.profile,fetcher,i===0));}
  catch(error){notes.push(error instanceof Error?error.message:"Échec de la recherche documentaire.");}
  const unique=[...new Map(found.filter(x=>x.url&&x.title).map(x=>[x.url!,x])).values()]
   .sort((a,b)=>rank(b,args.profile)-rank(a,args.profile)).slice(0,MAX_RESULTS);
