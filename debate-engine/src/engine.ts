@@ -30,7 +30,7 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
     };
   }
 
-  const evidenceRisk = evidenceAudit.unsupportedCriticalClaims.length + evidenceAudit.unsupportedHighImpactClaims.length;
+  const evidenceRisk = evidenceAudit.unsupportedCriticalClaims.length + evidenceAudit.unsupportedHighImpactClaims.length + (evidenceAudit.pendingVerificationClaims?.length ?? 0);
   const criticalAttacks = (judge.criticalDisagreements ?? []).length;
   const confidence: "high" | "moderate" | "low" = evidenceRisk === 0 && criticalAttacks === 0 && scoreDelta(judge) >= 8 ? "high" : scoreDelta(judge) >= 4 ? "moderate" : "low";
   const provisional = evidenceRisk > 0 || criticalAttacks > 0 || confidence !== "high";
@@ -57,7 +57,7 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
 
 export function applyConvergencePolicy(judge: JudgeDecision, unresolvedQuestions: number, criticalAttacks: number, finalRound: boolean): JudgeDecision {
   const scored = finalizeJudgeScore(judge, unresolvedQuestions, criticalAttacks);
-  return buildActionableDecision(scored, scored.evidenceAudit ?? { records: [], unsupportedCriticalClaims: [], unsupportedHighImpactClaims: [], confidence: 1, blocking: false, nextTests: [] }, finalRound);
+  return buildActionableDecision(scored, scored.evidenceAudit ?? { records: [], unsupportedCriticalClaims: [], unsupportedHighImpactClaims: [], pendingVerificationClaims: [], confidence: 1, blocking: false, nextTests: [] }, finalRound);
 }
 
 function normalizeTerminalDecision(judge: JudgeDecision): JudgeDecision {

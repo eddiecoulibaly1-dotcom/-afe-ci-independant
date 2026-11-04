@@ -1,6 +1,6 @@
 import type { Claim } from "./types.js";
 
-export type EvidenceStatus = "supported" | "unsupported" | "not_required";
+export type EvidenceStatus = "supported" | "pending_verification" | "unsupported" | "not_required";
 export type ClaimClassification = "fact" | "hypothesis" | "opinion";
 export type EvidenceImpact = "low" | "medium" | "high" | "critical";
 
@@ -18,6 +18,7 @@ export interface EvidenceAudit {
   records: EvidenceRecord[];
   unsupportedCriticalClaims: string[];
   unsupportedHighImpactClaims: string[];
+  pendingVerificationClaims: string[];
   confidence: number;
   blocking: boolean;
   nextTests: string[];
@@ -62,10 +63,10 @@ export function auditClaims(claims: Claim[]): EvidenceAudit {
     return {
       claimId: claim.id,
       classification: claim.type,
-      status: "supported",
+      status: "pending_verification",
       evidenceRefs: refs,
-      rationale: "La proposition déclare des références justificatives ; leur vérification externe reste une étape distincte.",
-      confidence: claim.confidence,
+      rationale: "Une référence est déclarée, mais elle n’a pas été ouverte ni contrôlée indépendamment.",
+      confidence: 0,
       impact
     };
   });
@@ -73,6 +74,7 @@ export function auditClaims(claims: Claim[]): EvidenceAudit {
   const unsupported = records.filter((record) => record.status === "unsupported");
   const unsupportedCriticalClaims = unsupported.filter((record) => record.impact === "critical").map((record) => record.claimId);
   const unsupportedHighImpactClaims = unsupported.filter((record) => record.impact === "high").map((record) => record.claimId);
+  const pendingVerificationClaims = records.filter((record) => record.status === "pending_verification" && (record.impact === "critical" || record.impact === "high")).map((record) => record.claimId);
   const scored = records.filter((record) => record.status !== "not_required");
   const confidence = scored.length === 0
     ? 1
@@ -82,8 +84,9 @@ export function auditClaims(claims: Claim[]): EvidenceAudit {
     records,
     unsupportedCriticalClaims: [...new Set(unsupportedCriticalClaims)],
     unsupportedHighImpactClaims: [...new Set(unsupportedHighImpactClaims)],
+    pendingVerificationClaims: [...new Set(pendingVerificationClaims)],
     confidence,
-    blocking: unsupportedCriticalClaims.length > 0 || unsupportedHighImpactClaims.length > 0,
-    nextTests: unsupported.map((record) => `Obtenir ou vérifier une preuve pour l'affirmation ${record.claimId}.`)
+    blocking: unsupportedCriticalClaims.length > 0 || unsupportedHighImpactClaims.length > 0 || pendingVerificationClaims.length > 0,
+    nextTests: records.filter((record) => record.status === "unsupported" || record.status === "pending_verification").map((record) => `Obtenir ou vérifier indépendamment une preuve pour l'affirmation ${record.claimId}.`)
   };
 }
