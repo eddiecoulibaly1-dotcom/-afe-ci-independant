@@ -165,18 +165,29 @@ Le fichier `supabase/migrations/20261104120000_afe_ci_debate_duplicate_policy_in
 
 **Statut : migration préparée uniquement. Aucune migration n'a été exécutée sur Test ou Production.** Avant exécution, prévoir une fenêtre calme, sauvegarder l'état, contrôler le diff SQL et vérifier les résultats post-migration. Le `DROP INDEX` normal prend un verrou de table ; ce nettoyage ne doit pas être lancé pendant un pic d'activité.
 
-## 8. Vérifications exécutées et points restant à clôturer
+## 9. Vérifications exécutées et points restant à clôturer
 
-La CI GitHub Actions a exécuté `npm ci`, `npm run typecheck` et `npm test` sur le commit `b2fba4038d8347422c9dc707bea84e938fb00410` : installation réussie, TypeScript réussi, 56 tests réussis, 0 échec. Le premier passage avait révélé le défaut de détection des intentions financières ; le correctif a été intégré puis confirmé par le second passage.
+La CI GitHub Actions a exécuté `npm ci`, `npm run typecheck` et `npm test` sur le commit final `6db6c32201460918fbe5bbf534f76e6900a74933` : installation réussie, TypeScript réussi, **59 tests réussis, 0 échec**. Le premier test du nettoyage avait un comptage trop large ; la regex a été corrigée pour ne compter que les six instructions `DROP ... IF EXISTS` exécutables. Le passage suivant est vert.
 
-Restent obligatoires avant fusion :
+Les six projets Vercel liés au dépôt ont tous produit un Preview `READY` pour ce commit. Le Preview principal `https://afe-ci-independant-c1iw6x1vi-eddiecoulibaly1-dotcom.vercel.app/health` répond HTTP 200 et annonce `version: 1.1.2`, `deployment: healthy`. Ce Preview n'a pas été promu en Production. Les logs de build contiennent des avertissements non bloquants concernant les scripts d'installation npm et les actions GitHub v4 ciblant Node 20 ; ils n'ont pas empêché la compilation ni les tests.
 
-1. Revue détaillée des politiques RLS et fonctions RPC réellement présentes dans les deux bases.
-2. Décision explicite sur la stratégie d'historique Git (merge commit, rebase ou conservation des branches) ; les six changements main sont déjà présents dans l'arbre V2, donc aucun cherry-pick de contenu n'est requis.
-3. Vérification de la version `/health` sur le Preview ; les statuts Vercel de déploiement Preview sont distincts de la validation CI.
-4. Validation humaine avant toute fusion vers `main`, migration ou promotion Production.
+### Baseline V1.0.7
 
-## 9. Interdictions de cette passe
+La branche historique `baseline/v1.0.7` reste intacte sur `8b542f5...`. Une nouvelle branche non destructive `baseline/v1.0.7-final` a été créée sur le candidat finalisé `6c7f5142f1ecfed11944a232e08637f67bfa249d`. Les deux branches restent séparées afin de préserver la traçabilité ; aucune n'a été déplacée.
+
+### Protection Git
+
+L'API GitHub confirme qu'aucun ruleset de dépôt n'est configuré (`rulesets=[]`) et que `main`, `feature/debate-engine-v2-1`, `baseline/v1.0.7`, `baseline/v1.0.7-final` et la branche d'audit sont toutes non protégées. La connexion GitHub disponible ne dispose pas des permissions d'administration nécessaires pour créer ces protections. Il faut donc activer dans GitHub les règles de protection : interdiction de suppression et de force-push pour les deux baselines ; PR obligatoire, contrôles CI requis et interdiction de force-push pour `main`. Aucune règle n'a été modifiée.
+
+### Points restant avant fusion ou clôture complète
+
+1. Décider si le rôle `admin` peut gérer les membres d'un workspace en production ; aligner ensuite les politiques et les tests de Test/Production sur cette règle métier.
+2. Corriger la politique `debates_update_access` avant tout octroi futur du privilège SQL UPDATE à `authenticated` ; ce privilège n'est pas actuellement accordé.
+3. Activer les protections Git via un compte disposant des permissions d'administration.
+4. Décider de la stratégie d'historique Git (merge commit ou conservation des branches). Les six changements main sont déjà présents dans le contenu V2 ; aucun cherry-pick n'est requis.
+5. Validation humaine avant toute fusion vers `main`, exécution de la migration corrective ou promotion Production.
+
+## 10. Garde-fous de cette passe
 
 - Ne pas déplacer ni réécrire `baseline/v1.0.7`.
 - Ne pas fusionner dans `main`.
