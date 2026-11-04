@@ -7,7 +7,7 @@ import { ARCHITECT_SYSTEM, RED_TEAM_SYSTEM, JUDGE_SYSTEM, architectPrompt, redTe
 import { finalizeJudgeScore, scoreDelta } from "./scoring.js";
 import { auditClaims } from "./evidence.js";
 import { detectSector, sectorPromptGuidance } from "./sector-adaptation.js";
-import { researchForDebate, researchPromptContext } from "./research-intelligence.js";
+import { researchForDebate, researchPromptContext, sanitizeResearchFindings } from "./research-intelligence.js";
 
 const emptyScorecard = (): Scorecard => ({ buyerValue: 0, sellerValue: 0, coteDIvoireFit: 0, marketplaceLiquidity: 0, differentiation: 0, trustFraud: 0, technicalFeasibility: 0, acquisition: 0, monetization: 0 });
 const DECISION_GAP = 2.5;
@@ -182,6 +182,8 @@ export async function runDebate(question: string, context: string | undefined, c
       throw new Error(`ARCHITECT_AGENT_FAILED (tour ${roundNo}): ${error instanceof Error ? error.message : String(error)}`);
     }
 
+    const extractedFindings = sanitizeResearchFindings(architect.researchFindings, research.sources);
+    research = { ...research, findings: [...(research.findings ?? []), ...extractedFindings].slice(0, 40) };
     const evidenceAudit = auditClaims(architect.claims);
     const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(question));
     const partial: DebateRound = { round: roundNo, architect, evidenceAudit, quantitativeAudit, redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] }, redTeamCompleted: false, judge: { status: "revise", winner: "neither", architectScore: 0, redTeamScore: 0, architectScorecard: emptyScorecard(), redTeamScorecard: emptyScorecard(), acceptedClaims: [], rejectedClaims: [], criticalDisagreements: [], decision: "", rationale: [], evidenceAudit }, createdAt: new Date().toISOString() };
@@ -227,7 +229,7 @@ export async function runDebateAgentStep(
   const finalRound = roundNo >= (debate.config ?? defaultConfig()).maxRounds;
   const cfg = debate.config ?? defaultConfig();
   const sectorProfile = detectSector(debate.question, debate.context ?? "");
-  const research = await researchForDebate({ question: debate.question, context: debate.context, role, profile: sectorProfile, previous: debate.research });
+  let research = await researchForDebate({ question: debate.question, context: debate.context, role, profile: sectorProfile, previous: debate.research });
   const researchContext = "\n\n" + sectorPromptGuidance(sectorProfile) + "\n\n" + researchPromptContext(research);
   let round = debate.rounds.find(item => item.round === roundNo);
   if (role === "architect") {
