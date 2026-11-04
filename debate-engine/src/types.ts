@@ -1,4 +1,4 @@
-import type { ResearchBundle } from "./research-intelligence.js";
+import type { ResearchBundle, ResearchFinding } from "./research-intelligence.js";
 import type { QuantitativeAudit, QuantitativeOptionDraft } from "./quantitative-reasoning.js";
 import type { StrategicFinancialCalculation } from "./strategic-financial.js";
 export type Provider = "openai" | "gemini";
@@ -11,7 +11,7 @@ export type ScoreDimension =
 
 export interface Scorecard { buyerValue:number; sellerValue:number; coteDIvoireFit:number; marketplaceLiquidity:number; differentiation:number; trustFraud:number; technicalFeasibility:number; acquisition:number; monetization:number; }
 export interface Claim { id:string; statement:string; type:"fact"|"hypothesis"|"opinion"; confidence:number; evidenceRequired:boolean; evidenceRefs?:string[]; }
-export interface Proposal { position:string; claims:Claim[]; assumptions:string[]; risks:string[]; alternatives:string[]; scoreExpected:number; nextTests:string[]; quantitativeOptions?:QuantitativeOptionDraft[]; }
+export interface Proposal { position:string; claims:Claim[]; assumptions:string[]; risks:string[]; alternatives:string[]; scoreExpected:number; nextTests:string[]; quantitativeOptions?:QuantitativeOptionDraft[]; researchFindings?:ResearchFinding[]; }
 export interface Attack { claimId?:string; severity:"low"|"medium"|"high"|"critical"; argument:string; evidenceNeeded:string[]; counterproposal?:string; confidence:number; }
 export interface Critique { verdict:"challenge"|"accept"|"mixed"; attacks:Attack[]; strongestAlternative?:string; unresolvedQuestions:string[]; }
 export interface EvidenceRecord { claimId:string; classification:"fact"|"hypothesis"|"opinion"; status:"supported"|"pending_verification"|"unsupported"|"not_required"; evidenceRefs:string[]; rationale:string; confidence:number; impact:"low"|"medium"|"high"|"critical"; }
