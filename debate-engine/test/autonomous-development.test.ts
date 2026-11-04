@@ -60,6 +60,11 @@ test("prevents skipping phases and requires execution evidence before verificati
 
 test("verified evidence requires proof and delivery requires tests and documentation", () => {
   let project = createProject(brief);
+  project = recordEvidence(project, {
+    artifact: "src/app.ts",
+    state: "executed",
+    description: "Code de démonstration exécuté."
+  });
   assert.throws(() => recordEvidence(project, {
     artifact: "test-results",
     state: "verified",
