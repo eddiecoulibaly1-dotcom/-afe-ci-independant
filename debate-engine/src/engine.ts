@@ -228,7 +228,7 @@ export async function runDebateAgentStep(
   const cfg = debate.config ?? defaultConfig();
   const sectorProfile = detectSector(debate.question, debate.context ?? "");
   const research = await researchForDebate({ question: debate.question, context: debate.context, role, profile: sectorProfile, previous: debate.research });
-  const researchContext = "\\n\\n" + sectorPromptGuidance(sectorProfile) + "\\n\\n" + researchPromptContext(research);
+  const researchContext = "\n\n" + sectorPromptGuidance(sectorProfile) + "\n\n" + researchPromptContext(research);
   let round = debate.rounds.find(item => item.round === roundNo);
   if (role === "architect") {
     if (round?.architect) throw new Error("STEP_ALREADY_COMPLETED");
