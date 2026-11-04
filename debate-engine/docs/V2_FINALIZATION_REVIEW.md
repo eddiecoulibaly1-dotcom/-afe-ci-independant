@@ -7,7 +7,7 @@ Référence de comparaison V1.0.7 : `6c7f5142f1ecfed11944a232e08637f67bfa249d`
 
 ## 1. Périmètre et sécurité
 
-Cette revue est réalisée sur une branche isolée créée depuis `feature/debate-engine-v2-1`. Les branches `main`, `feature/debate-engine-v2-1` et `baseline/v1.0.7` n'ont pas été déplacées. Aucune migration Supabase n'a été appliquée et aucun déploiement Vercel n'a été déclenché.
+Cette revue est réalisée sur une branche isolée créée depuis `feature/debate-engine-v2-1`. Les branches `main`, `feature/debate-engine-v2-1` et `baseline/v1.0.7` n'ont pas été déplacées. Aucune migration Supabase n'a été appliquée et aucun déploiement Production n'a été déclenché. L'intégration Vercel a automatiquement créé des déploiements Preview pour les commits de cette branche ; ils ne constituent pas une promotion Production.
 
 La comparaison de la branche V2 avec le candidat V1.0.7 représente 179 commits et 67 chemins affectés : 51 ajouts, 15 modifications et 1 suppression. Les statistiques de diff indiquent environ 5 898 lignes ajoutées/supprimées. Ce chiffre décrit le diff Git, pas un volume de code entièrement réécrit.
 
