@@ -7,7 +7,14 @@ export interface ResearchSource {
   publishedAt:string|null; retrievedAt:string; content:string; httpStatus:number|null;
   contentRetrieved:boolean; corroborationCount:number; relevance:number;
 }
+export interface ResearchFinding {
+ metric:string; value:number|null; unit:string; currency:string|null; geography:string;
+ referencePeriod:string; publishedAt:string|null; sourceIds:string[];
+ basis:"source_extracted"|"estimate"|"assumption"|"unknown";
+ methodology:string; caveat:string;
+}
 export interface ResearchBundle {
+  findings?:ResearchFinding[];
   status:"ready"|"not_configured"|"partial"|"unavailable";
   provider:"tavily"|"none"; generatedAt:string; sector:string;
   queries:string[]; sources:ResearchSource[]; gaps:string[]; notes:string[];
