@@ -86,7 +86,7 @@ export async function researchForDebate(args:{question:string;context?:string;ro
  const env=args.env??process.env,fetcher=args.fetcher??fetch,apiKey=env.TAVILY_API_KEY?.trim();
  const previous=args.previous;
  if(!apiKey)return {status:"not_configured",provider:"none",generatedAt:new Date().toISOString(),sector:args.profile.label,queries:[],sources:previous?.sources??[],gaps:["Recherche Internet non activée : la variable serveur TAVILY_API_KEY n'est pas configurée."],notes:["Aucune donnée externe n'a été inventée. Les sources déjà enregistrées sont conservées."]};
- const queries=querySet(args.question,args.context??"",args.role,args.profile);
+ const queries=args.role==="judge"?[]:querySet(args.question,args.context??"",args.role,args.profile);
  const notes:string[]=[],found:TavilyResult[]=[];
  try{for(let i=0;i<queries.length;i++)found.push(...await tavilySearch(queries[i],apiKey,args.profile,fetcher,i===0));}
  catch(error){notes.push(error instanceof Error?error.message:"Échec de la recherche documentaire.");}
@@ -99,17 +99,17 @@ export async function researchForDebate(args:{question:string;context?:string;ro
  }));
  const merged=[...(previous?.sources??[])];
  for(const item of retrieved){const same=merged.find(s=>s.url===item.url);if(same){same.content=item.content||same.content;same.contentRetrieved=same.contentRetrieved||item.contentRetrieved;same.retrievedAt=item.retrievedAt;}else merged.push(item);}
- const sources=merged.slice(-18);
+ const sources=merged.sort((a,b)=>rank({url:b.url,score:b.relevance},args.profile)-rank({url:a.url,score:a.relevance},args.profile)).slice(0,18);
  const gaps:string[]=[];
- if(!retrieved.length)gaps.push("Aucune source exploitable n'a été récupérée.");
- if(retrieved.every(s=>s.sourceClass!=="official"&&s.sourceClass!=="international"))gaps.push("Aucune source institutionnelle ou internationale n'a été trouvée dans cette recherche.");
- if(retrieved.every(s=>!s.contentRetrieved))gaps.push("Les pages des résultats n'ont pas pu être ouvertes ; seuls des extraits de moteur de recherche sont disponibles.");
- return {status:retrieved.length?"ready":"unavailable",provider:"tavily",generatedAt:new Date().toISOString(),sector:args.profile.label,queries,sources,gaps,notes:[...new Set(notes)].slice(0,8)};
+ if(!sources.length)gaps.push("Aucune source exploitable n'a été récupérée.");
+ if(sources.every(s=>s.sourceClass!=="official"&&s.sourceClass!=="international"))gaps.push("Aucune source institutionnelle ou internationale n'a été trouvée dans cette recherche.");
+ if(sources.every(s=>!s.contentRetrieved))gaps.push("Les pages des résultats n'ont pas pu être ouvertes ; seuls des extraits de moteur de recherche sont disponibles.");
+ return {status:retrieved.length?"ready":sources.length?"partial":"unavailable",provider:"tavily",generatedAt:new Date().toISOString(),sector:args.profile.label,queries,sources,gaps,notes:[...new Set(notes)].slice(0,8)};
 }
 export function researchPromptContext(bundle?:ResearchBundle):string {
  if(!bundle)return "DOSSIER DOCUMENTAIRE : aucune recherche intégrée à cette étape.";
  const lines=["DOSSIER DOCUMENTAIRE EXTERNE — "+bundle.status,"Secteur : "+bundle.sector,"Recherches : "+bundle.queries.join(" | "),"Sources disponibles :"];
- for(const s of bundle.sources){lines.push("["+s.id+"] "+s.title+" | "+s.url+" | domaine="+s.domain+" | classe="+s.sourceClass+" | publication="+(s.publishedAt??"date inconnue")+" | consultée="+s.retrievedAt+" | contenu ouvert="+s.contentRetrieved);if(s.content)lines.push("Extrait consulté : "+s.content.slice(0,4200));}
+ for(const s of bundle.sources.slice(0,7)){lines.push("["+s.id+"] "+s.title+" | "+s.url+" | domaine="+s.domain+" | classe="+s.sourceClass+" | publication="+(s.publishedAt??"date inconnue")+" | consultée="+s.retrievedAt+" | contenu ouvert="+s.contentRetrieved);if(s.content)lines.push("Extrait consulté : "+s.content.slice(0,1800));}
  lines.push("LACUNES : "+bundle.gaps.join(" | "),"NOTES : "+bundle.notes.join(" | "));
  lines.push("RÈGLES : cite les identifiants [SRC-...] pour les affirmations soutenues. L'ouverture d'une page prouve uniquement que son contenu a été récupéré, pas que toutes ses affirmations sont exactes. Vérifie date, période, géographie, unité et méthodologie. Recherche aussi les preuves contraires. Une seule source ne constitue pas une corroboration indépendante. Ne transforme jamais un extrait en donnée certaine sans contrôle.");
  return lines.join("\n");
