@@ -97,7 +97,7 @@ Le contenu de plusieurs fichiers critiques de la branche de travail correspond d
 
 ## 8. Vérifications exécutées et points restant à clôturer
 
-<PRIVATE_REVIEW>La CI GitHub Actions a exécuté `npm ci`, `npm run typecheck` et `npm test` sur le commit `b2fba4038d8347422c9dc707bea84e938fb00410` : installation réussie, TypeScript réussi, 56 tests réussis, 0 échec. Le premier passage avait révélé le défaut de détection des intentions financières ; le correctif a été intégré puis confirmé par le second passage.</PRIVATE_REVIEW>
+La CI GitHub Actions a exécuté `npm ci`, `npm run typecheck` et `npm test` sur le commit `b2fba4038d8347422c9dc707bea84e938fb00410` : installation réussie, TypeScript réussi, 56 tests réussis, 0 échec. Le premier passage avait révélé le défaut de détection des intentions financières ; le correctif a été intégré puis confirmé par le second passage.
 
 Restent obligatoires avant fusion :
 
