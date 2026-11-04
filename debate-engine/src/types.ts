@@ -17,6 +17,7 @@ export interface EvidenceRecord { claimId:string; classification:"fact"|"hypothe
 export interface EvidenceAudit { records:EvidenceRecord[]; unsupportedCriticalClaims:string[]; unsupportedHighImpactClaims:string[]; pendingVerificationClaims:string[]; confidence:number; blocking:boolean; nextTests:string[]; }
 export interface StrategicReport {
   financialCalculations?: StrategicFinancialCalculation;
+  reasoning: { questionDecomposition:string[]; strongestCaseFor:string[]; strongestCaseAgainst:string[]; decisiveDisagreements:string[]; falsifiableHypotheses:string[]; decisionReversalConditions:string[]; causalMechanisms:string[] };
   decisionLabel: "GO" | "CONDITIONAL_GO" | "NO_GO";
   executiveSummary: string;
   decisionRationale: string;
