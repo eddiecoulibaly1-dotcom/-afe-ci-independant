@@ -57,7 +57,7 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
 
 export function applyConvergencePolicy(judge: JudgeDecision, unresolvedQuestions: number, criticalAttacks: number, finalRound: boolean): JudgeDecision {
   const scored = finalizeJudgeScore(judge, unresolvedQuestions, criticalAttacks);
-  return buildActionableDecision(scored, scored.evidenceAudit ?? { records: [], unsupportedCriticalClaims: [], unsupportedHighImpactClaims: [], confidence: 1, blocking: false, nextTests: [] }, finalRound);
+  return buildActionableDecision(scored, scored.evidenceAudit ?? { records: [], unsupportedCriticalClaims: [], unsupportedHighImpactClaims: [], pendingVerificationClaims: [], confidence: 1, blocking: false, nextTests: [] }, finalRound);
 }
 
 function normalizeTerminalDecision(judge: JudgeDecision): JudgeDecision {
