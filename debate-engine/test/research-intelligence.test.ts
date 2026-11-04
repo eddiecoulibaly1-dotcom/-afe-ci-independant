@@ -20,7 +20,7 @@ test("ne simule aucune recherche lorsque la clé fournisseur manque",async()=>{
  assert.match(result.gaps.join(" "),/TAVILY_API_KEY/);
 });
 
-test("recherche des sources officielles, ouvre la page et conserve sa traçabilité",async()=>{
+test("recherche une source institutionnelle, ouvre la page et conserve sa traçabilité",async()=>{
  const calls:Array<{url:string;init?:RequestInit}>=[];
  const fetcher:typeof fetch=async(input,init)=>{
   const url=String(input);calls.push({url,init});
@@ -32,7 +32,7 @@ test("recherche des sources officielles, ouvre la page et conserve sa traçabili
  };
  const result=await researchForDebate({question:"Investir dans les transports collectifs à Abidjan",role:"architect",profile:detectSector("transport BRT"),env:{TAVILY_API_KEY:"test-key"},fetcher});
  assert.ok(result.sources.length>0);
- assert.equal(result.sources[0].sourceClass,"official");
+ assert.equal(result.sources[0].sourceClass,"international");
  assert.equal(result.sources[0].contentRetrieved,true);
  assert.match(result.sources[0].content,/transports collectifs/);
  assert.equal(result.sources[0].url,"https://www.worldbank.org/en/country/cotedivoire");
