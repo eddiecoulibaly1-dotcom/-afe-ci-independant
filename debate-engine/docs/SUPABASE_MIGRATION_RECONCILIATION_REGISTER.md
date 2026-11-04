@@ -2,8 +2,8 @@
 
 Date du contrôle : 2026-11-04  
 Branche d'audit : `audit/hardening-v2-finalization`  
-Commit contrôlé initial : `64c2237bdf259fd81aedae8457ae15817300de4d`  
-Mises à jour du registre : migrations de Test appliquées le 2026-11-04 ; commits Git de suivi postérieurs  
+HEAD documentaire contrôlé : `44f73972bf052faacd3b86178f01206b0c7e69a9`  
+Migrations de Test appliquées et vérifiées le 2026-11-04  
 Projets interrogés en lecture seule :
 - Production : `afe-ci-production` (`cyelvzywwqymxnziupxk`)
 - Test : `afe-ci-test` (`wmvycdoebpvihexcdkdw`)
@@ -54,7 +54,7 @@ Le fichier historique racine `supabase/migrations/20261027_allow_provisional_deb
   - `debate_shares_shared_by_idx` / `idx_debate_shares_shared_by`
 - Les deux paires de politiques redondantes sur `debates` sont encore présentes : `debates_select_access` / `debates_select_v09_access` et `debates_update_access` / `debates_update_v09_access`.
 - La fonction `claim_debate_execution_step` limite déjà `attempt_count < 8`, mais aucune entrée de migration correspondante n'est visible dans le journal. C'est une dérive de traçabilité : ne pas réappliquer aveuglément une fonction déjà modifiée.
-- Les politiques de gestion des membres de workspace autorisent le propriétaire et les rôles `owner/admin` à gérer les membres.
+- Les politiques de gestion des membres de workspace autorisent le propriétaire et les rôles `owner/admin` à gérer les membres. Les privilèges SQL `INSERT/UPDATE/DELETE` ne sont pas accordés à `authenticated` ; seuls `SELECT` et les opérations serveur via `service_role` sont présents. La migration d'alignement Test ne change pas ces grants.
 
 ### Test
 
@@ -69,7 +69,7 @@ Le fichier historique racine `supabase/migrations/20261027_allow_provisional_deb
 | ID | Écart | Risque / impact | Action requise | État |
 |---|---|---|---|---|
 | DB-01 | Limite de reprise 3 en Test vs 8 en Git et Production | Comportement d'orchestration différent entre environnements | Migration appliquée en Test ; fonction vérifiée à 8 en Test et Production. L'origine historique du patch Production reste à tracer | **Corrigé fonctionnellement ; traçabilité Production à documenter** |
-| DB-02 | Gestion des membres : owner-only en Test vs owner/admin en Production et dans le serveur | Tests d'intégration ne reflétaient pas les permissions de production | Migration d'alignement appliquée en Test ; politiques vérifiées présentes. Les tests RLS multi-utilisateurs restent à ajouter ; auditer séparément la promotion au rôle owner | **Aligné au niveau des politiques ; tests RLS restant** |
+| DB-02 | Gestion des membres : owner-only en Test vs owner/admin en Production et dans le serveur | Tests d'intégration ne reflétaient pas les permissions de production | Migration d'alignement appliquée en Test ; politiques vérifiées présentes. Les tests RLS multi-utilisateurs restent à ajouter ; auditer séparément la possibilité qu'un admin attribue le rôle owner (la politique actuelle l'autorise dans le WITH CHECK) | **Aligné au niveau des politiques ; tests RLS restant** |
 | DB-03 | 2 politiques RLS et 4 index redondants encore en Production | Dette de performance et d'auditabilité | Après sauvegarde vérifiée et fenêtre calme, exécuter la migration de nettoyage ; contrôler les objets avant/après | En attente d'autorisation d'exécution Production |
 | DB-04 | Migration de nettoyage absente des historiques Test et Production | Traçabilité incomplète | Ne pas l'enregistrer manuellement ; exécuter le fichier validé là où il est nécessaire, puis vérifier le journal | En attente |
 | DB-05 | Migration de recovery limit absente du journal alors que Production applique déjà le comportement 8 | Dérive entre état effectif et historique | Conserver la preuve SQL de l'état courant ; ajouter une note de réconciliation non destructive, ne pas rejouer en Production sans raison | À documenter |
@@ -90,7 +90,7 @@ Le fichier historique racine `supabase/migrations/20261027_allow_provisional_deb
 Cette étape ne sera déclarée complètement réconciliée que lorsque :
 1. Test et Production ont les mêmes comportements attendus pour les migrations et politiques du noyau, ou chaque différence est documentée et approuvée ;
 2. la limite de reprise est identique et vérifiée à 8 ;
-3. les droits workspace sont décidés, alignés et testés avec plusieurs utilisateurs ;
+3. les droits workspace sont décidés, alignés et testés avec plusieurs utilisateurs ; le cas de promotion au rôle owner par un admin est explicitement tranché ;
 4. les objets redondants de Production sont retirés après sauvegarde vérifiée, puis le résultat est contrôlé ;
 5. le registre des migrations est actualisé après chaque opération, sans falsifier l'historique ;
 6. CI, typage, tests SQL statiques et tests d'accès RLS sont verts ;
