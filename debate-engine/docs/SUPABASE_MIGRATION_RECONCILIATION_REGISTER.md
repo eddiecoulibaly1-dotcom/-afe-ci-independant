@@ -2,7 +2,8 @@
 
 Date du contrôle : 2026-11-04  
 Branche d'audit : `audit/hardening-v2-finalization`  
-Commit contrôlé : `64c2237bdf259fd81aedae8457ae15817300de4d`  
+Commit contrôlé initial : `64c2237bdf259fd81aedae8457ae15817300de4d`  
+Mises à jour du registre : migrations de Test appliquées le 2026-11-04 ; commits Git de suivi postérieurs  
 Projets interrogés en lecture seule :
 - Production : `afe-ci-production` (`cyelvzywwqymxnziupxk`)
 - Test : `afe-ci-test` (`wmvycdoebpvihexcdkdw`)
@@ -35,7 +36,7 @@ Une entrée d'historique ne prouve pas à elle seule que le schéma courant est 
 | `20261103144100_afe_ci_debate_execution_steps_service_role_policy.sql` | Politique RLS service_role du journal | Appliquée sous nom/version différents | Appliquée sous nom/version différents |
 | `20261103210000_afe_ci_debate_execution_step_retry_hardening.sql` | Reprises bornées, validation des leases | Appliquée sous nom/version différents | Appliquée sous nom/version différents |
 | `20261103231000_afe_ci_debate_execution_step_recovery_limit.sql` | Relèvement de la limite de tentatives de 3 à 8 | **Non enregistrée ; fonction actuellement à 3** | **Non enregistrée ; fonction actuellement à 8** |
-| `20261104120000_afe_ci_debate_duplicate_policy_index_cleanup.sql` | Retrait de 2 politiques RLS et 4 index redondants | **Non appliquée** | **Non appliquée** |
+| `20261104120000_afe_ci_debate_duplicate_policy_index_cleanup.sql` | Retrait de 2 politiques RLS et 4 index redondants | Non nécessaire à l'état courant : doublons absents | **Non appliquée** — objets redondants toujours présents |\n| `20261104130000_afe_ci_workspace_admin_membership_alignment.sql` | Alignement des politiques de gestion des membres owner/admin | **Appliquée le 2026-11-04** | Déjà alignée sur la politique existante |
 
 Le fichier historique racine `supabase/migrations/20261027_allow_provisional_debate_status.sql` porte également le changement d'état `provisional`. Il ne doit pas être rejoué sur une base dont la contrainte accepte déjà cet état.
 
@@ -67,8 +68,8 @@ Le fichier historique racine `supabase/migrations/20261027_allow_provisional_deb
 
 | ID | Écart | Risque / impact | Action requise | État |
 |---|---|---|---|---|
-| DB-01 | Limite de reprise 3 en Test vs 8 en Git et Production | Comportement d'orchestration différent entre environnements | Appliquer la migration de recovery limit en Test, puis vérifier la fonction ; consigner l'origine de la fonction à 8 en Production | À corriger |
-| DB-02 | Gestion des membres : owner-only en Test vs owner/admin en Production et dans le serveur | Tests d'intégration ne reflètent pas les permissions de production | Ajouter une migration d'alignement Test et des tests RLS à deux utilisateurs ; auditer séparément la capacité d'un admin à promouvoir un membre au rôle owner | À corriger |
+| DB-01 | Limite de reprise 3 en Test vs 8 en Git et Production | Comportement d'orchestration différent entre environnements | Migration appliquée en Test ; fonction vérifiée à 8 en Test et Production. L'origine historique du patch Production reste à tracer | **Corrigé fonctionnellement ; traçabilité Production à documenter** |
+| DB-02 | Gestion des membres : owner-only en Test vs owner/admin en Production et dans le serveur | Tests d'intégration ne reflétaient pas les permissions de production | Migration d'alignement appliquée en Test ; politiques vérifiées présentes. Les tests RLS multi-utilisateurs restent à ajouter ; auditer séparément la promotion au rôle owner | **Aligné au niveau des politiques ; tests RLS restant** |
 | DB-03 | 2 politiques RLS et 4 index redondants encore en Production | Dette de performance et d'auditabilité | Après sauvegarde vérifiée et fenêtre calme, exécuter la migration de nettoyage ; contrôler les objets avant/après | En attente d'autorisation d'exécution Production |
 | DB-04 | Migration de nettoyage absente des historiques Test et Production | Traçabilité incomplète | Ne pas l'enregistrer manuellement ; exécuter le fichier validé là où il est nécessaire, puis vérifier le journal | En attente |
 | DB-05 | Migration de recovery limit absente du journal alors que Production applique déjà le comportement 8 | Dérive entre état effectif et historique | Conserver la preuve SQL de l'état courant ; ajouter une note de réconciliation non destructive, ne pas rejouer en Production sans raison | À documenter |
@@ -95,4 +96,4 @@ Cette étape ne sera déclarée complètement réconciliée que lorsque :
 6. CI, typage, tests SQL statiques et tests d'accès RLS sont verts ;
 7. aucune migration Market n'est appliquée en Production par inadvertance.
 
-**Conclusion au 2026-11-04 :** le dépôt et les environnements sont cartographiés, mais la réconciliation Supabase n'est pas encore complète. Les points DB-01 à DB-06 ci-dessus sont explicites ; aucun changement de base n'a été exécuté pendant le relevé de ce registre.
+**Mise à jour au 2026-11-04 :** DB-01 est corrigé fonctionnellement en Test et vérifié à 8 tentatives dans les deux environnements. DB-02 est aligné au niveau des politiques. Aucune modification n'a été faite en Production. DB-03/DB-04 restent bloqués par la sauvegarde/restauration vérifiée et l'autorisation d'exécuter la migration de nettoyage. DB-05 reste une anomalie de traçabilité Production ; DB-06 reste un garde-fou à traiter avant tout octroi de privilège UPDATE à `authenticated`.
