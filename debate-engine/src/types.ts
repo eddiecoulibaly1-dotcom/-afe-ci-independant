@@ -1,3 +1,4 @@
+import type { ResearchBundle } from "./research-intelligence.js";
 import type { QuantitativeAudit, QuantitativeOptionDraft } from "./quantitative-reasoning.js";
 import type { StrategicFinancialCalculation } from "./strategic-financial.js";
 export type Provider = "openai" | "gemini";
@@ -34,5 +35,5 @@ export interface StrategicReport {
 }
 export interface JudgeDecision { strategicReport?:StrategicReport; status:DecisionStatus; winner:"architect"|"red_team"|"neither"; architectScore:number; redTeamScore:number; architectScorecard:Scorecard; redTeamScorecard:Scorecard; acceptedClaims:string[]; rejectedClaims:string[]; criticalDisagreements:string[]; decision:string; rationale:string[]; nextRoundObjective?:string; evidenceAudit?:EvidenceAudit; confidence?:"high"|"moderate"|"low"; risks?:string[]; tests?:string[]; reversalConditions?:string[]; }
 export interface DebateRound { round:number; architect:Proposal; redTeam:Critique; redTeamCompleted?:boolean; judge:JudgeDecision; evidenceAudit?:EvidenceAudit; quantitativeAudit?:QuantitativeAudit; createdAt:string; }
-export interface Debate { id:string; userId?:string; workspaceId?:string|null; question:string; context?:string; status:"running"|"converged"|"provisional"|"unresolved"; rounds:DebateRound[]; finalDecision?:JudgeDecision; config?:DebateConfig; }
+export interface Debate { id:string; userId?:string; workspaceId?:string|null; question:string; context?:string; sector?:string; research?:ResearchBundle; status:"running"|"converged"|"provisional"|"unresolved"; rounds:DebateRound[]; finalDecision?:JudgeDecision; config?:DebateConfig; }
 export interface DebateConfig { maxRounds:number; convergenceScore:number; architect:{provider:Provider;model:string}; redTeam:{provider:Provider;model:string}; judge:{provider:Provider;model:string}; }
