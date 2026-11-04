@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feature/debate-engine-v2-1
+      - audit/hardening-v2-finalization
   pull_request:
     branches:
       - main
@@ -15,7 +16,7 @@ permissions:
 
 concurrency:
   group: debate-engine-ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   verify:
