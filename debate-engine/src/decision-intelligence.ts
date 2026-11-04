@@ -52,7 +52,7 @@ export interface QuantitativeResult {
   evidenceSummary: Record<EvidenceKind, number>;
 }
 
-const FINANCIAL_TERMS = /rentabil|b[eé]n[eé]fice|r[eé]sultat net|marge|co[uû]t|investissement|tr[eé]sorerie|chiffre d'affaires|prix de revient|seuil de rentabilit/i;
+const FINANCIAL_TERMS = /rentabil|b[eé]n[eé]fice|r[eé]sultat net|marge|co[uû]t|investi(?:r|ssement|ssant)|placement|capital|tr[eé]sorerie|chiffre d'affaires|prix de revient|seuil de rentabilit|(?:fcfa|xof|euro|euros|usd|dollars?)/i;
 const COMPARISON_TERMS = /lequel|laquelle|compar|entre .+ et |meilleur|pr[eé]f[eé]rable|alternative|option/i;
 const STRATEGIC_TERMS = /strat[eé]gie|positionnement|d[eé]cision|d[eé]velopper|lancer|priorit[eé]/i;
 const OPERATIONAL_TERMS = /processus|organisation|op[eé]ration|production|logistique|ex[eé]cution/i;
