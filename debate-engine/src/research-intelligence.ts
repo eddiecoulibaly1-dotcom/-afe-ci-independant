@@ -99,7 +99,7 @@ export async function researchForDebate(args:{question:string;context?:string;ro
  const retrieved=await Promise.all(unique.map(async item=>{
   const domain=domainOf(item.url!);let page={text:"",status:null as number|null,publishedAt:null as string|null};
   try{page=await retrievePage(item.url!,fetcher)}catch(error){notes.push("Source inaccessible : "+domain+" ("+(error instanceof Error?error.message:"erreur")+")");}
-  return {id:"SRC-"+randomUUID().slice(0,8).toUpperCase(),title:item.title!,url:item.url!,domain,sourceClass:sourceClass(domain,args.profile),publishedAt:page.publishedAt??item.published_date??null,retrievedAt:new Date().toISOString(),content:(page.text||item.content||"").slice(0,MAX_PAGE_CHARS),httpStatus:page.status,contentRetrieved:page.text.length>0,corroborationCount:1,relevance:Math.max(0,Math.min(1,Number(item.score)||0))} satisfies ResearchSource;
+  return {id:"SRC-"+randomUUID().slice(0,8).toUpperCase(),title:item.title!,url:item.url!,domain,sourceClass:sourceClass(domain),publishedAt:page.publishedAt??item.published_date??null,retrievedAt:new Date().toISOString(),content:(page.text||item.content||"").slice(0,MAX_PAGE_CHARS),httpStatus:page.status,contentRetrieved:page.text.length>0,corroborationCount:1,relevance:Math.max(0,Math.min(1,Number(item.score)||0))} satisfies ResearchSource;
  }));
  const merged=[...(previous?.sources??[])];
  for(const item of retrieved){const same=merged.find(s=>s.url===item.url);if(same){same.content=item.content||same.content;same.contentRetrieved=same.contentRetrieved||item.contentRetrieved;same.retrievedAt=item.retrievedAt;}else merged.push(item);}
