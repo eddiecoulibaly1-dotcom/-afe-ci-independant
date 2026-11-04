@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { detectSector } from "../src/sector-adaptation.js";
-import { researchForDebate, researchPromptContext } from "../src/research-intelligence.js";
+import { researchForDebate, researchPromptContext, sanitizeResearchFindings } from "../src/research-intelligence.js";
 
 test("détecte un secteur transport et ses indicateurs propres",()=>{
  const profile=detectSector("Faut-il investir dans un réseau BRT plutôt que dans les routes à Abidjan ?");
@@ -44,4 +44,16 @@ test("recherche une source institutionnelle, ouvre la page et conserve sa traça
 test("les instructions de recherche distinguent consultation et validation factuelle",()=>{
  const context=researchPromptContext({status:"ready",provider:"tavily",generatedAt:"2026-11-04T00:00:00.000Z",sector:"Transport",queries:["mobilité"],sources:[],gaps:[],notes:[]});
  assert.match(context,/Une seule source ne constitue pas une corroboration indépendante/);
+});
+
+test("n'accepte un chiffre extrait que s'il cite une page réellement ouverte",()=>{
+ const source={id:"SRC-OPENED",title:"Statistiques",url:"https://ins.ci/rapport",domain:"ins.ci",sourceClass:"official" as const,publishedAt:"2025-01-01",retrievedAt:"2026-11-04T00:00:00.000Z",content:"Population totale 10 millions.",httpStatus:200,contentRetrieved:true,corroborationCount:1,relevance:0.9};
+ const findings=sanitizeResearchFindings([
+  {metric:"Population",value:10000000,unit:"personnes",currency:null,geography:"Côte d'Ivoire",referencePeriod:"2025",publishedAt:"2025-01-01",sourceIds:["SRC-OPENED"],basis:"source_extracted",methodology:"Recensement",caveat:"À recouper"},
+  {metric:"Marché estimé",value:500,unit:"milliards",currency:"XOF",geography:"Côte d'Ivoire",referencePeriod:"2026",publishedAt:null,sourceIds:["SRC-INVENTED"],basis:"source_extracted",methodology:"Inconnue",caveat:"Source absente"}
+ ],[source]);
+ assert.equal(findings[0].value,10000000);
+ assert.deepEqual(findings[0].sourceIds,["SRC-OPENED"]);
+ assert.equal(findings[1].value,null);
+ assert.equal(findings[1].basis,"unknown");
 });
