@@ -21,7 +21,7 @@ export interface StrategicReport {
   executiveSummary: string;
   decisionRationale: string;
   confidence: "high" | "moderate" | "low";
-  evidence: { verified:string[]; hypotheses:string[]; unverified:string[]; gaps:string[]; references:Array<{claim:string;references:string[];status:"supported"|"unsupported"|"not_provided"}> };
+  evidence: { verified:string[]; hypotheses:string[]; unverified:string[]; gaps:string[]; references:Array<{claim:string;references:string[];status:"pending_verification"|"unsupported"|"not_provided"}> };
   optionsComparison: Array<{option:string;strengths:string[];weaknesses:string[];assessment:string}>;
   financialModel: { currency:string; warning:string; assumptions:Array<{metric:string;value:number|null;unit:string;basis:"observed"|"provided"|"assumption"|"unknown";explanation:string}>; scenarios:Array<{name:string;horizon:string;activeUsers:number|null;monthlyRevenuePerActive:number|null;monthlyVariableCostPerActive:number|null;monthlyFixedCosts:number|null;operatingResult:number|null;conclusion:string}>; unitEconomics:string[]; limitations:string[] };
   risks: Array<{risk:string;severity:"critical"|"high"|"medium"|"low";earlyIndicators:string[];response:string}>;
