@@ -9,6 +9,7 @@ on:
   pull_request:
     branches:
       - main
+      - audit/hardening-v2-finalization
   workflow_dispatch:
 
 permissions:
