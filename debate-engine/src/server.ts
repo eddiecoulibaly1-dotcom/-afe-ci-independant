@@ -15,7 +15,7 @@ import { authenticateRequest, publicAuthConfig } from "./auth.js";
 import { addWorkspaceMember, createWorkspace, getMe, getWorkspace, listDebateShares, listWorkspaces, removeDebateShare, removeWorkspaceMember, setDebateWorkspace, shareDebate, updateProfile, updateWorkspaceMember } from "./workspace-store.js";
 import { inviteWorkspaceUser, createNotification, listNotifications, markNotificationRead, markAllNotificationsRead, listAudit, createShareLink, listShareLinks, revokeShareLink, resolveShareLink, getSharedDebate } from "./v1-store.js";
 import type { DebateConfig, Provider } from "./types.js";
-const VERSION="1.1.3",port=Number(process.env.PORT??8787);
+const VERSION="1.1.4",port=Number(process.env.PORT??8787);
 const json=(v:unknown)=>JSON.stringify(v,null,2);
 const esc=(v:unknown)=>String(v??"").replace(/[&<>\"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m] ?? ""));
 function boundedNumber(raw:string|undefined,fallback:number,min:number,max:number):number{const value=Number(raw);return Number.isFinite(value)?Math.min(max,Math.max(min,value)):fallback;}
@@ -40,7 +40,7 @@ if(req.method==="GET"&&path==="/api/share"){const token=url.searchParams.get("to
 if(req.method==="GET"&&(path==="/"||path==="/lab"||path==="/lab/")){html(res,200,LAB_HTML);return;}
 if(req.method==="GET"&&path==="/lab/manifest.webmanifest"){res.writeHead(200,{"Content-Type":"application/manifest+json; charset=utf-8"});res.end(LAB_MANIFEST);return;}if(req.method==="GET"&&path==="/lab/sw.js"){res.writeHead(200,{"Content-Type":"application/javascript; charset=utf-8"});res.end(LAB_SW);return;}if(req.method==="GET"&&path==="/lab/icon.svg"){res.writeHead(200,{"Content-Type":"image/svg+xml; charset=utf-8"});res.end(LAB_ICON);return;}
 if(req.method==="GET"&&path==="/ready"){try{await assertSupabaseSchemaReady();send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,database:"ready"});}catch(e){send(res,503,{ok:false,service:"afe-ci-debate-engine",version:VERSION,database:"not_ready",error:e instanceof Error?e.message:"Database readiness check failed"});}return;}
-if(req.method==="GET"&&path==="/health"){send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,evidenceEngine:true,mobileLab:true,pwa:true,auth:true,privateHistory:true,workspaces:true,roles:true,controlledSharing:true,v1_0_3:true,v1_0_5:true,v1_0_6:true,v1_0_7:true,notifications:true,audit:true,secureShareLinks:true,publicShareViewer:true,visualShareViewer:true,shareCenter:true,serverBackedShareLinks:true,invitations:true,realtime:true,strategicReports:true,audioPlayback:"browser-speech-synthesis",deployment:"healthy"});return;}
+if(req.method==="GET"&&path==="/health"){send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,evidenceEngine:true,mobileLab:true,pwa:true,auth:true,privateHistory:true,workspaces:true,roles:true,controlledSharing:true,v1_0_3:true,v1_0_5:true,v1_0_6:true,v1_0_7:true,notifications:true,audit:true,secureShareLinks:true,publicShareViewer:true,visualShareViewer:true,shareCenter:true,serverBackedShareLinks:true,invitations:true,realtime:true,strategicReports:true,audioPlayback:"browser-speech-synthesis-chunked",deployment:"healthy"});return;}
 if(req.method==="GET"&&path==="/auth/config"){const a=publicAuthConfig();if(!a){send(res,503,{error:"Supabase public auth is not configured"});return;}send(res,200,a);return;}
 if(req.method==="POST"&&path==="/auth/session"){
 const a=publicAuthConfig();if(!a){send(res,503,{error:"Supabase public auth is not configured"});return;}
