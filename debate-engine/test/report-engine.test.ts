@@ -16,7 +16,7 @@ test("le rapport reprend le débat et impose la traçabilité des preuves et des
   } as unknown as Debate;
   const prompt = buildStrategicReportPrompt(debate,{currency:"XOF",targetActiveUsers:100000,fundingCap:500000000});
   assert.match(prompt, /500 millions FCFA/);
-  assert.match(prompt, /N'invente aucun chiffre/);
+  assert.match(prompt, /n'invente aucun chiffre/);
   assert.match(prompt, /référence/);
   assert.match(prompt, /CONDITIONAL_GO/);
   assert.match(prompt, /100000/);
