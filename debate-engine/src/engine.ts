@@ -181,12 +181,12 @@ export async function runDebate(question: string, context: string | undefined, c
     const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(question));
     const partial: DebateRound = { round: roundNo, architect, evidenceAudit, quantitativeAudit, redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] }, redTeamCompleted: false, judge: { status: "revise", winner: "neither", architectScore: 0, redTeamScore: 0, architectScorecard: emptyScorecard(), redTeamScorecard: emptyScorecard(), acceptedClaims: [], rejectedClaims: [], criticalDisagreements: [], decision: "", rationale: [], evidenceAudit }, createdAt: new Date().toISOString() };
     try {
-      partial.redTeam = await modelCaller<Critique>({ ...config.redTeam, system: RED_TEAM_SYSTEM, prompt: redTeamPrompt(question, context, partial), schemaName: "red_team_critique", schema: critiqueSchema });
+      partial.redTeam = await modelCaller<Critique>({ ...config.redTeam, system: RED_TEAM_SYSTEM, prompt: redTeamPrompt(question, context, partial, debate.rounds), schemaName: "red_team_critique", schema: critiqueSchema });
     } catch (error) {
       throw new Error(`RED_TEAM_AGENT_FAILED (tour ${roundNo}): ${error instanceof Error ? error.message : String(error)}`);
     }
     try {
-      const rawJudge = await modelCaller<JudgeDecision>({ ...config.judge, system: JUDGE_SYSTEM, prompt: judgePrompt(question, context, partial, config.convergenceScore), schemaName: "judge_decision", schema: judgeSchema });
+      const rawJudge = await modelCaller<JudgeDecision>({ ...config.judge, system: JUDGE_SYSTEM, prompt: judgePrompt(question, context, partial, config.convergenceScore, debate.rounds), schemaName: "judge_decision", schema: judgeSchema });
       const arbitrated = applyConvergencePolicy({ ...rawJudge, evidenceAudit }, partial.redTeam.unresolvedQuestions.length, partial.redTeam.attacks.filter((attack) => attack.severity === "critical").length, finalRound);
       const quantitativeGateRequired = quantitativeAudit.applicable;
       partial.judge = quantitativeGateRequired && !canDeclareEconomicWinner(quantitativeAudit)
@@ -250,7 +250,7 @@ export async function runDebateAgentStep(
       if (round.redTeamCompleted || round.redTeam.attacks.length > 0 || round.redTeam.unresolvedQuestions.length > 0 || round.redTeam.verdict !== "challenge") throw new Error("STEP_ALREADY_COMPLETED");
       const redTeam = await modelCaller<Critique>({
         ...cfg.redTeam, system: RED_TEAM_SYSTEM,
-        prompt: redTeamPrompt(debate.question, debate.context, round) + researchContext,
+        prompt: redTeamPrompt(debate.question, debate.context, round, debate.rounds.filter(item => item.round < roundNo)) + researchContext,
         schemaName: "red_team_critique", schema: critiqueSchema
       });
       round = { ...round, redTeam, redTeamCompleted: true };
@@ -258,7 +258,7 @@ export async function runDebateAgentStep(
       if (round.judge.decision) throw new Error("STEP_ALREADY_COMPLETED");
       const rawJudge = await modelCaller<JudgeDecision>({
         ...cfg.judge, system: JUDGE_SYSTEM,
-        prompt: judgePrompt(debate.question, debate.context, round, cfg.convergenceScore) + researchContext,
+        prompt: judgePrompt(debate.question, debate.context, round, cfg.convergenceScore, debate.rounds.filter(item => item.round < roundNo)) + researchContext,
         schemaName: "judge_decision", schema: judgeSchema
       });
       const arbitrated = applyResearchQualityGate(applyConvergencePolicy(
