@@ -197,6 +197,17 @@ export async function handleV2Request(req:IncomingMessage,res:ServerResponse,pat
     await addEvent(id,user.id,"falsification_plan_created",{plan});
     send(res,201,{plan});return true;
   }
+  const falsificationResult=action.match(/^falsification\/([^/]+)\/result$/);
+  if(req.method==="POST"&&falsificationResult){
+    const input=await body(req),itemId=decodeURIComponent(falsificationResult[1]);
+    if(!["tested","refuted","not_falsified"].includes(input.status)||typeof input.threshold!=="string"||!input.threshold.trim()||typeof input.result!=="string"||!input.result.trim()){send(res,400,{error:"Statut, seuil défini avant test et résultat sont obligatoires."});return true;}
+    const planEvent=allEvents.find(e=>e.event_type==="falsification_plan_created"&&(e.payload.plan??[]).some((x:any)=>x.id===itemId));
+    if(!planEvent){send(res,404,{error:"Test de réfutation introuvable."});return true;}
+    const original=(planEvent.payload.plan??[]).find((x:any)=>x.id===itemId);
+    const updated={...original,status:input.status,threshold:input.threshold.slice(0,1000),result:input.result.slice(0,2000),testedBy:user.id,testedAt:new Date().toISOString()};
+    await addEvent(id,user.id,"falsification_result_recorded",{planItem:updated});
+    send(res,200,{planItem:updated});return true;
+  }
   if(req.method==="POST"&&action==="scenarios"){
     const input=await body(req);
     try{
@@ -262,7 +273,7 @@ export async function handleV2Request(req:IncomingMessage,res:ServerResponse,pat
   if(req.method==="GET"&&action==="quality"){
     const evidence=allEvents.filter(e=>e.event_type==="evidence_added").map(e=>e.payload.evidence as EvidenceItem);
     const claims=debate.rounds.flatMap(r=>r.architect.claims);
-    const falsifications=allEvents.filter(e=>e.event_type==="falsification_plan_created").flatMap(e=>e.payload.plan??[]);
+    const falsifications=[...allEvents.filter(e=>e.event_type==="falsification_plan_created").flatMap(e=>e.payload.plan??[]),...allEvents.filter(e=>e.event_type==="falsification_result_recorded").map(e=>e.payload.planItem)];
     const scenarios=allEvents.filter(e=>e.event_type==="scenario_completed");
     const ratings=scenarios.flatMap(e=>e.payload.scenarioRatings??[]);
     const outcomes=allEvents.filter(e=>e.event_type==="outcome_recorded").map(e=>e.payload.outcome);
@@ -279,7 +290,7 @@ export async function handleV2Request(req:IncomingMessage,res:ServerResponse,pat
     const ratings=allEvents.filter(e=>e.event_type==="scenario_completed").flatMap(e=>e.payload.scenarioRatings??[]);
     const outcomes=allEvents.filter(e=>e.event_type==="outcome_recorded").map(e=>e.payload.outcome);
     const approval=allEvents.find(e=>e.event_type==="approval_recorded")?.payload.approval??null;
-    const quality=calculateV2Quality({claims:debate.rounds.flatMap(r=>r.architect.claims),evidence,falsifications:allEvents.filter(e=>e.event_type==="falsification_plan_created").flatMap(e=>e.payload.plan??[]),scenarioRatings:ratings,outcomes,approval,criticalIssues});
+    const quality=calculateV2Quality({claims:debate.rounds.flatMap(r=>r.architect.claims),evidence,falsifications:[...allEvents.filter(e=>e.event_type==="falsification_plan_created").flatMap(e=>e.payload.plan??[]),...allEvents.filter(e=>e.event_type==="falsification_result_recorded").map(e=>e.payload.planItem)],scenarioRatings:ratings,outcomes,approval,criticalIssues});
     const decision=debate.finalDecision;
     const arbitration=arbitrateDecision({preferredOption:decision?.winner==="architect"?"Architecte":decision?.winner==="red_team"?"Red Team":undefined,alternatives:["Architecte","Red Team"],evidenceReliabilityScore:quality.evidenceReliabilityScore,decisionRobustnessScore:quality.decisionRobustnessScore,unresolvedCriticalIssues:criticalIssues,mandatoryConditions:decision?.reversalConditions??[]});
     const report=buildDecisionReport({title:"Rapport de décision AFE-CI V2",question:debate.question,executiveSummary:decision?.decision??"Analyse en cours ou décision non disponible.",arbitration,scenarios,risks,evidenceLimitations:evidence.filter(e=>e.status!=="content_checked").map(e=>e.claim+": source non confirmée sémantiquement"),actionPlan:decision?.tests??[]});
