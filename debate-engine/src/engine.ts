@@ -97,7 +97,6 @@ function normalizeTerminalDecision(judge: JudgeDecision): JudgeDecision {
       winner,
       confidence: provisional ? (judge.confidence === "low" ? "low" : "moderate") : "high",
       decision: judge.decision?.startsWith("Décision") ? judge.decision : `Décision provisoire : ${decisionLabel(winner)}. ${judge.decision || "La comparaison finale donne un avantage suffisant à cette option."}`,
-      rationale: [...(judge.rationale ?? []), `Normalisation terminale : l'écart final de ${scoreDelta(judge)} points permet de départager les options.`]
     };
   }
 
