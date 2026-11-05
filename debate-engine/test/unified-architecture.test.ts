@@ -15,6 +15,11 @@ test("router respects an explicit mode and detects a complex financial decision"
   assert.equal(route.requiresScenarios, true);
 });
 
+test("financial intent detects investment verbs and amounts expressed in FCFA", () => {
+  assert.ok(routeDecision({ question: "Faut-il investir 50 millions FCFA dans une unité agricole ?" }).intents.includes("financial"));
+  assert.ok(routeDecision({ question: "Quel capital financer pour lancer cette activité ?" }).intents.includes("financial"));
+});
+
 test("agent registry activates only capabilities relevant to the selected mode", () => {
   const route = routeDecision({ question: "Faut-il investir dans cette activité ?", requestedMode: "decision" });
   const roles = selectAgents(route).map(agent => agent.role);
