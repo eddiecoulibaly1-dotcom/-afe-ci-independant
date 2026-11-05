@@ -12,6 +12,7 @@ import { assessRisks } from "./risk-engine.js";
 import { arbitrateDecision } from "./arbitration.js";
 import { buildDecisionReport } from "./report-engine.js";
 import type { Debate, DebateConfig } from "./types.js";
+import { calculateChallengePriority, challengeBand } from "./challenge-engine.js";
 
 type Actor = { id: string; email?: string };
 type EventRow = { id: string; debate_id: string; event_type: string; actor: string; payload: Record<string, any>; created_at: string };
@@ -114,8 +115,10 @@ function buildFalsificationPlan(debate:Debate) {
   const attacks=debate.rounds.flatMap(r=>r.redTeam.attacks.map(a=>({...a,round:r.round})));
   return claims.filter(c=>c.type!=="opinion").map(c=>{
     const related=attacks.filter(a=>a.claimId===c.id||!a.claimId);
-    return {id:randomUUID(),claimId:c.id,claim:c.statement,round:c.round,impact:c.type==="fact"?"high":"medium",falsifiers:related.flatMap(a=>a.evidenceNeeded),tests:[...new Set(related.map(a=>a.argument))],threshold:null,status:"not_tested",result:null,limitations:["Le seuil de réfutation doit être défini avant le test par l'utilisateur ou le responsable métier.","Les objections du modèle constituent des pistes de test, pas des preuves."]};
-  });
+    const factors={impact:c.type==="fact"?85:65,evidenceGap:c.evidenceRequired?(c.evidenceRefs?.length?35:100):20,uncertainty:Math.round((1-Math.max(0,Math.min(1,c.confidence)))*100),dependency:Math.min(100,related.length*20),reversalCost:c.type==="fact"?85:60};
+    const priority=calculateChallengePriority(factors);
+    return {id:randomUUID(),claimId:c.id,claim:c.statement,round:c.round,impact:c.type==="fact"?"high":"medium",challengePriority:priority,challengeBand:challengeBand(priority.score),falsifiers:related.flatMap(a=>a.evidenceNeeded),tests:[...new Set(related.map(a=>a.argument))],threshold:null,status:"not_tested",result:null,limitations:["Le seuil de réfutation doit être défini avant le test par l'utilisateur ou le responsable métier.","La dépendance est estimée à partir du nombre d'objections associées ; elle ne constitue pas une analyse causale.","Les objections du modèle constituent des pistes de test, pas des preuves."]};
+  }).sort((a,b)=>b.challengePriority.score-a.challengePriority.score);
 }
 const DOMAIN_MODULES=[
  {id:"strategy",version:"1.0.0",label:"Stratégie et développement",owner:"AFE-CI",supportedDecisionTypes:["strategic","comparison"],claimTaxonomy:["marché","positionnement","croissance","avantage concurrentiel"],riskTaxonomy:["exécution","concurrence","financement","adoption"],criteriaTemplates:["valeur","différenciation","faisabilité","réversibilité"],evidenceGuidance:["données de marché datées","entretiens utilisateurs","résultats pilotes"],requiredHumanReview:["décision irréversible","engagement financier majeur"],limitations:["Cadre d'aide à la décision, pas un conseil professionnel certifié."]},
