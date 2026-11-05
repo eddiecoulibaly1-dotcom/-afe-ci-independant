@@ -67,3 +67,8 @@ do $$ declare t text; begin
  foreach t in array array['debate_workspace_settings','debate_workspace_invites','debate_workspace_roles','debate_workspace_tasks','debate_workspace_comments','debate_workspace_approvals','debate_workspace_documents','debate_workspace_audit','debate_workspace_automation_rules']
  loop execute format('alter table public.%I enable row level security',t); execute format('revoke all on public.%I from anon, authenticated',t); end loop;
 end $$;
+
+-- Only the server-side service role may access these tables; browser roles remain revoked.
+grant all on table public.debate_workspace_settings, public.debate_workspace_invites, public.debate_workspace_roles, public.debate_workspace_tasks, public.debate_workspace_comments, public.debate_workspace_approvals, public.debate_workspace_documents, public.debate_workspace_audit, public.debate_workspace_automation_rules to service_role;
+grant usage, select on sequence public.debate_workspace_audit_id_seq to service_role;
+notify pgrst, 'reload schema';
