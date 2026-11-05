@@ -155,7 +155,8 @@ export async function handleV2Request(req:IncomingMessage,res:ServerResponse,pat
     if(input.workspaceId){const w=await getWorkspace(input.workspaceId,user.id);if(!w||!["owner","admin","editor"].includes(w.role)){send(res,403,{error:"Accès insuffisant à cet espace."});return true;}}
     const debate:Debate={id:randomUUID(),userId:user.id,workspaceId:input.workspaceId??null,question:input.question.trim(),context:[typeof input.context==="string"?input.context.trim():"",domainModule?"[MODULE SPÉCIALISÉ "+domainModule.label+"]\nClaims : "+domainModule.claimTaxonomy.join(", ")+"\nRisques : "+domainModule.riskTaxonomy.join(", ")+"\nCritères : "+domainModule.criteriaTemplates.join(", ")+"\nGuidance : "+domainModule.evidenceGuidance.join(", ")+"\nRevue humaine : "+domainModule.requiredHumanReview.join(", ")+"\nLimites : "+domainModule.limitations.join(" "):""].filter(Boolean).join("\n\n"),status:"running",rounds:[],config:config()};
     await saveDebate(debate);
-    const persistedMode=route.mode==="debate"?"exploration":route.mode==="hybrid"?"validation":"decision";\n    await db("debates?id=eq."+encodeURIComponent(debate.id),{method:"PATCH",headers:{Prefer:"return=minimal"},body:json({mode:persistedMode})});
+    const persistedMode=route.mode==="debate"?"exploration":route.mode==="hybrid"?"validation":"decision";
+    await db("debates?id=eq."+encodeURIComponent(debate.id),{method:"PATCH",headers:{Prefer:"return=minimal"},body:json({mode:persistedMode})});
     const agents=selectAgents(route);
     await addEvent(debate.id,user.id,"case_created",{route,agents,highStakes:input.highStakes===true,domainModuleId:input.domainModuleId??null,featureFlags:{v2_evidence_graph:true,v2_adaptive_deliberation:true,v2_falsification:true,v2_scenario_simulation:true,v2_human_governance:true,v2_outcome_tracking:true,v2_strategic_memory:true}});
     send(res,201,{case:debate,route,agents,accepted:true});return true;
