@@ -62,7 +62,7 @@ test("BR-DEC-001: les consignes restent actives dans plusieurs secteurs",()=>{
   ["Lancer un service de microfinance en Côte d'Ivoire","finance"],
   ["Déployer une plateforme numérique de santé pour les soins à distance","health"],
   ["Investir dans une centrale solaire et son stockage","energy"],
-  ["Créer une application éducative pour les lycéens","education"],
+  ["Améliorer l'enseignement et les apprentissages au lycée","education"],
   ["Déployer une plateforme numérique de gestion commerciale","technology"],
   ["Ouvrir un réseau de magasins de distribution","commerce"]
  ] as const;
