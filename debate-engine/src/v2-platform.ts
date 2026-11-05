@@ -25,10 +25,14 @@ function send(res: ServerResponse, status: number, data: unknown) {
   res.end(json(data));
 }
 function config(): DebateConfig {
-  const provider = (v: string|undefined): "openai"|"gemini" => v === "gemini" ? "gemini" : "openai";
-  const model = (p: "openai"|"gemini") => p === "gemini" ? (process.env.GEMINI_MODEL || "gemini-3.8-flash") : (process.env.OPENAI_MODEL || "gpt-4.1-mini");
-  const a=provider(process.env.ARCHITECT_PROVIDER), r=provider(process.env.RED_TEAM_PROVIDER || "gemini"), j=provider(process.env.JUDGE_PROVIDER);
-  return { maxRounds:3, convergenceScore:85, architect:{provider:a,model:model(a)}, redTeam:{provider:r,model:model(r)}, judge:{provider:j,model:model(j)} };
+  const provider=(v:string|undefined,fallback:"openai"|"gemini"):"openai"|"gemini"=>v==="gemini"?"gemini":v==="openai"?"openai":fallback;
+  const model=(p:"openai"|"gemini",override?:string)=>{
+    const candidate=override?.trim()||(p==="gemini"?process.env.GEMINI_MODEL?.trim():process.env.OPENAI_MODEL?.trim());
+    if(candidate&&!(p==="gemini"&&/^gpt-/i.test(candidate))&&!(p==="openai"&&/^gemini-/i.test(candidate)))return candidate;
+    return p==="gemini"?"gemini-2.5-flash":"gpt-4.1-mini";
+  };
+  const a=provider(process.env.ARCHITECT_PROVIDER,"openai"),r=provider(process.env.RED_TEAM_PROVIDER,"gemini"),j=provider(process.env.JUDGE_PROVIDER,"openai");
+  return {maxRounds:Math.round(Number(process.env.MAX_ROUNDS)||3),convergenceScore:Number(process.env.CONVERGENCE_SCORE)||85,architect:{provider:a,model:model(a,process.env.ARCHITECT_MODEL)},redTeam:{provider:r,model:model(r,process.env.RED_TEAM_MODEL)},judge:{provider:j,model:model(j,process.env.JUDGE_MODEL)}};
 }
 function supaConfig() {
   const url=process.env.SUPABASE_URL?.replace(/\/$/,"");
