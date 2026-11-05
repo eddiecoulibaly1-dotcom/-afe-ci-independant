@@ -12,12 +12,12 @@ test("P8 blocks claims while a human approval is pending",()=>{
  assert.match(migration,/NOT EXISTS \(SELECT 1 FROM public\.afe_agent_approvals ap WHERE ap\.mission_id=m\.id AND ap\.status='pending'\)/);
  assert.match(migration2,/request_afe_agent_approval/);
  assert.match(migration2,/status='waiting_approval'/);
- assert.match(platform,/rpc\\/request_afe_agent_approval/);
+ assert.ok(platform.includes("rpc/request_afe_agent_approval"));
 });
 
 test("P8 decisions are atomic, workspace-scoped and server-only",()=>{
  assert.match(migration,/decide_afe_agent_approval/);
- assert.match(migration,/p_workspace_id=p_workspace_id/);
+ assert.match(migration,/workspace_id=p_workspace_id/);
  assert.match(migration,/FOR UPDATE/);
  assert.match(migration,/REVOKE ALL ON FUNCTION public\.decide_afe_agent_approval/);
  assert.match(platform,/rpc\/decide_afe_agent_approval/);
@@ -33,6 +33,6 @@ test("P9 handoffs create idempotent recipient missions",()=>{
 });
 
 test("P9 dispatch is bounded and uses row locks",()=>{
- assert.match(migration,/p_limit<1 OR p_limit>50/);
- assert.match(migration,/FOR UPDATE SKIP LOCKED/);
+ assert.match(migration2,/p_limit<1 OR p_limit>50/);
+ assert.match(migration2,/FOR UPDATE SKIP LOCKED/);
 });
