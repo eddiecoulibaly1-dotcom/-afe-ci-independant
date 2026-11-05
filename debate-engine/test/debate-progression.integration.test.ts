@@ -14,8 +14,10 @@ const config:DebateConfig={
 
 test("intégration trois tours : l'historique et les objections antérieures atteignent les trois agents",async()=>{
  const prompts:Array<{schema:string;prompt:string;round:number}>=[];
+ let currentRound=0;
  const fake=async <T>(args:Parameters<typeof callModel>[0]):Promise<T>=>{
-  const round=(prompts.filter(x=>x.schema==="architect_proposal").length)+1;
+  if(args.schemaName==="architect_proposal") currentRound++;
+  const round=currentRound;
   prompts.push({schema:args.schemaName,prompt:args.prompt,round});
   if(args.schemaName==="architect_proposal") return {
    position:["Tour 1 : sécuriser les bassins de collecte et mesurer les volumes accessibles.","Tour 2 : comparer les contrats d'approvisionnement et les rendements matière du pilote.","Tour 3 : conditionner la montée en capacité aux résultats commerciaux et au coût de revient."][round-1],
