@@ -12,3 +12,18 @@ test("unknown and malformed roles are rejected rather than treated as privileged
 test("only the four explicit built-in roles are accepted by the baseline policy",()=>{
   for(const role of ["owner","admin","editor","viewer"]) assert.equal(isRole(role),true);
 });
+
+test("membership mutation policies are removed from direct authenticated Data API access",async()=>{
+  const {readFile}=await import("node:fs/promises");
+  const migration=await readFile(new URL("../supabase/migrations/20261105210000_team_membership_server_only.sql",import.meta.url),"utf8");
+  assert.match(migration,/DROP POLICY IF EXISTS debate_workspace_members_admin_insert/i);
+  assert.match(migration,/DROP POLICY IF EXISTS debate_workspace_members_admin_update/i);
+  assert.match(migration,/DROP POLICY IF EXISTS debate_workspace_members_admin_delete/i);
+});
+test("workspace document bucket is private and constrained to 50 MB",async()=>{
+  const {readFile}=await import("node:fs/promises");
+  const migration=await readFile(new URL("../supabase/migrations/20261105213000_team_private_documents_bucket.sql",import.meta.url),"utf8");
+  assert.match(migration,/afe-ci-team-documents/);
+  assert.match(migration,/false/);
+  assert.match(migration,/52428800/);
+});
