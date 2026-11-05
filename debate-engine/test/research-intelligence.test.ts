@@ -11,6 +11,15 @@ test("détecte un secteur transport et ses indicateurs propres",()=>{
  assert.equal(profile.criteria.length,9);
 });
 
+test("détecte la transformation agroalimentaire du manioc malgré le mot investissement",()=>{
+ const profile=detectSector("Faut-il investir dans une unité semi-industrielle de transformation du manioc en Côte d’Ivoire pour produire et commercialiser de l’attiéké ?");
+ assert.equal(profile.sector,"agriculture");
+ assert.match(profile.label,/transformation|agroalimentaire/i);
+ assert.ok(profile.indicators.some(x=>/capacité de transformation/i.test(x)));
+ assert.ok(profile.indicators.some(x=>/coût de revient/i.test(x)));
+ assert.equal(profile.criteria.reduce((sum,x)=>sum+x.weight,0),100);
+});
+
 test("ne simule aucune recherche lorsque la clé fournisseur manque",async()=>{
  let calls=0;
  const result=await researchForDebate({question:"Mobilité urbaine à Abidjan",role:"architect",profile:detectSector("transport BRT"),env:{},fetcher:async()=>{calls++;throw new Error("ne doit pas être appelé")}});
