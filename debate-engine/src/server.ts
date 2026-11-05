@@ -14,6 +14,7 @@ import { addWorkspaceMember, createWorkspace, getMe, getWorkspace, listDebateSha
 import { inviteWorkspaceUser, createNotification, listNotifications, markNotificationRead, markAllNotificationsRead, listAudit, createShareLink, listShareLinks, revokeShareLink, resolveShareLink, getSharedDebate } from "./v1-store.js";
 import { LAB_V2_HTML, handleV2Request } from "./v2-platform.js";
 import { TEAM_HTML, handleTeamRequest } from "./team-platform.js";
+import { handleAutonomousAgentsRequest } from "./autonomous-agents/platform.js";
 import type { DebateConfig, Provider } from "./types.js";
 const VERSION="1.1.2",port=Number(process.env.PORT??8787);
 const json=(v:unknown)=>JSON.stringify(v,null,2);
@@ -58,7 +59,7 @@ catch(e){console.error("[afe-ci-auth-proxy] Supabase Auth request failed",e);sen
 return;
 }
 const user=await authenticateRequest(req);if(!user){send(res,401,{error:"Authentication required"});return;}
-if(path.startsWith("/team/api/")){if(await handleTeamRequest(req,res,path,user))return;}
+if(path.startsWith("/team/api/")){if(await handleAutonomousAgentsRequest(req,res,path,user))return;if(await handleTeamRequest(req,res,path,user))return;}
 if(path.startsWith("/decision-cases")){if(!supabasePersistenceEnabled()){send(res,503,{error:"La plateforme V2 exige la persistance Supabase configurée."});return;}if(await handleV2Request(req,res,path,user))return;}
 // Market Intelligence is an optional subsystem. Keep its HTTP surface disabled unless explicitly enabled.
 if(path.startsWith("/market-prices")&&process.env.MARKET_INTELLIGENCE_ENABLED!=="true"){send(res,404,{error:"Le module Market Intelligence est désactivé sur cet environnement."});return;}
