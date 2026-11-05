@@ -20,7 +20,7 @@ test("agent registry activates only capabilities relevant to the selected mode",
   const roles = selectAgents(route).map(agent => agent.role);
   assert.ok(roles.includes("scenario"));
   assert.ok(roles.includes("risk"));
-  assert.ok(!roles.includes("red_team"));
+  assert.ok(roles.includes("red_team"));
 });
 
 test("scenario engine creates qualitative scenarios without numeric forecasts", () => {
