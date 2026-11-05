@@ -62,15 +62,17 @@ function applyResearchQualityGate(judge: JudgeDecision, research: import("./rese
   const independentDomains = new Set(sources.filter(source => source.contentRetrieved).map(source => source.domain));
   const institutional = sources.some(source => source.contentRetrieved && (source.sourceClass === "official" || source.sourceClass === "international"));
   if (independentDomains.size >= 2 && institutional) return judge;
-  const reason = research?.status === "not_configured"
-    ? "La recherche documentaire externe n'est pas configurée sur le serveur."
-    : "Le dossier documentaire ne contient pas encore au moins deux sources indépendantes ouvertes, dont une source institutionnelle ou internationale.";
+  const notConfigured = research?.status === "not_configured";
+  const reason = notConfigured
+    ? "Recherche externe indisponible : la clé Tavily n'est pas configurée côté serveur."
+    : "Le dossier documentaire ne contient pas encore deux domaines indépendants avec pages ouvertes, dont une source institutionnelle ou internationale.";
+  const alreadyReported = notConfigured && judge.rationale.some(item => item.includes("clé Tavily n'est pas configurée"));
   return {
     ...judge,
     status: judge.winner === "neither" ? "unresolved" : (finalRound ? "provisional" : "revise"),
     confidence: "low",
-    decision: (judge.winner === "neither" ? "Arbitrage non tranché. " : "Décision provisoire. ") + reason,
-    rationale: [...judge.rationale, reason, "La consultation de pages web ne constitue pas à elle seule une validation sémantique des affirmations."],
+    decision: judge.decision?.trim() || (judge.winner === "neither" ? "Arbitrage non tranché." : "Décision provisoire."),
+    rationale: alreadyReported ? judge.rationale : [...judge.rationale, reason, "Une page consultée n'est pas, à elle seule, une validation sémantique de l'affirmation."],
     risks: [...(judge.risks ?? []), "Risque de conclusion insuffisamment documentée."],
     tests: [...new Set([...(judge.tests ?? []), "Compléter la recherche, ouvrir les sources primaires et corroborer les affirmations décisives auprès de domaines indépendants."])]
   };
