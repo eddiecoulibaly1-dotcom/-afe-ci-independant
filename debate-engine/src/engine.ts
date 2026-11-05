@@ -8,6 +8,7 @@ import { finalizeJudgeScore } from "./scoring.js";
 import { auditClaims } from "./evidence.js";
 import { detectSector, sectorPromptGuidance } from "./sector-adaptation.js";
 import { researchForDebate, researchPromptContext, sanitizeResearchFindings } from "./research-intelligence.js";
+import { auditNovelty } from "./compliance-engine.js";
 
 const emptyScorecard = (): Scorecard => ({ buyerValue: 0, sellerValue: 0, coteDIvoireFit: 0, marketplaceLiquidity: 0, differentiation: 0, trustFraud: 0, technicalFeasibility: 0, acquisition: 0, monetization: 0 });
 function decisionLabel(winner: "architect" | "red_team") { return winner === "architect" ? "Architecte" : "Red Team"; }
@@ -275,6 +276,24 @@ export async function runDebateAgentStep(
         risks: [...(arbitrated.risks ?? []), "Données quantitatives insuffisantes pour départager économiquement les options."],
         tests: [...new Set([...(arbitrated.tests ?? []), ...qa.options.flatMap(option => option.missingInputs.map(input => `Renseigner : ${input} (${option.label})`))])]
       } : arbitrated };
+    }
+  }
+  if (role === "judge" && round.architect && debate.rounds.length > 0) {
+    const previousArguments = debate.rounds.flatMap(previous => previous.architect.claims.map(claim => ({ id: claim.id, text: claim.statement, kind: "claim" as const })));
+    const currentArguments = round.architect.claims.map(claim => ({ id: claim.id, text: claim.statement, kind: "claim" as const }));
+    const novelty = auditNovelty(previousArguments, currentArguments);
+    const novelCount = novelty.filter(item => item.novel).length;
+    if (currentArguments.length > 0 && novelCount === 0) {
+      round = { ...round, judge: {
+        ...round.judge,
+        status: finalRound ? "unresolved" : "revise",
+        winner: "neither",
+        confidence: "low",
+        decision: "Progression décisionnelle bloquée : ce tour ne contient aucune affirmation nouvelle par rapport aux tours précédents.",
+        rationale: [...round.judge.rationale, "Contrôle anti-répétition : toutes les affirmations de l'Architecte sont similaires à des affirmations déjà présentées.", ...novelty.map(item => `Affirmation ${item.argumentId} répétée (similarité ${item.similarity}, référence ${item.duplicateOf}).`)],
+        risks: [...(round.judge.risks ?? []), "Risque de répétition sans progression intellectuelle."],
+        tests: [...new Set([...(round.judge.tests ?? []), "Apporter une preuve nouvelle, une réfutation, une analyse, une conséquence stratégique ou une révision motivée avant convergence.")]
+      } };
     }
   }
   const rounds = debate.rounds.filter(item => item.round !== roundNo).concat(round).sort((a,b)=>a.round-b.round);
