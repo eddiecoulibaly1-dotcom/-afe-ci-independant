@@ -11,7 +11,7 @@ export interface AgentDefinition {
 
 export const AGENT_REGISTRY: readonly AgentDefinition[] = [
   { role: "architect", label: "Architecte", purpose: "Construire les options, hypothèses et arguments.", modes: ["debate", "decision", "hybrid"], required: true },
-  { role: "red_team", label: "Équipe contradictoire", purpose: "Réfuter les arguments et rechercher les angles morts.", modes: ["debate", "hybrid"], required: true },
+  { role: "red_team", label: "Équipe contradictoire", purpose: "Réfuter les arguments et rechercher les angles morts.", modes: ["debate", "decision", "hybrid"], required: true },
   { role: "evidence", label: "Vérification des preuves", purpose: "Qualifier les affirmations et contrôler les références.", modes: ["debate", "decision", "hybrid"], required: false },
   { role: "scenario", label: "Analyse des scénarios", purpose: "Comparer les trajectoires plausibles et leurs conditions.", modes: ["decision", "hybrid"], required: false },
   { role: "risk", label: "Analyse des risques", purpose: "Évaluer les risques, leur criticité et les mesures de maîtrise.", modes: ["decision", "hybrid"], required: false },
