@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS public.afe_agent_memory (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (agent_id, workspace_id) REFERENCES public.afe_agents(id, workspace_id) ON DELETE CASCADE,
-  FOREIGN KEY (source_mission_id, workspace_id) REFERENCES public.afe_agent_missions(id, workspace_id) ON DELETE SET NULL
+  FOREIGN KEY (source_mission_id, workspace_id) REFERENCES public.afe_agent_missions(id, workspace_id) ON DELETE SET NULL (source_mission_id)
 );
 
 CREATE TABLE IF NOT EXISTS public.afe_agent_approvals (
