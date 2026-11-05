@@ -270,6 +270,8 @@ export async function handleV2Request(req:IncomingMessage,res:ServerResponse,pat
     if(!proposed){send(res,404,{error:"Leçon introuvable."});return true;}
     const lesson=proposed.payload.lesson;
     if(lesson.sourceCaseIds.length<2){send(res,409,{error:"Validation générale refusée : au moins deux cas sources indépendants sont requis."});return true;}
+    const sourceDebates=await Promise.all(lesson.sourceCaseIds.map((sourceId:string)=>getDebate(sourceId,user.id)));
+    if(sourceDebates.some(d=>!d)||sourceDebates.some(d=>(d?.workspaceId??null)!==(debate.workspaceId??null))){send(res,403,{error:"Les cas sources doivent être accessibles et appartenir au même espace de travail."});return true;}
     await addEvent(id,user.id,"memory_lesson_validated",{lessonId:lesson.id,validatedBy:user.id,reason:String(input.reason??"Validation humaine")});
     send(res,200,{validated:true,lessonId:lesson.id});return true;
   }
