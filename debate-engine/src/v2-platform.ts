@@ -85,17 +85,28 @@ function privateAddress(address:string):boolean {
   if(isIP(address)===4){const p=address.split(".").map(Number);return p[0]===0||p[0]===10||p[0]===127||p[0]>=224||(p[0]===169&&p[1]===254)||(p[0]===172&&p[1]>=16&&p[1]<=31)||(p[0]===192&&p[1]===168)||(p[0]===100&&p[1]>=64&&p[1]<=127);}
   const a=address.toLowerCase();return a==="::1"||a==="::"||a.startsWith("fc")||a.startsWith("fd")||a.startsWith("fe80")||a.startsWith("::ffff:127.")||a.startsWith("::ffff:10.");
 }
-async function checkSource(urlText:string):Promise<{status:string;httpStatus?:number;checkedAt:string;limitations:string[]}> {
-  const checkedAt=new Date().toISOString(), limitations=["Contrôle HTTP d'accessibilité uniquement : le contenu n'a pas été confirmé sémantiquement."];
+async function checkSource(urlText:string,excerpt?:string):Promise<{status:string;httpStatus?:number;checkedAt:string;limitations:string[]}> {
+  const checkedAt=new Date().toISOString();
   let url:URL;
   try { url=new URL(urlText); } catch { return {status:"rejected",checkedAt,limitations:["URL invalide."]}; }
   if(url.protocol!=="https:"||url.username||url.password||url.port&&url.port!=="443"||url.hostname==="localhost"||url.hostname.endsWith(".local")||url.hostname.endsWith(".internal")) return {status:"rejected",checkedAt,limitations:["Seules les URL HTTPS publiques sans identifiants ni port non standard sont autorisées."]};
   try {
     const addresses=isIP(url.hostname)?[url.hostname]:(await lookup(url.hostname,{all:true,verbatim:true})).map(x=>x.address);
     if(!addresses.length||addresses.some(privateAddress)) return {status:"rejected",checkedAt,limitations:["Hôte privé, local ou non résolu : requête bloquée."]};
-    const response=await fetch(url.toString(),{method:"HEAD",redirect:"manual",signal:AbortSignal.timeout(8000),headers:{"User-Agent":"AFE-CI-Evidence-Check/2.0"}});
+    const response=await fetch(url.toString(),{method:"GET",redirect:"manual",signal:AbortSignal.timeout(8000),headers:{"User-Agent":"AFE-CI-Evidence-Check/2.0","Range":"bytes=0-65535"}});
     if(response.status>=300&&response.status<400) return {status:"redirect_review",httpStatus:response.status,checkedAt,limitations:["Redirection non suivie automatiquement ; vérifier la destination séparément."]};
-    return {status:response.ok?"reachable":"unavailable",httpStatus:response.status,checkedAt,limitations};
+    if(!response.ok) return {status:"unavailable",httpStatus:response.status,checkedAt,limitations:["La source n'a pas répondu avec un statut HTTP de succès."]};
+    if(!excerpt?.trim()) { await response.body?.cancel(); return {status:"reachable",httpStatus:response.status,checkedAt,limitations:["URL accessible ; contenu non vérifié faute d'extrait de référence."]}; }
+    const reader=response.body?.getReader();
+    let content="";
+    if(reader) {
+      const decoder=new TextDecoder();
+      while(content.length<65536) { const part=await reader.read(); if(part.done) break; content+=decoder.decode(part.value,{stream:true}); }
+      await reader.cancel().catch(()=>{});
+    }
+    const normalize=(value:string)=>value.toLocaleLowerCase("fr").replace(/\s+/g," ").trim();
+    const found=normalize(content).includes(normalize(excerpt));
+    return {status:found?"content_checked":"reachable",httpStatus:response.status,checkedAt,limitations:found?["L'extrait fourni a été retrouvé dans l'échantillon consulté ; cela ne prouve pas à lui seul l'affirmation."]:["URL accessible, mais extrait non retrouvé dans les 64 premiers Ko consultés."]};
   } catch(error) { return {status:"unavailable",checkedAt,limitations:[error instanceof Error?error.message:"Échec du contrôle réseau."]}; }
 }
 function buildFalsificationPlan(debate:Debate) {
@@ -176,7 +187,7 @@ export async function handleV2Request(req:IncomingMessage,res:ServerResponse,pat
     const evidenceId=decodeURIComponent(verifyMatch[1]);
     const sourceEvent=allEvents.find(e=>e.event_type==="evidence_added"&&e.payload.evidence?.id===evidenceId);
     if(!sourceEvent){send(res,404,{error:"Élément de preuve introuvable."});return true;}
-    const checked=await checkSource(sourceEvent.payload.evidence.url);
+    const checked=await checkSource(sourceEvent.payload.evidence.url,sourceEvent.payload.evidence.excerpt);
     const item={...sourceEvent.payload.evidence,...checked};
     await addEvent(id,user.id,"evidence_checked",{evidence:item});
     send(res,200,{evidence:item});return true;
