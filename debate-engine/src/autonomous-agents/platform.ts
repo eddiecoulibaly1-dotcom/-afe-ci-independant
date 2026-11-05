@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthUser } from "./auth.js";
-import { AGENT_DEPARTMENT_TEMPLATES, type AutonomyLevel } from "./autonomous-agents/types.js";
+import { AGENT_DEPARTMENT_TEMPLATES, type AutonomyLevel } from "./types.js";
 
 type Role="owner"|"admin"|"editor"|"viewer";
 const rank:Record<Role,number>={owner:4,admin:3,editor:2,viewer:1};
