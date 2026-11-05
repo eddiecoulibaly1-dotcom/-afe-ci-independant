@@ -315,7 +315,7 @@ export async function handleV2Request(req:IncomingMessage,res:ServerResponse,pat
     send(res,200,{quality});return true;
   }
   if(req.method==="GET"&&action==="report"){
-    const evidence=allEvents.filter(e=>e.event_type==="evidence_added").map(e=>e.payload.evidence as EvidenceItem);
+    const evidence=collectEvidence(allEvents);
     const scenarios=allEvents.filter(e=>e.event_type==="scenario_completed").flatMap(e=>e.payload.scenarios??[]);
     const risks=allEvents.filter(e=>e.event_type==="risk_assessed").flatMap(e=>e.payload.risks??[]);
     const criticalIssues=debate.rounds.flatMap(r=>r.redTeam.attacks.filter(a=>a.severity==="critical").map(a=>a.argument));
