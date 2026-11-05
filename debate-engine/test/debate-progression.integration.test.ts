@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runDebate } from "../src/engine.js";
+import { runDebateAgentStep } from "../src/engine.js";
 import { callModel } from "../src/providers.js";
-import type { DebateConfig, Scorecard } from "../src/types.js";
+import type { Debate, DebateConfig, Scorecard } from "../src/types.js";
 
 const card:Scorecard={buyerValue:70,sellerValue:65,coteDIvoireFit:75,marketplaceLiquidity:60,differentiation:70,trustFraud:65,technicalFeasibility:70,acquisition:60,monetization:55};
 const config:DebateConfig={
@@ -34,12 +34,12 @@ test("intégration trois tours : l'historique et les objections antérieures att
    rationale:["Arbitrage provisoire fondé sur les données disponibles."],confidence:"low",risks:["Risque d'approvisionnement"],tests:["Test terrain"],reversalConditions:["Réviser après résultats."]
   } as T;
  };
- const debate=await runDebate(
-  "Faut-il investir dans une unité semi-industrielle de transformation du manioc en Côte d'Ivoire pour produire et commercialiser de l'attiéké ?",
-  "Test d'intégration simulé sans appel à un fournisseur de modèle.",
-  config,
-  fake as typeof callModel
- );
+ let debate:Debate={id:"cassava-three-rounds",question:"Faut-il investir dans une unité semi-industrielle de transformation du manioc en Côte d'Ivoire pour produire et commercialiser de l'attiéké ?",context:"Test d'intégration simulé sans appel à un fournisseur de modèle.",status:"running",rounds:[],config};
+ for(let round=1;round<=3;round++){
+  debate=await runDebateAgentStep(debate,"architect",round,fake as typeof callModel);
+  debate=await runDebateAgentStep(debate,"red_team",round,fake as typeof callModel);
+  debate=await runDebateAgentStep(debate,"judge",round,fake as typeof callModel);
+ }
  assert.equal(debate.rounds.length,3);
  assert.deepEqual(debate.rounds.map(x=>x.round),[1,2,3]);
  assert.equal(new Set(debate.rounds.map(x=>x.architect.position)).size,3);
