@@ -192,7 +192,7 @@ export async function runDebate(question: string, context: string | undefined, c
       partial.judge = quantitativeGateRequired && !canDeclareEconomicWinner(quantitativeAudit)
         ? {
             ...arbitrated, status: finalRound ? "unresolved" : "revise", winner: "neither", confidence: "low",
-            decision: "Arbitrage économique suspendu : les données quantitatives obligatoires sont incomplètes ou la comparaison calculée est indisponible.",
+            decision: finalRound ? `Arbitrage économique suspendu : ${arbitrated.decision} Les données quantitatives obligatoires sont incomplètes ou la comparaison calculée est indisponible.` : `Tour intermédiaire : ${arbitrated.decision} Les données quantitatives restent incomplètes ; aucun gagnant économique ne peut être désigné à ce stade.`,
             rationale: [...arbitrated.rationale, ...quantitativeAudit.instructions, "Aucun gagnant économique ne peut être désigné avant une comparaison déterministe complète."],
             risks: [...(arbitrated.risks ?? []), "Données quantitatives insuffisantes pour départager économiquement les options."],
             tests: [...new Set([...(arbitrated.tests ?? []), ...quantitativeAudit.options.flatMap(option => option.missingInputs.map(input => `Renseigner : ${input} (${option.label})`))])]
@@ -270,7 +270,7 @@ export async function runDebateAgentStep(
       const qa = round.quantitativeAudit;
       round = { ...round, judge: qa?.applicable && !canDeclareEconomicWinner(qa) ? {
         ...arbitrated, status: finalRound ? "unresolved" : "revise", winner: "neither", confidence: "low",
-        decision: "Arbitrage économique suspendu : les données quantitatives obligatoires sont incomplètes ou la comparaison calculée est indisponible.",
+        decision: finalRound ? `Arbitrage économique suspendu : ${arbitrated.decision} Les données quantitatives obligatoires sont incomplètes ou la comparaison calculée est indisponible.` : `Tour intermédiaire : ${arbitrated.decision} Les données quantitatives restent incomplètes ; aucun gagnant économique ne peut être désigné à ce stade.`,
         rationale: [...arbitrated.rationale, ...qa.instructions, "Aucun gagnant économique ne peut être désigné avant une comparaison déterministe complète."],
         risks: [...(arbitrated.risks ?? []), "Données quantitatives insuffisantes pour départager économiquement les options."],
         tests: [...new Set([...(arbitrated.tests ?? []), ...qa.options.flatMap(option => option.missingInputs.map(input => `Renseigner : ${input} (${option.label})`))])]
