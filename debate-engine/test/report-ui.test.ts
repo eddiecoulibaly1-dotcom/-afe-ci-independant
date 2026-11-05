@@ -4,9 +4,10 @@ import test from "node:test";
 import { LAB_HTML } from "../src/lab-v107.js";
 
 test("strategic report UI script parses as valid JavaScript", () => {
-  const marker = "const $=id=>document.getElementById(id);";
-  const start = LAB_HTML.indexOf(marker);
-  assert.notEqual(start, -1, "report UI script marker must be present");
+  const marker = "let speechQueue=[],speechIndex=0,reportText='',activeUtterance=null;";
+  const markerIndex = LAB_HTML.indexOf(marker);
+  const start = LAB_HTML.lastIndexOf("<script>", markerIndex) + "<script>".length;
+  assert.ok(markerIndex >= 0 && start >= "<script>".length, "report UI script marker must be present");
   const end = LAB_HTML.indexOf("</script>", start);
   assert.notEqual(end, -1, "report UI script must be closed");
   const script = LAB_HTML.slice(start, end);
