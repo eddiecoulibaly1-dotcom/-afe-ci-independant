@@ -138,6 +138,7 @@ export async function handleV2Request(req:IncomingMessage,res:ServerResponse,pat
     if(input.workspaceId){const w=await getWorkspace(input.workspaceId,user.id);if(!w||!["owner","admin","editor"].includes(w.role)){send(res,403,{error:"Accès insuffisant à cet espace."});return true;}}
     const debate:Debate={id:randomUUID(),userId:user.id,workspaceId:input.workspaceId??null,question:input.question.trim(),context:typeof input.context==="string"?input.context.trim():"",status:"running",rounds:[],config:config()};
     await saveDebate(debate);
+    await db("debates?id=eq."+encodeURIComponent(debate.id),{method:"PATCH",headers:{Prefer:"return=minimal"},body:json({mode:route.mode})});
     const agents=selectAgents(route);
     await addEvent(debate.id,user.id,"case_created",{route,agents,highStakes:input.highStakes===true,domainModuleId:input.domainModuleId??null,featureFlags:{v2_evidence_graph:true,v2_adaptive_deliberation:true,v2_falsification:true,v2_scenario_simulation:true,v2_human_governance:true,v2_outcome_tracking:true,v2_strategic_memory:true}});
     send(res,201,{case:debate,route,agents,accepted:true});return true;
