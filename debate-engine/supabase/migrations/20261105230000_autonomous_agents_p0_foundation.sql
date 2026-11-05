@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS public.afe_agent_missions (
   completed_at timestamptz,
   updated_at timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (agent_id, workspace_id) REFERENCES public.afe_agents(id, workspace_id) ON DELETE CASCADE,
+  UNIQUE (id, workspace_id),
   UNIQUE (workspace_id, idempotency_key)
 );
 
