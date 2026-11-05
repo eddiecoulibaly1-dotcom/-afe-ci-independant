@@ -90,7 +90,7 @@ export async function handleTeamRequest(req:IncomingMessage,res:ServerResponse,p
  if(p[2]==="members"&&m==="GET"){send(res,200,await getMembers(wid));return true;}
  if(p[2]==="members"&&p[3]&&m==="PATCH"){await memberRole(wid,actor,p[3],(await body(req)).role);send(res,200,{ok:true});return true;}
  if(p[2]==="members"&&p[3]&&m==="DELETE"){await removeMember(wid,actor,p[3]);send(res,200,{ok:true});return true;}
- if(p[2]==="invitations"&&m==="GET"){await requireAccess(wid,actor,"admin");send(res,200,await db<any[]>("debate_workspace_invites?workspace_id=eq."+enc(wid)+"&revoked_at=is.null&order=created_at.desc"));return true;}
+ if(p[2]==="invitations"&&m==="GET"){await requireAccess(wid,actor,"admin");send(res,200,await db<any[]>("debate_workspace_invites?workspace_id=eq."+enc(wid)+"&accepted_at=is.null&revoked_at=is.null&order=created_at.desc"));return true;}
  if(p[2]==="invitations"&&m==="POST"){send(res,201,await invite(wid,actor,await body(req)));return true;}
  if(p[2]==="invitations"&&p[3]==="revoke"&&p[4]&&m==="POST"){await requireAccess(wid,actor,"admin");await db("debate_workspace_invites?id=eq."+enc(p[4])+"&workspace_id=eq."+enc(wid),{method:"PATCH",body:JSON.stringify({revoked_at:new Date().toISOString()})});await audit(wid,actor.id,"invitation.revoked","invitation",p[4]);send(res,200,{ok:true});return true;}
  if(p[2]==="tasks"&&m==="GET"){send(res,200,await tasks(wid));return true;}
