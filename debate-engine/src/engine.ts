@@ -292,7 +292,7 @@ export async function runDebateAgentStep(
         decision: "Progression décisionnelle bloquée : ce tour ne contient aucune affirmation nouvelle par rapport aux tours précédents.",
         rationale: [...round.judge.rationale, "Contrôle anti-répétition : toutes les affirmations de l'Architecte sont similaires à des affirmations déjà présentées.", ...novelty.map(item => `Affirmation ${item.argumentId} répétée (similarité ${item.similarity}, référence ${item.duplicateOf}).`)],
         risks: [...(round.judge.risks ?? []), "Risque de répétition sans progression intellectuelle."],
-        tests: [...new Set([...(round.judge.tests ?? []), "Apporter une preuve nouvelle, une réfutation, une analyse, une conséquence stratégique ou une révision motivée avant convergence.")])]
+        tests: [...new Set([...(round.judge.tests ?? []), "Apporter une preuve nouvelle, une réfutation, une analyse, une conséquence stratégique ou une révision motivée avant convergence."])]
       } };
     }
   }
