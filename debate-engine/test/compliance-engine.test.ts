@@ -14,7 +14,7 @@ test("evidence is not verified without opened independent sources and institutio
  assert.notEqual(weak[0].status,"verified");
 });
 test("repeated arguments are flagged rather than counted as new contributions",()=>{
- const result=auditNovelty([{id:"old",text:"La variabilité climatique menace la continuité de l'approvisionnement."}],[{id:"new",text:"La variabilité du climat menace la continuité de l'approvisionnement."}]);
+ const result=auditNovelty([{id:"old",text:"La variabilité climatique menace la continuité de l'approvisionnement."}],[{id:"new",text:"La variabilité climatique menace la continuité de l'approvisionnement."}]);
  assert.equal(result[0].novel,false);
  assert.equal(result[0].duplicateOf,"old");
 });
