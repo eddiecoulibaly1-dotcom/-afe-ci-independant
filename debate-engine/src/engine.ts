@@ -20,7 +20,7 @@ function winnerFromScores(judge: JudgeDecision): "architect" | "red_team" | "nei
 function decisionLabel(winner: "architect" | "red_team") { return winner === "architect" ? "Architecte" : "Red Team"; }
 
 function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType<typeof auditClaims>, finalRound: boolean): JudgeDecision {
-  const winner = winnerFromScores(judge);
+  const winner = judge.winner;
   if (!finalRound) return { ...judge, status: "revise", winner, confidence: "low" };
   if (winner === "neither") {
     return {
@@ -36,7 +36,8 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
   const criticalAttacks = (judge.criticalDisagreements ?? []).length;
   const confidence: "high" | "moderate" | "low" = evidenceRisk === 0 && criticalAttacks === 0 && scoreDelta(judge) >= 8 ? "high" : scoreDelta(judge) >= 4 ? "moderate" : "low";
   const provisional = evidenceRisk > 0 || criticalAttacks > 0 || confidence !== "high";
-  const status = provisional ? "provisional" : "converged";
+  const blocked = evidenceAudit.blocking || (judge.criticalDisagreements ?? []).some(item => /illégal|illégalité|impossible|non viable|rupture|absence de financement/i.test(item));
+  const status = blocked ? "unresolved" : provisional ? "provisional" : "converged";
   const winnerLabel = decisionLabel(winner);
   const riskList = [
     ...(judge.risks ?? []),
@@ -51,8 +52,8 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
   ];
 
   return {
-    ...judge, status, winner, confidence, risks: riskList, tests, reversalConditions,
-    decision: `${status === "provisional" ? "Décision provisoire" : "Décision"} : ${winnerLabel}. ${judge.decision}`,
+    ...judge, status, winner: blocked ? "neither" : winner, confidence: blocked ? "low" : confidence, risks: riskList, tests, reversalConditions,
+    decision: blocked ? `Décision suspendue : une condition bloquante doit être levée avant de choisir. ${judge.decision}` : `${status === "provisional" ? "Décision provisoire" : "Décision"} : ${winnerLabel}. ${judge.decision}`,
     rationale: [...judge.rationale, `Le score comparatif donne l'avantage à ${winnerLabel} de ${scoreDelta(judge)} points.`, provisional ? "Les objections et lacunes de preuve abaissent la confiance mais ne bloquent pas la décision : elles deviennent des risques et des tests." : "Aucune objection restante ne justifie de retarder la décision."]
   };
 }
@@ -84,7 +85,7 @@ export function applyConvergencePolicy(judge: JudgeDecision, unresolvedQuestions
 }
 
 function normalizeTerminalDecision(judge: JudgeDecision): JudgeDecision {
-  const winner = winnerFromScores(judge);
+  const winner = judge.winner;
   if (winner === "neither") {
     return {
       ...judge,
