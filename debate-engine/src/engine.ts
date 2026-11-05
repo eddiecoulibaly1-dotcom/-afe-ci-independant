@@ -4,29 +4,22 @@ import type { Debate, DebateConfig, DebateRound, Proposal, Critique, JudgeDecisi
 import { proposalSchema, critiqueSchema, judgeSchema } from "./schema.js";
 import { callModel } from "./providers.js";
 import { ARCHITECT_SYSTEM, RED_TEAM_SYSTEM, JUDGE_SYSTEM, architectPrompt, redTeamPrompt, judgePrompt } from "./prompts.js";
-import { finalizeJudgeScore, scoreDelta } from "./scoring.js";
+import { finalizeJudgeScore } from "./scoring.js";
 import { auditClaims } from "./evidence.js";
 import { detectSector, sectorPromptGuidance } from "./sector-adaptation.js";
 import { researchForDebate, researchPromptContext, sanitizeResearchFindings } from "./research-intelligence.js";
 
 const emptyScorecard = (): Scorecard => ({ buyerValue: 0, sellerValue: 0, coteDIvoireFit: 0, marketplaceLiquidity: 0, differentiation: 0, trustFraud: 0, technicalFeasibility: 0, acquisition: 0, monetization: 0 });
-const DECISION_GAP = 2.5;
-
-function winnerFromScores(judge: JudgeDecision): "architect" | "red_team" | "neither" {
-  const delta = judge.architectScore - judge.redTeamScore;
-  if (Math.abs(delta) < DECISION_GAP) return "neither";
-  return delta > 0 ? "architect" : "red_team";
-}
 function decisionLabel(winner: "architect" | "red_team") { return winner === "architect" ? "Architecte" : "Red Team"; }
 
 function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType<typeof auditClaims>, finalRound: boolean): JudgeDecision {
-  const winner = winnerFromScores(judge);
+  const winner = judge.winner;
   if (!finalRound) return { ...judge, status: "revise", winner, confidence: "low" };
   if (winner === "neither") {
     return {
       ...judge, status: "unresolved", winner: "neither", confidence: "low",
       decision: "Aucune option ne domine suffisamment : conserver les deux options et exécuter un test discriminant avant de choisir.",
-      rationale: [...judge.rationale, `Écart final inférieur à ${DECISION_GAP} points : les alternatives restent réellement indissociables après arbitrage.`],
+      rationale: [...judge.rationale, "L’Arbitre n’a pas établi de supériorité suffisamment étayée entre les options."],
       risks: [...(judge.risks ?? []), "Le moteur ne dispose pas d'un avantage suffisamment net pour recommander une option."],
       tests: [...(judge.tests ?? []), ...(evidenceAudit.nextTests ?? [])]
     };
@@ -34,9 +27,10 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
 
   const evidenceRisk = evidenceAudit.unsupportedCriticalClaims.length + evidenceAudit.unsupportedHighImpactClaims.length + (evidenceAudit.pendingVerificationClaims?.length ?? 0);
   const criticalAttacks = (judge.criticalDisagreements ?? []).length;
-  const confidence: "high" | "moderate" | "low" = evidenceRisk === 0 && criticalAttacks === 0 && scoreDelta(judge) >= 8 ? "high" : scoreDelta(judge) >= 4 ? "moderate" : "low";
+  const confidence: "high" | "moderate" | "low" = evidenceRisk > 0 || criticalAttacks > 0 ? "low" : (judge.confidence ?? "moderate");
   const provisional = evidenceRisk > 0 || criticalAttacks > 0 || confidence !== "high";
-  const status = provisional ? "provisional" : "converged";
+  const blocked = evidenceAudit.blocking;
+  const status = blocked ? "unresolved" : provisional ? "provisional" : "converged";
   const winnerLabel = decisionLabel(winner);
   const riskList = [
     ...(judge.risks ?? []),
@@ -46,14 +40,14 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
   const tests = [...new Set([...(judge.tests ?? []), ...(evidenceAudit.nextTests ?? [])])].slice(0, 8);
   const reversalConditions = [
     `Inverser la décision si un test critique invalide l'hypothèse centrale de ${winnerLabel}.`,
-    `Inverser la décision si l'alternative obtient un avantage d'au moins ${DECISION_GAP} points sur les mêmes critères après test.`,
+    "Réexaminer la décision si de nouvelles preuves comparables établissent une meilleure faisabilité ou une valeur supérieure de l’alternative.",
     ...(judge.criticalDisagreements ?? []).slice(0, 2).map((x) => `Réexaminer si ce désaccord devient un blocage de faisabilité : ${x}`)
   ];
 
   return {
-    ...judge, status, winner, confidence, risks: riskList, tests, reversalConditions,
-    decision: `${status === "provisional" ? "Décision provisoire" : "Décision"} : ${winnerLabel}. ${judge.decision}`,
-    rationale: [...judge.rationale, `Le score comparatif donne l'avantage à ${winnerLabel} de ${scoreDelta(judge)} points.`, provisional ? "Les objections et lacunes de preuve abaissent la confiance mais ne bloquent pas la décision : elles deviennent des risques et des tests." : "Aucune objection restante ne justifie de retarder la décision."]
+    ...judge, status, winner: blocked ? "neither" : winner, confidence: blocked ? "low" : confidence, risks: riskList, tests, reversalConditions,
+    decision: blocked ? `Décision suspendue : une condition bloquante doit être levée avant de choisir. ${judge.decision}` : `${status === "provisional" ? "Décision provisoire" : "Décision"} : ${winnerLabel}. ${judge.decision}`,
+    rationale: [...judge.rationale, "La décision suit l’arbitrage motivé de l’agent Arbitre ; les scores restent des indicateurs descriptifs et ne désignent pas le gagnant.", provisional ? "Les objections et lacunes de preuve abaissent la confiance et deviennent des risques et des tests." : "Aucune objection restante ne justifie de retarder la décision."]
   };
 }
 
@@ -84,7 +78,7 @@ export function applyConvergencePolicy(judge: JudgeDecision, unresolvedQuestions
 }
 
 function normalizeTerminalDecision(judge: JudgeDecision): JudgeDecision {
-  const winner = winnerFromScores(judge);
+  const winner = judge.winner;
   if (winner === "neither") {
     return {
       ...judge,
@@ -103,7 +97,6 @@ function normalizeTerminalDecision(judge: JudgeDecision): JudgeDecision {
       winner,
       confidence: provisional ? (judge.confidence === "low" ? "low" : "moderate") : "high",
       decision: judge.decision?.startsWith("Décision") ? judge.decision : `Décision provisoire : ${decisionLabel(winner)}. ${judge.decision || "La comparaison finale donne un avantage suffisant à cette option."}`,
-      rationale: [...(judge.rationale ?? []), `Normalisation terminale : l'écart final de ${scoreDelta(judge)} points permet de départager les options.`]
     };
   }
 
@@ -188,18 +181,18 @@ export async function runDebate(question: string, context: string | undefined, c
     const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(question));
     const partial: DebateRound = { round: roundNo, architect, evidenceAudit, quantitativeAudit, redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] }, redTeamCompleted: false, judge: { status: "revise", winner: "neither", architectScore: 0, redTeamScore: 0, architectScorecard: emptyScorecard(), redTeamScorecard: emptyScorecard(), acceptedClaims: [], rejectedClaims: [], criticalDisagreements: [], decision: "", rationale: [], evidenceAudit }, createdAt: new Date().toISOString() };
     try {
-      partial.redTeam = await modelCaller<Critique>({ ...config.redTeam, system: RED_TEAM_SYSTEM, prompt: redTeamPrompt(question, context, partial), schemaName: "red_team_critique", schema: critiqueSchema });
+      partial.redTeam = await modelCaller<Critique>({ ...config.redTeam, system: RED_TEAM_SYSTEM, prompt: redTeamPrompt(question, context, partial, debate.rounds), schemaName: "red_team_critique", schema: critiqueSchema });
     } catch (error) {
       throw new Error(`RED_TEAM_AGENT_FAILED (tour ${roundNo}): ${error instanceof Error ? error.message : String(error)}`);
     }
     try {
-      const rawJudge = await modelCaller<JudgeDecision>({ ...config.judge, system: JUDGE_SYSTEM, prompt: judgePrompt(question, context, partial, config.convergenceScore), schemaName: "judge_decision", schema: judgeSchema });
+      const rawJudge = await modelCaller<JudgeDecision>({ ...config.judge, system: JUDGE_SYSTEM, prompt: judgePrompt(question, context, partial, config.convergenceScore, debate.rounds), schemaName: "judge_decision", schema: judgeSchema });
       const arbitrated = applyConvergencePolicy({ ...rawJudge, evidenceAudit }, partial.redTeam.unresolvedQuestions.length, partial.redTeam.attacks.filter((attack) => attack.severity === "critical").length, finalRound);
       const quantitativeGateRequired = quantitativeAudit.applicable;
       partial.judge = quantitativeGateRequired && !canDeclareEconomicWinner(quantitativeAudit)
         ? {
             ...arbitrated, status: finalRound ? "unresolved" : "revise", winner: "neither", confidence: "low",
-            decision: "Arbitrage économique suspendu : les données quantitatives obligatoires sont incomplètes ou la comparaison calculée est indisponible.",
+            decision: finalRound ? `Arbitrage économique suspendu : ${arbitrated.decision} Les données quantitatives obligatoires sont incomplètes ou la comparaison calculée est indisponible.` : `Tour intermédiaire : ${arbitrated.decision} Les données quantitatives restent incomplètes ; aucun gagnant économique ne peut être désigné à ce stade.`,
             rationale: [...arbitrated.rationale, ...quantitativeAudit.instructions, "Aucun gagnant économique ne peut être désigné avant une comparaison déterministe complète."],
             risks: [...(arbitrated.risks ?? []), "Données quantitatives insuffisantes pour départager économiquement les options."],
             tests: [...new Set([...(arbitrated.tests ?? []), ...quantitativeAudit.options.flatMap(option => option.missingInputs.map(input => `Renseigner : ${input} (${option.label})`))])]
@@ -257,7 +250,7 @@ export async function runDebateAgentStep(
       if (round.redTeamCompleted || round.redTeam.attacks.length > 0 || round.redTeam.unresolvedQuestions.length > 0 || round.redTeam.verdict !== "challenge") throw new Error("STEP_ALREADY_COMPLETED");
       const redTeam = await modelCaller<Critique>({
         ...cfg.redTeam, system: RED_TEAM_SYSTEM,
-        prompt: redTeamPrompt(debate.question, debate.context, round) + researchContext,
+        prompt: redTeamPrompt(debate.question, debate.context, round, debate.rounds.filter(item => item.round < roundNo)) + researchContext,
         schemaName: "red_team_critique", schema: critiqueSchema
       });
       round = { ...round, redTeam, redTeamCompleted: true };
@@ -265,7 +258,7 @@ export async function runDebateAgentStep(
       if (round.judge.decision) throw new Error("STEP_ALREADY_COMPLETED");
       const rawJudge = await modelCaller<JudgeDecision>({
         ...cfg.judge, system: JUDGE_SYSTEM,
-        prompt: judgePrompt(debate.question, debate.context, round, cfg.convergenceScore) + researchContext,
+        prompt: judgePrompt(debate.question, debate.context, round, cfg.convergenceScore, debate.rounds.filter(item => item.round < roundNo)) + researchContext,
         schemaName: "judge_decision", schema: judgeSchema
       });
       const arbitrated = applyResearchQualityGate(applyConvergencePolicy(
@@ -277,7 +270,7 @@ export async function runDebateAgentStep(
       const qa = round.quantitativeAudit;
       round = { ...round, judge: qa?.applicable && !canDeclareEconomicWinner(qa) ? {
         ...arbitrated, status: finalRound ? "unresolved" : "revise", winner: "neither", confidence: "low",
-        decision: "Arbitrage économique suspendu : les données quantitatives obligatoires sont incomplètes ou la comparaison calculée est indisponible.",
+        decision: finalRound ? `Arbitrage économique suspendu : ${arbitrated.decision} Les données quantitatives obligatoires sont incomplètes ou la comparaison calculée est indisponible.` : `Tour intermédiaire : ${arbitrated.decision} Les données quantitatives restent incomplètes ; aucun gagnant économique ne peut être désigné à ce stade.`,
         rationale: [...arbitrated.rationale, ...qa.instructions, "Aucun gagnant économique ne peut être désigné avant une comparaison déterministe complète."],
         risks: [...(arbitrated.risks ?? []), "Données quantitatives insuffisantes pour départager économiquement les options."],
         tests: [...new Set([...(arbitrated.tests ?? []), ...qa.options.flatMap(option => option.missingInputs.map(input => `Renseigner : ${input} (${option.label})`))])]

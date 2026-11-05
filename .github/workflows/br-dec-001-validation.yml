@@ -1,0 +1,37 @@
+name: Debate Engine BR-DEC-001 validation
+
+on:
+  pull_request:
+    branches:
+      - build/debate-engine-v1-2-research-intelligence
+    paths:
+      - "debate-engine/**"
+      - ".github/workflows/br-dec-001-validation.yml"
+  push:
+    branches:
+      - feature/BR-DEC-001-decision-progression
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: debate-engine
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: debate-engine/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: TypeScript strict typecheck
+        run: npm run typecheck
+      - name: Unit and integration tests
+        run: npm test

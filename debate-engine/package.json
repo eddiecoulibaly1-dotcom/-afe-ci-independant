@@ -11,7 +11,8 @@
     "start": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
     "debate": "tsx src/cli.ts",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "build": "npm run typecheck && npm test"
   },
   "dependencies": {
     "@google/genai": "2.30.0",
