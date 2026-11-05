@@ -24,7 +24,7 @@ const PROFILES:Record<Sector,Omit<SectorProfile,"sector">>={
 export function detectSector(question:string,context=""):SectorProfile {
  const text=(question+" "+context).toLowerCase();
  const rules:Array<[Sector,RegExp]>=[
- ["transport",/transport|mobilit|route|circulation|embouteillage|bus|train|infrastructure|portuaire|aéroport/],
+ ["transport",/transport|mobilit|route|circulation|embouteillage|bus|brt|train|infrastructure|portuaire|aéroport/],
  ["finance",/banque|financ|crédit|paiement|assurance|microfinance|fonds d’investissement|capital-investissement|placement financier|bceao|monnaie/],
  ["agriculture",/agric|élevage|volaille|récolte|intrant|engrais|agroaliment|agro-industrie|agroindustrie|transformation alimentaire|transformation agroalimentaire|unité de transformation|manioc|attiéké|attieke|gari|farine|ferme|pêche/],
  ["health",/santé|hôpital|médical|clinique|vaccin|maladie|soin/],
