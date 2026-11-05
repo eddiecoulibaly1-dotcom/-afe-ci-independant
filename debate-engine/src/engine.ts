@@ -4,7 +4,7 @@ import type { Debate, DebateConfig, DebateRound, Proposal, Critique, JudgeDecisi
 import { proposalSchema, critiqueSchema, judgeSchema } from "./schema.js";
 import { callModel } from "./providers.js";
 import { ARCHITECT_SYSTEM, RED_TEAM_SYSTEM, JUDGE_SYSTEM, architectPrompt, redTeamPrompt, judgePrompt } from "./prompts.js";
-import { finalizeJudgeScore, scoreDelta } from "./scoring.js";
+import { finalizeJudgeScore } from "./scoring.js";
 import { auditClaims } from "./evidence.js";
 import { detectSector, sectorPromptGuidance } from "./sector-adaptation.js";
 import { researchForDebate, researchPromptContext, sanitizeResearchFindings } from "./research-intelligence.js";
@@ -19,7 +19,7 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
     return {
       ...judge, status: "unresolved", winner: "neither", confidence: "low",
       decision: "Aucune option ne domine suffisamment : conserver les deux options et exécuter un test discriminant avant de choisir.",
-      rationale: [...judge.rationale, `Écart final inférieur à ${DECISION_GAP} points : les alternatives restent réellement indissociables après arbitrage.`],
+      rationale: [...judge.rationale, "L’Arbitre n’a pas établi de supériorité suffisamment étayée entre les options."],
       risks: [...(judge.risks ?? []), "Le moteur ne dispose pas d'un avantage suffisamment net pour recommander une option."],
       tests: [...(judge.tests ?? []), ...(evidenceAudit.nextTests ?? [])]
     };
@@ -40,14 +40,14 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
   const tests = [...new Set([...(judge.tests ?? []), ...(evidenceAudit.nextTests ?? [])])].slice(0, 8);
   const reversalConditions = [
     `Inverser la décision si un test critique invalide l'hypothèse centrale de ${winnerLabel}.`,
-    `Inverser la décision si l'alternative obtient un avantage d'au moins ${DECISION_GAP} points sur les mêmes critères après test.`,
+    "Réexaminer la décision si de nouvelles preuves comparables établissent une meilleure faisabilité ou une valeur supérieure de l’alternative.",
     ...(judge.criticalDisagreements ?? []).slice(0, 2).map((x) => `Réexaminer si ce désaccord devient un blocage de faisabilité : ${x}`)
   ];
 
   return {
     ...judge, status, winner: blocked ? "neither" : winner, confidence: blocked ? "low" : confidence, risks: riskList, tests, reversalConditions,
     decision: blocked ? `Décision suspendue : une condition bloquante doit être levée avant de choisir. ${judge.decision}` : `${status === "provisional" ? "Décision provisoire" : "Décision"} : ${winnerLabel}. ${judge.decision}`,
-    rationale: [...judge.rationale, `Le score comparatif donne l'avantage à ${winnerLabel} de ${scoreDelta(judge)} points.`, provisional ? "Les objections et lacunes de preuve abaissent la confiance mais ne bloquent pas la décision : elles deviennent des risques et des tests." : "Aucune objection restante ne justifie de retarder la décision."]
+    rationale: [...judge.rationale, "La décision suit l’arbitrage motivé de l’agent Arbitre ; les scores restent des indicateurs descriptifs et ne désignent pas le gagnant.", provisional ? "Les objections et lacunes de preuve abaissent la confiance et deviennent des risques et des tests." : "Aucune objection restante ne justifie de retarder la décision."]
   };
 }
 
