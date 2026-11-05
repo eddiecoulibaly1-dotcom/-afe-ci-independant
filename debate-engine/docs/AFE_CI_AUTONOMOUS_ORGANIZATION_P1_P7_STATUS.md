@@ -1,4 +1,4 @@
-# AFE-CI Autonomous Organization V1 — P1–P7 implementation status
+# AFE-CI Autonomous Organization V1 — P1–P9 implementation status
 
 **Branch:** `feature/autonomous-organization-v1`  
 **Environment:** preview / isolated test database only. No production approval.
@@ -49,3 +49,28 @@ The queue claim function is a database primitive only. A server-side worker endp
 ## Explicit safety boundary
 
 All seeded agents start as `draft`; default autonomy is L2 but activation is an admin action. The mission API caps requested autonomy at the agent's configured level. No generic tool execution endpoint is exposed. High-impact and external actions remain blocked until a registered tool adapter and payload-bound approval workflow are implemented and tested.
+
+
+## P8 — Approval lifecycle
+
+- An administrator can request an approval against a mission through `POST /approvals` with `action=request`, mission ID, action key, payload and risk level.
+- The database function atomically records the pending approval, transitions the mission to `waiting_approval`, clears its lease and writes an audit event.
+- Worker claims explicitly exclude missions with pending approvals.
+- An administrator decision is executed through a server-only RPC. Approval requeues the mission only when no other approval remains pending; rejection fails the mission. Decisions are workspace-scoped and row-locked.
+- Important boundary: the present analysis-only worker does not independently propose external tool actions. The approval mechanism is now operational for explicit approval requests, but must be connected to future privileged tool adapters before any external action can be considered autonomous.
+
+## P9 — Inter-agent handoff dispatch
+
+- Task/handoff messages are dispatched by the independent worker before it claims a mission.
+- Each handoff creates one recipient mission in the same workspace. A unique `source_message_id` and idempotent insert prevent duplicate child missions when Cron retries.
+- Dispatch is bounded (maximum 50 per invocation), row-locked with `SKIP LOCKED`, and only `task` / `handoff` message types are dispatched. Questions, responses, reviews and alerts remain in the message inbox.
+- The recipient mission carries the sender, message type and payload in its input context and is processed by the same server-side mission worker.
+- This implements durable one-way delegation. Automatic response synthesis, dependency graphs, parent-child completion aggregation, multi-agent consensus and recursive planning are not yet implemented and must not be described as finished.
+
+## P8/P9 verification and deployment boundary
+
+- Both migrations were applied to the isolated `afe-ci-test` project only.
+- Verified database function privileges: `service_role` can execute the claim, approval and dispatch RPCs; `authenticated` and `anon` cannot.
+- Supabase security advisor reports the nine agent tables as RLS-enabled with no policies (intentional deny-by-default because all access is server-mediated); it also reports leaked-password protection disabled in Auth, a separate project setting.
+- Static tests cover pending-approval claim exclusion, atomic approval transitions, idempotent handoff creation, bounded dispatch and worker integration. These tests do not substitute for a live multi-worker race test or an end-to-end provider-backed delegation test.
+- No production migration, merge to `main`, or production deployment has been performed.
