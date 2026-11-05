@@ -56,6 +56,20 @@ async function addEvent(debateId:string, actor:string, type:string, payload:Reco
 async function events(debateId:string):Promise<EventRow[]> {
   return db<EventRow[]>("debate_events?select=id,debate_id,event_type,actor,payload,created_at&debate_id=eq."+encodeURIComponent(debateId)+"&order=created_at.asc&limit=1000");
 }
+function collectEvidence(rows:EventRow[]):EvidenceItem[] {
+  const byId=new Map<string,EvidenceItem>();
+  for(const row of rows) if(row.event_type==="evidence_added"||row.event_type==="evidence_checked"||row.event_type==="evidence_rejected") {
+    const item=row.payload.evidence as EvidenceItem|undefined;
+    if(item?.id) byId.set(item.id,item);
+  }
+  return [...byId.values()];
+}
+function collectFalsifications(rows:EventRow[]):any[] {
+  const byId=new Map<string,any>();
+  for(const row of rows) if(row.event_type==="falsification_plan_created") for(const item of row.payload.plan??[]) byId.set(item.id,item);
+  for(const row of rows) if(row.event_type==="falsification_result_recorded"&&row.payload.planItem?.id) byId.set(row.payload.planItem.id,row.payload.planItem);
+  return [...byId.values()];
+}
 async function body(req:IncomingMessage):Promise<any> {
   let raw="";
   for await(const chunk of req) { raw+=chunk; if(Buffer.byteLength(raw)>500_000) throw new Error("Corps de requête trop volumineux."); }
@@ -289,9 +303,9 @@ export async function handleV2Request(req:IncomingMessage,res:ServerResponse,pat
     send(res,200,{validated:true,lessonId:lesson.id});return true;
   }
   if(req.method==="GET"&&action==="quality"){
-    const evidence=allEvents.filter(e=>e.event_type==="evidence_added").map(e=>e.payload.evidence as EvidenceItem);
+    const evidence=collectEvidence(allEvents);
     const claims=debate.rounds.flatMap(r=>r.architect.claims);
-    const falsifications=[...allEvents.filter(e=>e.event_type==="falsification_plan_created").flatMap(e=>e.payload.plan??[]),...allEvents.filter(e=>e.event_type==="falsification_result_recorded").map(e=>e.payload.planItem)];
+    const falsifications=collectFalsifications(allEvents);
     const scenarios=allEvents.filter(e=>e.event_type==="scenario_completed");
     const ratings=scenarios.flatMap(e=>e.payload.scenarioRatings??[]);
     const outcomes=allEvents.filter(e=>e.event_type==="outcome_recorded").map(e=>e.payload.outcome);
@@ -308,7 +322,7 @@ export async function handleV2Request(req:IncomingMessage,res:ServerResponse,pat
     const ratings=allEvents.filter(e=>e.event_type==="scenario_completed").flatMap(e=>e.payload.scenarioRatings??[]);
     const outcomes=allEvents.filter(e=>e.event_type==="outcome_recorded").map(e=>e.payload.outcome);
     const approval=allEvents.find(e=>e.event_type==="approval_recorded")?.payload.approval??null;
-    const quality=calculateV2Quality({claims:debate.rounds.flatMap(r=>r.architect.claims),evidence,falsifications:[...allEvents.filter(e=>e.event_type==="falsification_plan_created").flatMap(e=>e.payload.plan??[]),...allEvents.filter(e=>e.event_type==="falsification_result_recorded").map(e=>e.payload.planItem)],scenarioRatings:ratings,outcomes,approval,criticalIssues});
+    const quality=calculateV2Quality({claims:debate.rounds.flatMap(r=>r.architect.claims),evidence,falsifications:collectFalsifications(allEvents),scenarioRatings:ratings,outcomes,approval,criticalIssues});
     const decision=debate.finalDecision;
     const arbitration=arbitrateDecision({preferredOption:decision?.winner==="architect"?"Architecte":decision?.winner==="red_team"?"Red Team":undefined,alternatives:["Architecte","Red Team"],evidenceReliabilityScore:quality.evidenceReliabilityScore,decisionRobustnessScore:quality.decisionRobustnessScore,unresolvedCriticalIssues:criticalIssues,mandatoryConditions:decision?.reversalConditions??[]});
     const report=buildDecisionReport({title:"Rapport de décision AFE-CI V2",question:debate.question,executiveSummary:decision?.decision??"Analyse en cours ou décision non disponible.",arbitration,scenarios,risks,evidenceLimitations:evidence.filter(e=>e.status!=="content_checked").map(e=>e.claim+": source non confirmée sémantiquement"),actionPlan:decision?.tests??[]});
