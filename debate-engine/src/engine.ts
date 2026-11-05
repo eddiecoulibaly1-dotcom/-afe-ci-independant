@@ -12,11 +12,6 @@ import { researchForDebate, researchPromptContext, sanitizeResearchFindings } fr
 const emptyScorecard = (): Scorecard => ({ buyerValue: 0, sellerValue: 0, coteDIvoireFit: 0, marketplaceLiquidity: 0, differentiation: 0, trustFraud: 0, technicalFeasibility: 0, acquisition: 0, monetization: 0 });
 const DECISION_GAP = 2.5;
 
-function winnerFromScores(judge: JudgeDecision): "architect" | "red_team" | "neither" {
-  const delta = judge.architectScore - judge.redTeamScore;
-  if (Math.abs(delta) < DECISION_GAP) return "neither";
-  return delta > 0 ? "architect" : "red_team";
-}
 function decisionLabel(winner: "architect" | "red_team") { return winner === "architect" ? "Architecte" : "Red Team"; }
 
 function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType<typeof auditClaims>, finalRound: boolean): JudgeDecision {
@@ -36,7 +31,7 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
   const criticalAttacks = (judge.criticalDisagreements ?? []).length;
   const confidence: "high" | "moderate" | "low" = evidenceRisk === 0 && criticalAttacks === 0 && scoreDelta(judge) >= 8 ? "high" : scoreDelta(judge) >= 4 ? "moderate" : "low";
   const provisional = evidenceRisk > 0 || criticalAttacks > 0 || confidence !== "high";
-  const blocked = evidenceAudit.blocking || (judge.criticalDisagreements ?? []).some(item => /illégal|illégalité|impossible|non viable|rupture|absence de financement/i.test(item));
+  const blocked = evidenceAudit.blocking;
   const status = blocked ? "unresolved" : provisional ? "provisional" : "converged";
   const winnerLabel = decisionLabel(winner);
   const riskList = [
