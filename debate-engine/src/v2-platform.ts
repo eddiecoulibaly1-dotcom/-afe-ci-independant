@@ -63,7 +63,7 @@ function metric(label:string, values:number[], denominator:number, limitations:s
 export function calculateV2Quality(input:{claims:any[];evidence:EvidenceItem[];falsifications:any[];scenarioRatings:number[];outcomes:any[];approval:any|null;criticalIssues:string[]}){
   const claims=input.claims.filter(c=>c?.materiality!=="low");
   const evidenceCoverage=metric("Couverture des affirmations matérielles",claims.filter(c=>Array.isArray(c.evidenceRefs)&&c.evidenceRefs.length>0).map(()=>100),claims.length);
-  const verified=input.evidence.filter(e=>["reachable","content_checked","corroborated"].includes(e.status));
+  const verified=input.evidence.filter(e=>["content_checked","corroborated"].includes(e.status));
   const sourceVerification=metric("Accessibilité des sources",verified.map(()=>100),input.evidence.length,["Une URL accessible n'est pas une confirmation sémantique du contenu."]);
   const tested=input.falsifications.filter(x=>["tested","refuted","not_falsified"].includes(x.status));
   const falsificationCoverage=metric("Couverture des tests de réfutation",tested.map(()=>100),input.falsifications.length);
@@ -74,7 +74,8 @@ export function calculateV2Quality(input:{claims:any[];evidence:EvidenceItem[];f
   const scored=input.outcomes.filter(o=>typeof o.probability==="number"&&typeof o.observed==="number"&&(o.observed===0||o.observed===1));
   const brier=scored.length?scored.reduce((s,o)=>s+Math.pow(o.probability-o.observed,2),0)/scored.length:null;
   const outcomeCalibration={score:brier===null?null:Math.round((1-brier)*10000)/100,numerator:scored.length,denominator:input.outcomes.length,label:"Calibration des résultats (1 − Brier)",limitations:brier===null?["Aucun résultat binaire associé à une probabilité préalable."]:[]};
-  const ratedEvidence=input.evidence.filter(e=>typeof e.qualityScore==="number"&&Number.isFinite(e.qualityScore)&&e.qualityScore>=0&&e.qualityScore<=100);\n  const evidenceReliability=ratedEvidence.length?Math.round(ratedEvidence.reduce((sum,e)=>sum+(e.qualityScore??0),0)/ratedEvidence.length*100)/100:null;
+  const ratedEvidence=input.evidence.filter(e=>typeof e.qualityScore==="number"&&Number.isFinite(e.qualityScore)&&e.qualityScore>=0&&e.qualityScore<=100);
+  const evidenceReliability=ratedEvidence.length?Math.round(ratedEvidence.reduce((sum,e)=>sum+(e.qualityScore??0),0)/ratedEvidence.length*100)/100:null;
   const decisionRobustness=scenarioRobustness.score;
   const qualityParts=[evidenceCoverage.score,sourceVerification.score,falsificationCoverage.score,scenarioRobustness.score,reasoningIntegrity.score,governanceCompleteness.score].filter((x):x is number=>x!==null);
   const decisionQuality=qualityParts.length>=4?Math.round(qualityParts.reduce((a,b)=>a+b,0)/qualityParts.length*100)/100:null;
