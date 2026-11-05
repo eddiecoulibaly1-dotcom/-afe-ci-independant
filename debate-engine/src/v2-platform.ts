@@ -131,7 +131,8 @@ async function authorisedCase(id:string,userId:string) {
   return debate;
 }
 async function roleFor(debate:Debate,userId:string) {
-  if(!debate.workspaceId) return "owner";
+  if(debate.userId===userId) return "owner";
+  if(!debate.workspaceId) return null;
   const workspace=await getWorkspace(debate.workspaceId,userId);
   return workspace?.role??null;
 }
@@ -160,6 +161,8 @@ export async function handleV2Request(req:IncomingMessage,res:ServerResponse,pat
   const debate=await authorisedCase(id,user.id);
   if(!debate){send(res,404,{error:"Cas introuvable ou accès refusé."});return true;}
   const allEvents=await events(id);
+  const userRole=await roleFor(debate,user.id);
+  if(req.method==="POST"&&!["owner","admin","editor"].includes(userRole??"")){send(res,403,{error:"Droits de modification insuffisants pour ce cas."});return true;}
   if(req.method==="GET"&&action===""){
     send(res,200,{case:debate,events:allEvents});return true;
   }
