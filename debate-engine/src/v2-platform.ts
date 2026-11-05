@@ -257,12 +257,16 @@ export async function handleV2Request(req:IncomingMessage,res:ServerResponse,pat
     const input=await body(req);
     if(typeof input.action!=="string"||typeof input.reason!=="string"||input.reason.trim().length<4){send(res,400,{error:"Action et justification sont obligatoires."});return true;}
     const intervention={id:randomUUID(),actorId:user.id,action:input.action.slice(0,80),text:String(input.text??"").slice(0,3000),reason:input.reason.slice(0,1000),occurredAt:new Date().toISOString()};
+    debate.context=[debate.context,"[INTERVENTION HUMAINE "+intervention.action+"]",intervention.text,intervention.reason].filter(Boolean).join("\n");
+    await saveDebate(debate);
     await addEvent(id,user.id,"human_intervention",{intervention});
     send(res,201,{intervention});return true;
   }
   if(req.method==="POST"&&action==="approve"){
     const input=await body(req), role=await roleFor(debate,user.id);
     if(!role||!["owner","admin"].includes(role)){send(res,403,{error:"Seul le propriétaire ou un administrateur peut enregistrer une approbation."});return true;}
+    if(debate.status==="running"||!debate.finalDecision){send(res,409,{error:"Une décision finale doit être disponible avant l'approbation humaine."});return true;}
+    if(allEvents.some(e=>e.event_type==="approval_recorded")){send(res,409,{error:"Une approbation est déjà enregistrée pour ce cas."});return true;}
     if(!["approved","rejected","returned_for_revision"].includes(input.status)||typeof input.reason!=="string"||input.reason.trim().length<5){send(res,400,{error:"Statut et justification sont obligatoires."});return true;}
     const created=allEvents.find(e=>e.event_type==="case_created");
     const highStakes=created?.payload.highStakes===true;
