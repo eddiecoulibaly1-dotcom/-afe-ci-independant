@@ -60,7 +60,7 @@ test("BR-DEC-001: les consignes restent actives dans plusieurs secteurs",()=>{
   ["Unité de transformation du manioc et commercialisation de l'attiéké","agriculture"],
   ["Faut-il développer un réseau BRT à Abidjan ?","transport"],
   ["Lancer un service de microfinance en Côte d'Ivoire","finance"],
-  ["Déployer une plateforme de télémédecine","health"],
+  ["Déployer une plateforme numérique de santé pour les soins à distance","health"],
   ["Investir dans une centrale solaire et son stockage","energy"],
   ["Créer une application éducative pour les lycéens","education"],
   ["Déployer une plateforme numérique de gestion commerciale","technology"],
