@@ -98,7 +98,7 @@ export function calculateV2Quality(input:{claims:any[];evidence:EvidenceItem[];f
   const evidenceReliability=ratedEvidence.length?Math.round(ratedEvidence.reduce((sum,e)=>sum+(e.qualityScore??0),0)/ratedEvidence.length*100)/100:null;
   const decisionRobustness=scenarioRobustness.score;
   const qualityParts=[evidenceCoverage.score,sourceVerification.score,falsificationCoverage.score,scenarioRobustness.score,reasoningIntegrity.score,governanceCompleteness.score].filter((x):x is number=>x!==null);
-  const decisionQuality=qualityParts.length>=4?Math.round(qualityParts.reduce((a,b)=>a+b,0)/qualityParts.length*100)/100:null;
+  const decisionQuality=input.criticalIssues.length>0?0:qualityParts.length>=4?Math.round(qualityParts.reduce((a,b)=>a+b,0)/qualityParts.length*100)/100:null;
   return {version:"2.0.0",evidenceCoverage,sourceVerification,falsificationCoverage,scenarioRobustness,reasoningIntegrity,governanceCompleteness,outcomeCalibration,evidenceReliabilityScore:evidenceReliability,decisionRobustnessScore:decisionRobustness,decisionQualityScore:decisionQuality,qualityPartsAvailable:qualityParts.length,qualityPartsRequired:4,criticalIssues:input.criticalIssues,warning:"Ces indicateurs mesurent la couverture des éléments enregistrés. Ils ne prouvent ni la vérité d'une affirmation ni la qualité réelle d'une décision sans évaluation indépendante."};
 }
 function privateAddress(address:string):boolean {
