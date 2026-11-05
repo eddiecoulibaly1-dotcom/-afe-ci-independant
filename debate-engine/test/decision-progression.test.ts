@@ -58,7 +58,7 @@ test("BR-DEC-001: les prompts de trois tours transportent l'historique et les ob
 test("BR-DEC-001: les consignes restent actives dans plusieurs secteurs",()=>{
  const cases=[
   ["Unité de transformation du manioc et commercialisation de l'attiéké","agriculture"],
-  ["Faut-il développer un réseau BRT à Abidjan ?","transport"],
+  ["Faut-il développer un réseau de transport BRT pour la mobilité urbaine à Abidjan ?","transport"],
   ["Lancer un service de microfinance en Côte d'Ivoire","finance"],
   ["Déployer une plateforme numérique de santé pour les soins à distance","health"],
   ["Investir dans une centrale solaire et son stockage","energy"],
