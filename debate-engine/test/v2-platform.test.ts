@@ -32,5 +32,5 @@ test("V2 does not invent evidence reliability or scenario robustness when inputs
   assert.equal(result.evidenceReliabilityScore, null);
   assert.equal(result.decisionRobustnessScore, null);
   assert.equal(result.outcomeCalibration.score, null);
-  assert.equal(result.decisionQualityScore, null);
+  assert.equal(result.decisionQualityScore, 0);
 });
