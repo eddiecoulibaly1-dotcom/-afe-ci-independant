@@ -10,8 +10,6 @@ import { detectSector, sectorPromptGuidance } from "./sector-adaptation.js";
 import { researchForDebate, researchPromptContext, sanitizeResearchFindings } from "./research-intelligence.js";
 
 const emptyScorecard = (): Scorecard => ({ buyerValue: 0, sellerValue: 0, coteDIvoireFit: 0, marketplaceLiquidity: 0, differentiation: 0, trustFraud: 0, technicalFeasibility: 0, acquisition: 0, monetization: 0 });
-const DECISION_GAP = 2.5;
-
 function decisionLabel(winner: "architect" | "red_team") { return winner === "architect" ? "Architecte" : "Red Team"; }
 
 function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType<typeof auditClaims>, finalRound: boolean): JudgeDecision {
@@ -29,7 +27,7 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
 
   const evidenceRisk = evidenceAudit.unsupportedCriticalClaims.length + evidenceAudit.unsupportedHighImpactClaims.length + (evidenceAudit.pendingVerificationClaims?.length ?? 0);
   const criticalAttacks = (judge.criticalDisagreements ?? []).length;
-  const confidence: "high" | "moderate" | "low" = evidenceRisk === 0 && criticalAttacks === 0 && scoreDelta(judge) >= 8 ? "high" : scoreDelta(judge) >= 4 ? "moderate" : "low";
+  const confidence: "high" | "moderate" | "low" = evidenceRisk > 0 || criticalAttacks > 0 ? "low" : (judge.confidence ?? "moderate");
   const provisional = evidenceRisk > 0 || criticalAttacks > 0 || confidence !== "high";
   const blocked = evidenceAudit.blocking;
   const status = blocked ? "unresolved" : provisional ? "provisional" : "converged";
