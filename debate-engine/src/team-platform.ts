@@ -4,7 +4,7 @@ import type { AuthUser } from "./auth.js";
 type Role = "owner"|"admin"|"editor"|"viewer";
 type Actor = AuthUser & {email?:string};
 const rank:Record<Role,number>={owner:4,admin:3,editor:2,viewer:1};
-const isRole=(value:unknown):value is Role=>typeof value==="string"&&Object.prototype.hasOwnProperty.call(rank,value);
+export const isRole=(value:unknown):value is Role=>typeof value==="string"&&Object.prototype.hasOwnProperty.call(rank,value);
 export function canManageWorkspace(actor:Role,target:Role,next?:Role):boolean {
  if(actor==="owner") return target!=="owner" && (next===undefined||next!=="owner");
  if(actor==="admin") return (target==="editor"||target==="viewer")&&(next===undefined||next==="editor"||next==="viewer");
