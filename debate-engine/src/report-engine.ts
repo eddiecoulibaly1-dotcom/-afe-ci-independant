@@ -2,6 +2,7 @@ import { callModel } from "./providers.js";
 import type { Debate, StrategicReport } from "./types.js";
 import { buildStrategicEvidenceSummary } from "./strategic-evidence.js";
 import { calculateStrategicFinancialModel, type StrategicFinancialInputs } from "./strategic-financial.js";
+import { detectSector } from "./sector-adaptation.js";
 
 const nullableNumber = { anyOf: [{ type: "number" }, { type: "null" }] } as const;
 const strings = { type: "array", items: { type: "string" } } as const;
@@ -70,6 +71,9 @@ export function buildStrategicReportPrompt(debate: Debate, financialInputs: Stra
       quantitativeAudit: round.quantitativeAudit ?? null
     })),
     financialInputs,
+    sector: debate.sector ?? "general",
+    sectorProfile: detectSector(debate.question, debate.context ?? ""),
+    research: debate.research ?? null,
     finalDecision: debate.finalDecision ? {
       status: debate.finalDecision.status,
       winner: debate.finalDecision.winner,
@@ -87,8 +91,8 @@ export function buildStrategicReportPrompt(debate: Debate, financialInputs: Stra
     JSON.stringify(payload, null, 2) +
     "\n\nProduis un rapport de décision stratégique complet, substantiel et exploitable, dans le style d'une note de comité d'investissement. " +
     "Le rapport doit être comparable à une analyse professionnelle comprenant synthèse exécutive, verdict explicite, preuves, comparaison des options, modèle financier, scénarios, économie unitaire, risques, feuille de route, expérimentation et décisions immédiates. " +
-    "Ne répète pas simplement les tours : transforme-les en analyse structurée, hiérarchisée et actionnable. Décompose la question, formule le meilleur argument de chaque camp, isole les désaccords décisifs, les mécanismes causaux, les hypothèses falsifiables et les conditions concrètes qui inverseraient la décision. Signale explicitement les raisonnements circulaires, les glissements de causalité, les comparaisons non homogènes et les conclusions plus fortes que leurs prémisses. " +
-    "RÈGLES DE PREUVE : les seules références disponibles sont celles présentes dans les données fournies. N'invente aucun lien, organisme, étude, citation, source ou donnée externe. Une affirmation factuelle n’est jamais dite vérifiée parce qu’un agent fournit simplement une chaîne de référence : elle doit être marquée en attente de vérification tant que la source n’a pas été ouverte et contrôlée. " +
+    "Ne répète pas simplement les tours : transforme-les en analyse structurée, hiérarchisée et actionnable. Identifie toutes les options explicitement présentes dans la question, le contexte, les alternatives de l'Architecte et la meilleure alternative de la Red Team. Évalue chacune dans optionsComparison avec les mêmes critères sectoriels, le même horizon, la même géographie et les mêmes unités ; n'en omets aucune et ne fusionne pas artificiellement des options distinctes. Décompose la question, formule le meilleur argument de chaque camp, isole les désaccords décisifs, les mécanismes causaux, les hypothèses falsifiables et les conditions concrètes qui inverseraient la décision. Signale explicitement les raisonnements circulaires, les glissements de causalité, les comparaisons non homogènes et les conclusions plus fortes que leurs prémisses. " +
+    "RÈGLES DE PREUVE : exploite le dossier research fourni. Cite exclusivement les identifiants SRC présents et leurs URL exactes. Distingue une page effectivement ouverte d’un simple extrait de recherche. L’ouverture d’une page ne prouve pas automatiquement chaque affirmation qu’elle contient. Vérifie date, période, géographie, unité, méthode et indépendance des sources. N’invente aucun lien, organisme, étude, citation, source ou donnée. Recherche les éléments contradictoires. Si la recherche est désactivée ou incomplète, indique-le explicitement. " +
     "RÈGLES FINANCIÈRES : n'invente aucun chiffre, prix, coût, taux, volume, revenu, CAC, LTV ou résultat. Reprends les chiffres explicitement fournis. Une valeur inconnue doit être null et son statut doit être unknown. Les scénarios qualitatifs restent possibles avec des valeurs numériques nulles. Tout chiffre calculé doit être une opération arithmétique directe sur des valeurs fournies et doit être expliqué. Les calculs financiers de référence seront recalculés par un module déterministe ; ne prétends pas avoir effectué de calcul que les entrées ne permettent pas. Les hypothèses de travail explicitement proposées par l'utilisateur doivent être identifiées comme telles, jamais comme des observations. " +
     "DÉCISION : choisis obligatoirement GO, CONDITIONAL_GO ou NO_GO. Si les données sont insuffisantes, choisis CONDITIONAL_GO ou NO_GO selon les éléments disponibles et précise les conditions vérifiables, plutôt que de produire une conclusion indéterminée. " +
     "Distingue clairement faits, hypothèses, opinions, inconnues et limites. Présente les risques les plus dangereux, des indicateurs précoces, des critères de réussite et d'arrêt. " +
@@ -129,6 +133,26 @@ export async function generateStrategicReport(debate: Debate, financialInputs: S
     ". Recommandation stratégique : " + decisionLabel + ". Ces deux niveaux sont distincts ; la recommandation ne remplace pas l'arbitrage contradictoire.";
   const decisionRationale = generated.decisionRationale + "\n\n" + alignment +
     (evidence.verified.length===0 ? "\nAucune affirmation factuelle n'a encore été vérifiée par ouverture et contrôle indépendant de ses sources ; le niveau GO n'est donc pas accordé." : "");
+  if (debate.sector !== "commerce") {
+    return {
+      ...generated,
+      decisionLabel,
+      decisionRationale,
+      confidence: evidence.verified.length === 0 ? "low" : generated.confidence,
+      evidence,
+      research: debate.research,
+      financialModel: {
+        currency: financialInputs.currency ?? "XOF",
+        warning: "Le calculateur financier disponible est spécialisé dans l'économie par commerçant et n'est pas applicable automatiquement à ce secteur. Aucun coût, revenu, investissement ou bénéfice sectoriel n'est supposé.",
+        assumptions: [],
+        scenarios: [],
+        unitEconomics: [],
+        limitations: [...generated.financialModel.limitations, "Calculateur sectoriel spécialisé non disponible pour ce domaine : les projections chiffrées doivent attendre des données sectorielles comparables et une méthode adaptée."]
+      },
+      financialCalculations: undefined,
+      missingData: [...new Set([...generated.missingData, ...evidence.gaps, "Données quantitatives sectorielles et modèle de calcul adapté au domaine"])]
+    };
+  }
   const unitEconomics = [
     ...calculations.formulas,
     "Marge contributive mensuelle par actif : " + formatAmount(calculations.contributionPerActive,calculations.currency),
@@ -140,6 +164,7 @@ export async function generateStrategicReport(debate: Debate, financialInputs: S
   ];
   return {
     ...generated,
+    research: debate.research,
     decisionLabel,
     decisionRationale,
     confidence:evidence.verified.length===0?"low":generated.confidence,

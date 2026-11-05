@@ -6,6 +6,8 @@ import { callModel } from "./providers.js";
 import { ARCHITECT_SYSTEM, RED_TEAM_SYSTEM, JUDGE_SYSTEM, architectPrompt, redTeamPrompt, judgePrompt } from "./prompts.js";
 import { finalizeJudgeScore, scoreDelta } from "./scoring.js";
 import { auditClaims } from "./evidence.js";
+import { detectSector, sectorPromptGuidance } from "./sector-adaptation.js";
+import { researchForDebate, researchPromptContext, sanitizeResearchFindings } from "./research-intelligence.js";
 
 const emptyScorecard = (): Scorecard => ({ buyerValue: 0, sellerValue: 0, coteDIvoireFit: 0, marketplaceLiquidity: 0, differentiation: 0, trustFraud: 0, technicalFeasibility: 0, acquisition: 0, monetization: 0 });
 const DECISION_GAP = 2.5;
@@ -52,6 +54,27 @@ function buildActionableDecision(judge: JudgeDecision, evidenceAudit: ReturnType
     ...judge, status, winner, confidence, risks: riskList, tests, reversalConditions,
     decision: `${status === "provisional" ? "Décision provisoire" : "Décision"} : ${winnerLabel}. ${judge.decision}`,
     rationale: [...judge.rationale, `Le score comparatif donne l'avantage à ${winnerLabel} de ${scoreDelta(judge)} points.`, provisional ? "Les objections et lacunes de preuve abaissent la confiance mais ne bloquent pas la décision : elles deviennent des risques et des tests." : "Aucune objection restante ne justifie de retarder la décision."]
+  };
+}
+
+function applyResearchQualityGate(judge: JudgeDecision, research: import("./research-intelligence.js").ResearchBundle | undefined, finalRound: boolean): JudgeDecision {
+  const sources = research?.sources ?? [];
+  const independentDomains = new Set(sources.filter(source => source.contentRetrieved).map(source => source.domain));
+  const institutional = sources.some(source => source.contentRetrieved && (source.sourceClass === "official" || source.sourceClass === "international"));
+  if (independentDomains.size >= 2 && institutional) return judge;
+  const notConfigured = research?.status === "not_configured";
+  const reason = notConfigured
+    ? "Recherche externe indisponible : la clé Tavily n'est pas configurée côté serveur."
+    : "Le dossier documentaire ne contient pas encore deux domaines indépendants avec pages ouvertes, dont une source institutionnelle ou internationale.";
+  const alreadyReported = notConfigured && judge.rationale.some(item => item.includes("clé Tavily n'est pas configurée"));
+  return {
+    ...judge,
+    status: judge.winner === "neither" ? "unresolved" : (finalRound ? "provisional" : "revise"),
+    confidence: "low",
+    decision: judge.decision?.trim() || (judge.winner === "neither" ? "Arbitrage non tranché." : "Décision provisoire."),
+    rationale: alreadyReported ? judge.rationale : [...judge.rationale, reason, "Une page consultée n'est pas, à elle seule, une validation sémantique de l'affirmation."],
+    risks: [...(judge.risks ?? []), "Risque de conclusion insuffisamment documentée."],
+    tests: [...new Set([...(judge.tests ?? []), "Compléter la recherche, ouvrir les sources primaires et corroborer les affirmations décisives auprès de domaines indépendants."])]
   };
 }
 
@@ -205,16 +228,21 @@ export async function runDebateAgentStep(
 ): Promise<Debate> {
   const finalRound = roundNo >= (debate.config ?? defaultConfig()).maxRounds;
   const cfg = debate.config ?? defaultConfig();
+  const sectorProfile = detectSector(debate.question, debate.context ?? "");
+  let research = await researchForDebate({ question: debate.question, context: debate.context, role, profile: sectorProfile, previous: debate.research });
+  const researchContext = "\n\n" + sectorPromptGuidance(sectorProfile) + "\n\n" + researchPromptContext(research);
   let round = debate.rounds.find(item => item.round === roundNo);
   if (role === "architect") {
     if (round?.architect) throw new Error("STEP_ALREADY_COMPLETED");
     const architect = await modelCaller<Proposal>({
       ...cfg.architect, system: ARCHITECT_SYSTEM,
-      prompt: architectPrompt(debate.question, debate.context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective),
+      prompt: architectPrompt(debate.question, debate.context, debate.rounds, debate.rounds.at(-1)?.judge.nextRoundObjective) + researchContext,
       schemaName: "architect_proposal", schema: proposalSchema
     });
+    const extractedFindings = sanitizeResearchFindings(architect.researchFindings, research.sources);
+    research = { ...research, findings: [...(research.findings ?? []), ...extractedFindings].slice(0, 40) };
     const evidenceAudit = auditClaims(architect.claims);
-    const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(debate.question));
+    const quantitativeAudit = buildQuantitativeAudit(architect.quantitativeOptions, /coût|cout|prix|budget|rentab|marge|revenu|profit|invest|compar|financ|économ/i.test(debate.question) && sectorProfile.sector === "agriculture" && /volaille|poulet|pintade|élevage|avicole|sujet animal/i.test(debate.question + " " + (debate.context ?? "")));
     round = {
       round: roundNo, architect, evidenceAudit, quantitativeAudit,
       redTeam: { verdict: "challenge", attacks: [], unresolvedQuestions: [] },
@@ -229,7 +257,7 @@ export async function runDebateAgentStep(
       if (round.redTeamCompleted || round.redTeam.attacks.length > 0 || round.redTeam.unresolvedQuestions.length > 0 || round.redTeam.verdict !== "challenge") throw new Error("STEP_ALREADY_COMPLETED");
       const redTeam = await modelCaller<Critique>({
         ...cfg.redTeam, system: RED_TEAM_SYSTEM,
-        prompt: redTeamPrompt(debate.question, debate.context, round),
+        prompt: redTeamPrompt(debate.question, debate.context, round) + researchContext,
         schemaName: "red_team_critique", schema: critiqueSchema
       });
       round = { ...round, redTeam, redTeamCompleted: true };
@@ -237,15 +265,15 @@ export async function runDebateAgentStep(
       if (round.judge.decision) throw new Error("STEP_ALREADY_COMPLETED");
       const rawJudge = await modelCaller<JudgeDecision>({
         ...cfg.judge, system: JUDGE_SYSTEM,
-        prompt: judgePrompt(debate.question, debate.context, round, cfg.convergenceScore),
+        prompt: judgePrompt(debate.question, debate.context, round, cfg.convergenceScore) + researchContext,
         schemaName: "judge_decision", schema: judgeSchema
       });
-      const arbitrated = applyConvergencePolicy(
+      const arbitrated = applyResearchQualityGate(applyConvergencePolicy(
         { ...rawJudge, evidenceAudit: round.evidenceAudit },
         round.redTeam.unresolvedQuestions.length,
         round.redTeam.attacks.filter(attack => attack.severity === "critical").length,
         finalRound
-      );
+      ), research, finalRound);
       const qa = round.quantitativeAudit;
       round = { ...round, judge: qa?.applicable && !canDeclareEconomicWinner(qa) ? {
         ...arbitrated, status: finalRound ? "unresolved" : "revise", winner: "neither", confidence: "low",
@@ -257,7 +285,7 @@ export async function runDebateAgentStep(
     }
   }
   const rounds = debate.rounds.filter(item => item.round !== roundNo).concat(round).sort((a,b)=>a.round-b.round);
-  const updated: Debate = { ...debate, rounds, status: "running" };
+  const updated: Debate = { ...debate, sector: sectorProfile.sector, research, rounds, status: "running" };
   if (role === "judge" && finalRound) {
     updated.finalDecision = round.judge;
     updated.status = round.judge.status === "converged" || round.judge.status === "provisional" ? round.judge.status : "unresolved";

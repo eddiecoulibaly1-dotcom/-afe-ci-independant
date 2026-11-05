@@ -7,6 +7,7 @@ on:
       - feature/debate-engine-v2-1
       - build/debate-engine-v2-autonomous
       - hardening/debate-engine-v1-1-4
+      - build/debate-engine-v1-2-research-intelligence
   pull_request:
     branches:
       - main

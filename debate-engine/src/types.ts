@@ -1,3 +1,4 @@
+import type { ResearchBundle, ResearchFinding } from "./research-intelligence.js";
 import type { QuantitativeAudit, QuantitativeOptionDraft } from "./quantitative-reasoning.js";
 import type { StrategicFinancialCalculation } from "./strategic-financial.js";
 export type Provider = "openai" | "gemini";
@@ -10,13 +11,14 @@ export type ScoreDimension =
 
 export interface Scorecard { buyerValue:number; sellerValue:number; coteDIvoireFit:number; marketplaceLiquidity:number; differentiation:number; trustFraud:number; technicalFeasibility:number; acquisition:number; monetization:number; }
 export interface Claim { id:string; statement:string; type:"fact"|"hypothesis"|"opinion"; confidence:number; evidenceRequired:boolean; evidenceRefs?:string[]; }
-export interface Proposal { position:string; claims:Claim[]; assumptions:string[]; risks:string[]; alternatives:string[]; scoreExpected:number; nextTests:string[]; quantitativeOptions?:QuantitativeOptionDraft[]; }
+export interface Proposal { position:string; claims:Claim[]; assumptions:string[]; risks:string[]; alternatives:string[]; scoreExpected:number; nextTests:string[]; quantitativeOptions?:QuantitativeOptionDraft[]; researchFindings?:ResearchFinding[]; }
 export interface Attack { claimId?:string; severity:"low"|"medium"|"high"|"critical"; argument:string; evidenceNeeded:string[]; counterproposal?:string; confidence:number; }
 export interface Critique { verdict:"challenge"|"accept"|"mixed"; attacks:Attack[]; strongestAlternative?:string; unresolvedQuestions:string[]; }
 export interface EvidenceRecord { claimId:string; classification:"fact"|"hypothesis"|"opinion"; status:"supported"|"pending_verification"|"unsupported"|"not_required"; evidenceRefs:string[]; rationale:string; confidence:number; impact:"low"|"medium"|"high"|"critical"; }
 export interface EvidenceAudit { records:EvidenceRecord[]; unsupportedCriticalClaims:string[]; unsupportedHighImpactClaims:string[]; pendingVerificationClaims:string[]; confidence:number; blocking:boolean; nextTests:string[]; }
 export interface StrategicReport {
   financialCalculations?: StrategicFinancialCalculation;
+  research?: ResearchBundle;
   reasoning: { questionDecomposition:string[]; strongestCaseFor:string[]; strongestCaseAgainst:string[]; decisiveDisagreements:string[]; falsifiableHypotheses:string[]; decisionReversalConditions:string[]; causalMechanisms:string[] };
   decisionLabel: "GO" | "CONDITIONAL_GO" | "NO_GO";
   executiveSummary: string;
@@ -34,5 +36,5 @@ export interface StrategicReport {
 }
 export interface JudgeDecision { strategicReport?:StrategicReport; status:DecisionStatus; winner:"architect"|"red_team"|"neither"; architectScore:number; redTeamScore:number; architectScorecard:Scorecard; redTeamScorecard:Scorecard; acceptedClaims:string[]; rejectedClaims:string[]; criticalDisagreements:string[]; decision:string; rationale:string[]; nextRoundObjective?:string; evidenceAudit?:EvidenceAudit; confidence?:"high"|"moderate"|"low"; risks?:string[]; tests?:string[]; reversalConditions?:string[]; }
 export interface DebateRound { round:number; architect:Proposal; redTeam:Critique; redTeamCompleted?:boolean; judge:JudgeDecision; evidenceAudit?:EvidenceAudit; quantitativeAudit?:QuantitativeAudit; createdAt:string; }
-export interface Debate { id:string; userId?:string; workspaceId?:string|null; question:string; context?:string; status:"running"|"converged"|"provisional"|"unresolved"; rounds:DebateRound[]; finalDecision?:JudgeDecision; config?:DebateConfig; }
+export interface Debate { id:string; userId?:string; workspaceId?:string|null; question:string; context?:string; sector?:string; research?:ResearchBundle; status:"running"|"converged"|"provisional"|"unresolved"; rounds:DebateRound[]; finalDecision?:JudgeDecision; config?:DebateConfig; }
 export interface DebateConfig { maxRounds:number; convergenceScore:number; architect:{provider:Provider;model:string}; redTeam:{provider:Provider;model:string}; judge:{provider:Provider;model:string}; }

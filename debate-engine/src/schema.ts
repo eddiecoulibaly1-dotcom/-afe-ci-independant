@@ -51,9 +51,17 @@ export const proposalSchema = {
       confidence: { type: "number", minimum: 0, maximum: 1 }, evidenceRequired: { type: "boolean" }, evidenceRefs: { type: "array", items: { type: "string" } }
     }, required: ["id", "statement", "type", "confidence", "evidenceRequired", "evidenceRefs"] } },
     assumptions: { type: "array", items: { type: "string" } }, risks: { type: "array", items: { type: "string" } }, alternatives: { type: "array", items: { type: "string" } },
-    scoreExpected: { type: "number", minimum: 0, maximum: 100 }, quantitativeOptions: { type: "array", items: quantitativeOptionSchema }, nextTests: { type: "array", items: { type: "string" } }
+    scoreExpected: { type: "number", minimum: 0, maximum: 100 }, quantitativeOptions: { type: "array", items: quantitativeOptionSchema },
+    researchFindings: { type: "array", items: { type: "object", additionalProperties: false, properties: {
+      metric: { type: "string" }, value: { type: ["number", "null"] }, unit: { type: "string" },
+      currency: { type: ["string", "null"] }, geography: { type: "string" }, referencePeriod: { type: "string" },
+      publishedAt: { type: ["string", "null"] }, sourceIds: { type: "array", items: { type: "string" } },
+      basis: { type: "string", enum: ["source_extracted", "estimate", "assumption", "unknown"] },
+      methodology: { type: "string" }, caveat: { type: "string" }
+    }, required: ["metric", "value", "unit", "currency", "geography", "referencePeriod", "publishedAt", "sourceIds", "basis", "methodology", "caveat"] } },
+    nextTests: { type: "array", items: { type: "string" } }
   },
-  required: ["position", "claims", "assumptions", "risks", "alternatives", "scoreExpected", "quantitativeOptions", "nextTests"]
+  required: ["position", "claims", "assumptions", "risks", "alternatives", "scoreExpected", "quantitativeOptions", "researchFindings", "nextTests"]
 } as const;
 
 export const critiqueSchema = {
