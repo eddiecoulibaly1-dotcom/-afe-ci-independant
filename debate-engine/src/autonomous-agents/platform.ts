@@ -39,6 +39,35 @@ if(p[4]==="agents"&&p[5]){
  const id=p[5];if(method==="PATCH"){await requireRole(wid,user,"admin");const old=await agent(wid,id);if(!old)throw fail("Agent introuvable.",404);const i=await body(req);const patch:any={updated_at:new Date().toISOString()};for(const [k,col,max] of [["name","name",120],["specialty","specialty",160],["mandate","mandate",12000],["instructions","system_instructions",30000]] as const)if(i[k]!==undefined)patch[col]=clean(i[k],max);if(i.autonomyLevel!==undefined)patch.autonomy_level=Math.max(1,Math.min(3,Number(i.autonomyLevel)||1));if(i.status!==undefined){if(!["draft","active","paused","archived"].includes(i.status))throw fail("Statut invalide.");patch.status=i.status;}const rows=await db<any[]>("afe_agents?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid),{method:"PATCH",headers:{Prefer:"return=representation"},body:JSON.stringify(patch)});await audit(wid,user,"agent.updated",id,{fields:Object.keys(patch)});send(res,200,{agent:rows[0]});return true;}
  if(method==="GET"){await requireRole(wid,user);const a=await agent(wid,id);if(!a)throw fail("Agent introuvable.",404);const grants=await db<any[]>("afe_agent_tool_grants?agent_id=eq."+enc(id)+"&workspace_id=eq."+enc(wid));send(res,200,{agent:a,grants});return true;}
 }
+if(p[4]==="deliberations"&&p.length===5){
+ if(method==="POST"){
+  await requireRole(wid,user,"editor");const i=await body(req);
+  const missionId=clean(i.missionId,64);const ids=Array.isArray(i.participantAgentIds)?[...new Set(i.participantAgentIds.filter((x:any)=>typeof x==="string").map((x:string)=>clean(x,64)))].slice(0,4):[];
+  if(!missionId||ids.length<2)throw fail("Une mission et au moins deux agents participants sont requis.");
+  const missions=await db<any[]>("afe_agent_missions?id=eq."+enc(missionId)+"&workspace_id=eq."+enc(wid)+"&limit=1");const mission=missions[0];if(!mission)throw fail("Mission introuvable dans cet espace.",404);
+  const participants=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&id=in.("+ids.map(enc).join(",")+")&status=eq.active");
+  if(participants.length!==ids.length)throw fail("Tous les agents participants doivent être actifs dans cet espace.",403);
+  const prior=await db<any[]>("afe_deliberations?mission_id=eq."+enc(missionId)+"&workspace_id=eq."+enc(wid)+"&limit=1");if(prior[0])throw fail("Une délibération existe déjà pour cette mission.",409);
+  const maxRounds=Math.max(1,Math.min(5,Number(i.maxRounds)||3));
+  const evidenceRequests=Array.isArray(i.evidenceRequests)?i.evidenceRequests.slice(0,12).map((x:any)=>({repository:clean(x.repository,200),ref:clean(x.ref,120),commitSha:clean(x.commitSha,40),path:clean(x.path,500),startLine:Number.isInteger(x.startLine)?x.startLine:undefined,endLine:Number.isInteger(x.endLine)?x.endLine:undefined})): [];
+  const rows=await db<any[]>("afe_deliberations",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({workspace_id:wid,mission_id:missionId,max_rounds:maxRounds,max_contributions:Math.min(24,ids.length*maxRounds)})});
+  const deliberation=rows[0];if(!deliberation)throw new Error("Impossible de créer la délibération.");
+  const context={...(mission.input_context&&typeof mission.input_context==="object"?mission.input_context:{}),deliberation:{enabled:true,participantAgentIds:ids,maxRounds,evidenceRequests}};
+  await db("afe_agent_missions?id=eq."+enc(missionId)+"&workspace_id=eq."+enc(wid),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({input_context:context,updated_at:new Date().toISOString()})});
+  await audit(wid,user,"deliberation.created",deliberation.id,{missionId,participantCount:ids.length});
+  send(res,201,{deliberation,participants:participants.map(x=>({id:x.id,name:x.name})),execution:"queued_with_mission"});return true;
+ }
+ if(method==="GET"){await requireRole(wid,user);const rows=await db<any[]>("afe_deliberations?workspace_id=eq."+enc(wid)+"&order=created_at.desc&limit=100");send(res,200,{deliberations:rows});return true;}
+}
+if(p[4]==="deliberations"&&p[5]&&method==="GET"){
+ await requireRole(wid,user);const id=p[5];const rows=await db<any[]>("afe_deliberations?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&limit=1");const d=rows[0];if(!d)throw fail("Délibération introuvable.",404);
+ const [contributions,evidence,arbitrations]=await Promise.all([
+  db<any[]>("afe_deliberation_contributions?deliberation_id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&order=round_no.asc,created_at.asc"),
+  db<any[]>("afe_evidence_artifacts?deliberation_id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&order=collected_at.asc"),
+  db<any[]>("afe_arbitration_reports?deliberation_id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&order=created_at.desc")
+ ]);
+ send(res,200,{deliberation:d,contributions,evidence,arbitrations});return true;
+}
 if(p[4]==="missions"&&p.length===5){
  if(method==="POST"){const i=await body(req);send(res,202,{mission:await createMission(wid,user,i),execution:"queued_server_side"});return true;}
  if(method==="GET"){await requireRole(wid,user);const rows=await db<any[]>("afe_agent_missions?workspace_id=eq."+enc(wid)+"&order=created_at.desc&limit=100");send(res,200,{missions:rows});return true;}
