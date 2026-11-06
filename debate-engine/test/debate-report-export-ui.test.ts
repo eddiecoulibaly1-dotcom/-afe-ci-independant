@@ -9,5 +9,5 @@ test("autonomous debate result exposes readable report and export actions",async
  assert.match(source,/Télécharger Word/);
  assert.match(source,/Exporter PDF/);
  assert.match(source,/window\.print\(\)/);
- assert.match(source,/aria-label="Copier le rapport"/);
+ assert.match(source,/aria-label="Copier le rapport"/);\n assert.match(source,/approveArbitration/);\n assert.match(source,/rejectArbitration/);\n assert.match(source,/deliberations\\/\"\+encodeURIComponent\\(b.dataset.delibDetail\\)\+\"\\/approval/);
 });
