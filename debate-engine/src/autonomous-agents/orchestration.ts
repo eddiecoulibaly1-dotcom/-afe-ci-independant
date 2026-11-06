@@ -184,7 +184,8 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  const findings:AuditFinding[]=[];
  const qualityLimitations:string[]=[];
  const restoredContributions=persisted.map(c=>{const decoded=decodeContributionBody(c.body);for(const finding of decoded.findings){try{findings.push(validateFinding(finding,eMap));}catch(error){qualityLimitations.push("Constat restauré écarté : "+(error instanceof Error?error.message:"validation impossible"));}}return{id:c.id,round:c.round_no,agentId:c.agent_id,kind:c.contribution_type,body:decoded.text,evidenceIds:c.evidence_ids??[],respondsTo:c.responds_to??undefined,createdAt:c.created_at};});
- const firstIncompleteRound=findFirstIncompleteRound(agents.map(a=>a.id),row.max_rounds,restoredContributions);\n state={...state,round:firstIncompleteRound,contributions:restoredContributions};
+ const firstIncompleteRound=findFirstIncompleteRound(agents.map(a=>a.id),row.max_rounds,restoredContributions);
+ state={...state,round:firstIncompleteRound,contributions:restoredContributions};
  for(let round=state.round;round<=state.maxRounds;round++){
   for(const participant of agents){
    if(state.contributions.length>=state.maxContributions)break;
