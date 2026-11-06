@@ -89,7 +89,7 @@ function argumentSimilarity(left:string,right:string){
  const a=new Set(normalizeArgumentText(left).split(" ").filter(x=>x.length>3)),b=new Set(normalizeArgumentText(right).split(" ").filter(x=>x.length>3));
  const intersection=[...a].filter(x=>b.has(x)).length;return intersection/Math.max(1,new Set([...a,...b]).size);
 }
-function contributionQualityIssue(state:Deliberation,agentId:string,round:number,kind:ContributionKind,body:string,evidenceIds:string[],respondsTo?:string):string|null{
+export function contributionQualityIssue(state:Deliberation,agentId:string,round:number,kind:ContributionKind,body:string,evidenceIds:string[],respondsTo?:string):string|null{
  if(round===1&&kind!=="position")return "Le premier tour doit présenter des positions indépendantes.";
  if(round>1){
   const target=state.contributions.find(c=>c.id===respondsTo);
