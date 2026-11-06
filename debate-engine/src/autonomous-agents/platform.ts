@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthUser } from "../auth.js";
 import { AGENT_DEPARTMENT_TEMPLATES } from "./types.js";
+import { runAgentWorkerForWorkspace } from "./worker.js";
 
 type Role="owner"|"admin"|"editor"|"viewer";
 const rank:Record<Role,number>={owner:4,admin:3,editor:2,viewer:1};
@@ -22,6 +23,14 @@ export async function handleAutonomousAgentsRequest(req:IncomingMessage,res:Serv
 const url=new URL(req.url??"/","http://localhost"),p=path.split("/").filter(Boolean),method=req.method??"GET";
 if(p.length<4||p[0]!=="team"||p[1]!=="api"||p[2]!=="workspaces")return false;
 const wid=p[3];if(!wid)return false;
+// Manual worker trigger is Preview-only and restricted to workspace admins.
+if(p[4]==="agent-worker"&&p.length===5&&method==="POST"){
+ if(process.env.VERCEL_ENV!=="preview")throw fail("Le déclenchement manuel est réservé à l'environnement Preview.",404);
+ await requireRole(wid,user,"admin");
+ const result=await runAgentWorkerForWorkspace(wid);
+ send(res,200,{ok:true,environment:"preview",workspaceId:wid,...result});
+ return true;
+}
 if(p[4]==="agents"&&p.length===5){
  if(method==="GET"){await requireRole(wid,user);const rows=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&order=created_at.asc");send(res,200,{agents:rows,templates:AGENT_DEPARTMENT_TEMPLATES});return true;}
  if(method==="POST"){await requireRole(wid,user,"admin");const i=await body(req);if(i.action==="seed"){send(res,200,{agents:await seedAgents(wid,user)});return true;}const slug=clean(i.slug,64).toLowerCase();if(!/^[a-z0-9][a-z0-9-]{1,62}$/.test(slug))throw fail("Identifiant d'agent invalide.");const rows=await db<any[]>("afe_agents",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({workspace_id:wid,slug,name:clean(i.name,120),specialty:clean(i.specialty,160),mandate:clean(i.mandate,12000),system_instructions:clean(i.instructions,30000),autonomy_level:Math.max(1,Math.min(3,Number(i.autonomyLevel)||1)),status:"draft",created_by:user.id})});send(res,201,{agent:rows[0]});return true;}
