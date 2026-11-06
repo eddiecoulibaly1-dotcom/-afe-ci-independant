@@ -61,11 +61,15 @@ if(p[4]==="deliberations"&&p.length===5){
 }
 if(p[4]==="deliberations"&&p[5]&&method==="GET"){
  await requireRole(wid,user);const id=p[5];const rows=await db<any[]>("afe_deliberations?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&limit=1");const d=rows[0];if(!d)throw fail("Délibération introuvable.",404);
- const [contributions,evidence,arbitrations]=await Promise.all([
+ const [contributions,workspaceEvidence,arbitrations]=await Promise.all([
   db<any[]>("afe_deliberation_contributions?deliberation_id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&order=round_no.asc,created_at.asc"),
-  db<any[]>("afe_evidence_artifacts?deliberation_id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&order=collected_at.asc"),
+  db<any[]>("afe_evidence_artifacts?workspace_id=eq."+enc(wid)+"&order=collected_at.asc&limit=500"),
   db<any[]>("afe_arbitration_reports?deliberation_id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&order=created_at.desc")
  ]);
+ const linkedEvidenceIds=new Set<string>();
+ for(const contribution of contributions)for(const evidenceId of contribution.evidence_ids??[])linkedEvidenceIds.add(String(evidenceId));
+ for(const report of arbitrations)for(const decision of report.decisions??[]){for(const evidenceId of decision.evidenceIds??[])linkedEvidenceIds.add(String(evidenceId));for(const evidenceId of decision.finding?.evidenceIds??[])linkedEvidenceIds.add(String(evidenceId));}
+ const evidence=workspaceEvidence.filter(item=>item.deliberation_id===id||linkedEvidenceIds.has(item.id));
  send(res,200,{deliberation:d,contributions,evidence,arbitrations});return true;
 }
 if(p[4]==="missions"&&p.length===5){
