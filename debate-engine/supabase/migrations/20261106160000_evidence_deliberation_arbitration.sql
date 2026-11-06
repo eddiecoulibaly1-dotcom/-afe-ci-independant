@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS public.afe_deliberation_contributions (
  contribution_type text NOT NULL CHECK(contribution_type IN ('position','objection','rebuttal','evidence_review','revision')),
  body text NOT NULL CHECK(length(btrim(body)) BETWEEN 10 AND 20000),
  evidence_ids uuid[] NOT NULL DEFAULT '{}',
- responds_to uuid REFERENCES public.afe_deliberation_contributions(id) ON DELETE RESTRICT,
+ responds_to uuid,
  idempotency_key text NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now(),
  FOREIGN KEY(deliberation_id,workspace_id) REFERENCES public.afe_deliberations(id,workspace_id) ON DELETE CASCADE,
@@ -86,8 +86,8 @@ BEGIN
 END $$;
 -- Immutable evidence: corrections create a new artifact; no UPDATE/DELETE path.
 CREATE OR REPLACE FUNCTION public.afe_reject_evidence_mutation()
-RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public AS $
-BEGIN RAISE EXCEPTION 'Evidence artifacts are immutable; create a new artifact.'; END $$;
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public AS $func$
+BEGIN RAISE EXCEPTION 'Evidence artifacts are immutable; create a new artifact.'; END $func$;
 DROP TRIGGER IF EXISTS afe_evidence_immutable ON public.afe_evidence_artifacts;
 CREATE TRIGGER afe_evidence_immutable BEFORE UPDATE OR DELETE ON public.afe_evidence_artifacts
  FOR EACH ROW EXECUTE FUNCTION public.afe_reject_evidence_mutation();
