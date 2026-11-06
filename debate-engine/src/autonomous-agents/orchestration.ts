@@ -26,7 +26,7 @@ function evidencePolicy():EvidencePolicy{
  const prefixes=(process.env.AFE_EVIDENCE_PATH_PREFIXES??"debate-engine/src/,debate-engine/test/,debate-engine/supabase/migrations/").split(",").map(x=>x.trim()).filter(Boolean);
  return{allowedRepositories:new Set(repositories),allowedRefs:new Set(refs),allowedPathPrefixes:prefixes,maxBytes:180000,maxExcerptChars:12000};
 }
-async function collectEvidence(workspaceId:string,requests:any[]):Promise<EvidenceArtifact[]>{
+async function collectEvidence(workspaceId:string,deliberationId:string,requests:any[]):Promise<EvidenceArtifact[]>{
  if(!requests.length)return [];
  const policy=evidencePolicy(),provider=githubProvider(),out:EvidenceArtifact[]=[];
  for(const item of requests.slice(0,12)){
@@ -34,7 +34,7 @@ async function collectEvidence(workspaceId:string,requests:any[]):Promise<Eviden
   const commitSha=safeText(item.commitSha,40);
   if(!repository||!ref||!path||!/^[0-9a-f]{40}$/.test(commitSha))throw new Error("Evidence request is incomplete or has an invalid commit SHA.");
   const artifact=await collectGitEvidence({workspaceId,repository,ref,commitSha,path,startLine:Number.isInteger(item.startLine)?item.startLine:undefined,endLine:Number.isInteger(item.endLine)?item.endLine:undefined},policy,provider);
-  const rows=await db<any[]>("afe_evidence_artifacts", {...post,body:JSON.stringify({id:randomUUID(),workspace_id:workspaceId,source_kind:artifact.sourceKind,source_uri:artifact.sourceUri,repository:artifact.repository,source_ref:artifact.ref,commit_sha:artifact.commitSha,source_path:artifact.path,line_start:artifact.lineStart,line_end:artifact.lineEnd,content_sha256:artifact.contentSha256,collector_version:artifact.collectorVersion,access_mode:artifact.accessMode,verification:artifact.verification,excerpt:artifact.excerpt,metadata:artifact.metadata})});
+  const rows=await db<any[]>("afe_evidence_artifacts", {...post,body:JSON.stringify({id:randomUUID(),workspace_id:workspaceId,deliberation_id:deliberationId,source_kind:artifact.sourceKind,source_uri:artifact.sourceUri,repository:artifact.repository,source_ref:artifact.ref,commit_sha:artifact.commitSha,source_path:artifact.path,line_start:artifact.lineStart,line_end:artifact.lineEnd,content_sha256:artifact.contentSha256,collector_version:artifact.collectorVersion,access_mode:artifact.accessMode,verification:artifact.verification,excerpt:artifact.excerpt,metadata:artifact.metadata})});
   const row=rows[0];if(!row)throw new Error("Evidence artifact was not persisted.");
   out.push({...artifact,id:row.id});
  }
@@ -50,7 +50,7 @@ async function model<T>(agent:Agent,schemaName:string,schema:any,prompt:string):
 }
 async function persistContribution(workspaceId:string,deliberationId:string,c:any,agentId:string,round:number){
  const key="r"+round+":"+agentId+":"+c.kind;
- const rows=await db<any[]>("afe_deliberation_contributions",{...post,body:JSON.stringify({workspace_id:workspaceId,deliberation_id:deliberationId,round_no:round,agent_id:agentId,contribution_type:c.kind,body:safeText(c.body,20000),evidence_ids:c.evidenceIds??[],responds_to:c.respondsTo||null,idempotency_key:key})});
+ const rows=await db<any[]>("afe_deliberation_contributions?on_conflict=deliberation_id,idempotency_key",{method:"POST",headers:{"Prefer":"resolution=ignore-duplicates,return=representation"},body:JSON.stringify({workspace_id:workspaceId,deliberation_id:deliberationId,round_no:round,agent_id:agentId,contribution_type:c.kind,body:safeText(c.body,20000),evidence_ids:c.evidenceIds??[],responds_to:c.respondsTo||null,idempotency_key:key})});
  return rows[0];
 }
 async function saveReport(report:any){
@@ -64,16 +64,17 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  const agents=await db<Agent[]>("afe_agents?workspace_id=eq."+enc(mission.workspace_id)+"&id=in.("+participants.map(enc).join(",")+")&status=eq.active");
  if(agents.length<2||agents.length!==participants.length)throw new Error("Une délibération exige au moins deux agents actifs du même espace.");
  if(!agents.some(a=>a.id===primaryAgent.id))agents.unshift(primaryAgent);
- const evidence=await collectEvidence(mission.workspace_id,Array.isArray(config.evidenceRequests)?config.evidenceRequests:[]);
- const eMap=evidenceMap(evidence);
  const prior=await db<PersistedDeliberation[]>("afe_deliberations?mission_id=eq."+enc(mission.id)+"&workspace_id=eq."+enc(mission.workspace_id)+"&limit=1");
  let row=prior[0];
  if(!row){const created=createDeliberation({workspaceId:mission.workspace_id,missionId:mission.id,maxRounds:Number(config.maxRounds)||3,maxContributions:Math.min(24,agents.length*3)});const saved=await db<any[]>("afe_deliberations",{...post,body:JSON.stringify({id:created.id,workspace_id:created.workspaceId,mission_id:created.missionId,max_rounds:created.maxRounds,max_contributions:created.maxContributions})});row=saved[0];}
  if(!row)throw new Error("Deliberation persistence failed.");
+ if(row.status==="completed"){const reports=await db<any[]>("afe_arbitration_reports?deliberation_id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id)+"&order=created_at.desc&limit=1");return {deliberationId:row.id,evidenceCount:0,contributionCount:0,findingCount:0,arbitrationReportId:reports[0]?.id??null,humanApprovalRequired:true,reusedCompleted:true};}
+ const evidence=await collectEvidence(mission.workspace_id,row.id,Array.isArray(config.evidenceRequests)?config.evidenceRequests:[]);
+ const eMap=evidenceMap(evidence);
  let state:Deliberation=createDeliberation({workspaceId:mission.workspace_id,missionId:mission.id,maxRounds:row.max_rounds,maxContributions:row.max_contributions});
  state={...state,id:row.id};
  const persisted=await db<any[]>("afe_deliberation_contributions?deliberation_id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id)+"&order=round_no.asc,created_at.asc");
- for(const c of persisted)state=addContribution(state,{agentId:c.agent_id,kind:c.contribution_type,body:c.body,evidenceIds:c.evidence_ids??[],respondsTo:c.responds_to??undefined});
+ state={...state,round:Math.max(1,...persisted.map(c=>Number(c.round_no)||1)),contributions:persisted.map(c=>({id:c.id,round:c.round_no,agentId:c.agent_id,kind:c.contribution_type,body:c.body,evidenceIds:c.evidence_ids??[],respondsTo:c.responds_to??undefined,createdAt:c.created_at}))};
  const findings:AuditFinding[]=[];
  for(let round=state.round;round<=state.maxRounds;round++){
   for(const participant of agents){
