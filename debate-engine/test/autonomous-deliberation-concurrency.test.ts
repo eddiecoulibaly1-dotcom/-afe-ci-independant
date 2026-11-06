@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {createDeliberation,addContribution,advanceRound,beginArbitration} from "../src/autonomous-agents/deliberation.js";
 import {EvidenceRegistry,validateFinding} from "../src/autonomous-agents/evidence.js";
-import {assessDeliberationCoverage} from "../src/autonomous-agents/orchestration.js";
+import {assessDeliberationCoverage,findFirstIncompleteRound} from "../src/autonomous-agents/orchestration.js";
 test("deliberation enforces round and contribution budgets",()=>{
  let d=createDeliberation({workspaceId:"w",missionId:"m",maxRounds:2,maxContributions:2});
  d=addContribution(d,{agentId:"a",kind:"position",body:"Analyse initiale suffisamment détaillée."});
@@ -55,4 +55,19 @@ test("coverage is complete only when all agent-round pairs are present",()=>{
  assert.equal(result.complete,true);
  assert.equal(result.completed,result.expected);
  assert.equal(result.missing.length,0);
+});
+
+test("recovery resumes at the first incomplete round, not the latest persisted round",()=>{
+ const resume=findFirstIncompleteRound(["a","b"],3,[
+  {agentId:"a",round:1},{agentId:"a",round:2},{agentId:"b",round:2},
+  {agentId:"a",round:3},{agentId:"b",round:3}
+ ]);
+ assert.equal(resume,1);
+});
+test("recovery advances only after every participant has contributed",()=>{
+ const resume=findFirstIncompleteRound(["a","b"],3,[
+  {agentId:"a",round:1},{agentId:"b",round:1},
+  {agentId:"a",round:2},{agentId:"b",round:2}
+ ]);
+ assert.equal(resume,3);
 });
