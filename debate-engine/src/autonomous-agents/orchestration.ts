@@ -59,6 +59,14 @@ async function collectEvidence(workspaceId:string,deliberationId:string,requests
  return{artifacts:out,limitations};
 }
 function evidenceMap(xs:EvidenceArtifact[]){return new Map(xs.map(x=>[x.id,x]));}
+export function assessDeliberationCoverage(participantIds:string[],maxRounds:number,contributions:Array<{agentId:string;round:number}>){
+ const rounds=Math.max(1,Math.min(8,maxRounds));
+ const expected=rounds*participantIds.length;
+ const completed=new Set(contributions.map(c=>c.round+":"+c.agentId));
+ const missing:Array<{agentId:string;round:number}>=[];
+ for(let round=1;round<=rounds;round++)for(const agentId of participantIds)if(!completed.has(round+":"+agentId))missing.push({agentId,round});
+ return{expected,completed:participantIds.length*rounds-missing.length,missing,complete:missing.length===0};
+}
 function decodeContributionBody(raw:string):{text:string;findings:AuditFinding[]}{
  try{const parsed=JSON.parse(raw);if(parsed&&parsed.schema==="afe-contribution-v2"&&typeof parsed.text==="string"&&Array.isArray(parsed.findings))return{text:parsed.text,findings:parsed.findings as AuditFinding[]};}catch{}
  return{text:raw,findings:[]};
@@ -153,7 +161,7 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  if(!agents.some(a=>a.id===primaryAgent.id))agents.unshift(primaryAgent);
  const prior=await db<PersistedDeliberation[]>("afe_deliberations?mission_id=eq."+enc(mission.id)+"&workspace_id=eq."+enc(mission.workspace_id)+"&limit=1");
  let row=prior[0];
- if(!row){const created=createDeliberation({workspaceId:mission.workspace_id,missionId:mission.id,maxRounds:Number(config.maxRounds)||3,maxContributions:Math.min(24,agents.length*3)});const saved=await db<any[]>("afe_deliberations",{...post,body:JSON.stringify({id:created.id,workspace_id:created.workspaceId,mission_id:created.missionId,max_rounds:created.maxRounds,max_contributions:created.maxContributions})});row=saved[0];}
+ if(!row){const created=createDeliberation({workspaceId:mission.workspace_id,missionId:mission.id,maxRounds:Number(config.maxRounds)||3,maxContributions:Math.min(24,agents.length*Math.max(1,Math.min(8,Number(config.maxRounds)||3)))});const saved=await db<any[]>("afe_deliberations",{...post,body:JSON.stringify({id:created.id,workspace_id:created.workspaceId,mission_id:created.missionId,max_rounds:created.maxRounds,max_contributions:created.maxContributions})});row=saved[0];}
  if(!row)throw new Error("Deliberation persistence failed.");
  if(row.status==="completed"){const reports=await db<any[]>("afe_arbitration_reports?deliberation_id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id)+"&order=created_at.desc&limit=1");return {deliberationId:row.id,evidenceCount:0,contributionCount:0,findingCount:0,arbitrationReportId:reports[0]?.id??null,humanApprovalRequired:true,reusedCompleted:true};}
  const collection=await collectEvidence(mission.workspace_id,row.id,Array.isArray(config.evidenceRequests)?config.evidenceRequests:[]);
@@ -171,8 +179,16 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
    if(state.contributions.length>=state.maxContributions)break;
    const priorContrib=state.contributions.find(c=>c.round===round&&c.agentId===participant.id);
    if(priorContrib)continue;
-   const output=await model<any>(participant,"afe_deliberation_contribution",{type:"object",additionalProperties:false,properties:{kind:contributionSchema.properties.kind,body:{type:"string"},evidenceIds:contributionSchema.properties.evidenceIds,respondsTo:contributionSchema.properties.respondsTo,findings:{type:"array",items:findingSchema}},required:["kind","body","evidenceIds","respondsTo","findings"]},
-    "MISSION: "+mission.title+"\nOBJECTIF: "+mission.objective+"\nTOUR: "+round+"\nCONTRIBUTIONS PRÉCÉDENTES: "+JSON.stringify(state.contributions)+"\nSOURCES COLLECTÉES (la provenance vérifiée ne signifie pas que le contenu soutient un constat): "+JSON.stringify(evidence)+"\nTour 1 : position indépendante. Tours suivants : réponds obligatoirement à une contribution d'un autre agent en renseignant son ID exact dans respondsTo et en choisissant objection, rebuttal, evidence_review ou revision; n'émets pas une nouvelle position générale. N'apporte pas de répétition sans argument nouveau ou preuve nouvelle. Pour chaque preuve citée, retourne evidenceAssessments avec supports/contradicts/context_only et une justification. Une affirmation sans preuve pertinente doit être unverified; ne confonds jamais absence de preuve et preuve d'absence. Si les données ne permettent pas de coter probabilité et impact, utilise null pour les deux et severity=not_rated. Sinon applique score=probabilité×impact : 1–4 low, 5–9 medium, 10–16 high, 17–25 critical; explique la cotation dans riskRationale.");
+   let output:any;
+   let lastModelError:unknown;
+   for(let attempt=1;attempt<=2;attempt++){
+    try{
+     output=await model<any>(participant,"afe_deliberation_contribution",{type:"object",additionalProperties:false,properties:{kind:contributionSchema.properties.kind,body:{type:"string"},evidenceIds:contributionSchema.properties.evidenceIds,respondsTo:contributionSchema.properties.respondsTo,findings:{type:"array",items:findingSchema}},required:["kind","body","evidenceIds","respondsTo","findings"]},
+    "MISSION: "+mission.title+"\nOBJECTIF: "+mission.objective+"\nTOUR: "+round+"\nCONTRIBUTIONS PRÉCÉDENTES: "+JSON.stringify(state.contributions)+"\nSOURCES COLLECTÉES (la provenance vérifiée ne signifie pas que le contenu soutient un constat): "+JSON.stringify(evidence)+"\nTour 1 : position indépendante. Tours suivants : réponds obligatoirement à une contribution d'un autre agent en renseignant son ID exact dans respondsTo et en choisissant objection, rebuttal, evidence_review ou revision; n'émets pas une nouvelle position générale. N'apporte pas de répétition sans argument nouveau ou preuve nouvelle. Pour chaque preuve citée, retourne evidenceAssessments avec supports/contradicts/context_only et une justification. Une affirmation sans preuve pertinente doit être unverified; ne confonds jamais absence de preuve et preuve d'absence. Si les données ne permettent pas de coter probabilité et impact, utilise null pour les deux et severity=not_rated. Sinon applique score=probabilité×impact : 1–4 low, 5–9 medium, 10–16 high, 17–25 critical; explique la cotation dans riskRationale.");;
+     lastModelError=undefined;break;
+    }catch(error){lastModelError=error;}
+   }
+   if(!output){qualityLimitations.push("Agent "+participant.id+" · tour "+round+" : génération échouée après 2 tentatives ("+(lastModelError instanceof Error?lastModelError.message:"erreur modèle inconnue").slice(0,300)+"). Les autres agents poursuivent la délibération.");continue;}
    const validEvidence=(output.evidenceIds??[]).filter((id:string)=>eMap.has(id));
    const validFindings:AuditFinding[]=[];
    for(const finding of (output.findings??[]).slice(0,2)){try{validFindings.push(validateFinding(finding,eMap));}catch(error){qualityLimitations.push("Agent "+participant.id+" · constat écarté : "+(error instanceof Error?error.message:"validation impossible"));}}
@@ -203,9 +219,11 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
   if(invalidEvidence||!candidate.rationale?.trim())return{findingId:f.id,decision:"unresolved",rationale:"La décision proposée cite une preuve non liée au constat ou ne fournit pas de justification suffisante; elle est écartée.",evidenceIds:[],dissent:["Réponse de l'arbitre rejetée par le contrôle de cohérence automatique."]};
   return candidate;
  });
- const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:completeDecisions,limitations:[...(arb.limitations??[]),...collection.limitations,...qualityLimitations,"Couverture de collecte : "+evidence.length+" sources collectées, "+collection.limitations.length+" sources non collectées, sur "+(evidence.length+collection.limitations.length)+" tentatives."]});
+ const coverage=assessDeliberationCoverage(agents.map(a=>a.id),row.max_rounds,state.contributions);
+ const coverageLimitations=coverage.complete?[]:[ "DÉLIBÉRATION INCOMPLÈTE : "+coverage.completed+"/"+coverage.expected+" contributions attendues. Le statut ne peut pas être déclaré completed.", ...coverage.missing.map(x=>"Contribution manquante · agent "+x.agentId+" · tour "+x.round) ];
+ const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:completeDecisions,limitations:[...(arb.limitations??[]),...collection.limitations,...qualityLimitations,...coverageLimitations,...(uniqueFindings.length?[]:["Aucun constat recevable n'a été consolidé; aucune conclusion substantielle ne peut être tirée."]),"Couverture de collecte : "+evidence.length+" sources collectées, "+collection.limitations.length+" sources non collectées, sur "+(evidence.length+collection.limitations.length)+" tentatives."]});
  report.decisions=report.decisions.map(decision=>({...decision,finding:uniqueFindings.find(f=>f.id===decision.findingId)??null})) as any;
  const savedReport=await saveReport(report);
- await db("afe_deliberations?id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({status:"completed",updated_at:new Date().toISOString()})});
- return {deliberationId:row.id,evidenceCount:evidence.length,contributionCount:state.contributions.length,findingCount:uniqueFindings.length,arbitrationReportId:savedReport.id,humanApprovalRequired:true};
+ await db("afe_deliberations?id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({status:coverage.complete?"completed":"open",current_round:Math.min(row.max_rounds,Math.max(1,...state.contributions.map(c=>c.round))),updated_at:new Date().toISOString()})});
+ return {deliberationId:row.id,status:coverage.complete?"completed":"incomplete",coverage,evidenceCount:evidence.length,contributionCount:state.contributions.length,findingCount:uniqueFindings.length,arbitrationReportId:savedReport.id,humanApprovalRequired:true,limitations:[...collection.limitations,...qualityLimitations,...coverageLimitations]};
 }
