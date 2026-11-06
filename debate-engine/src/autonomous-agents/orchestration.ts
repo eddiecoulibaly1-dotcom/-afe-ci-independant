@@ -59,6 +59,11 @@ async function collectEvidence(workspaceId:string,deliberationId:string,requests
  return{artifacts:out,limitations};
 }
 function evidenceMap(xs:EvidenceArtifact[]){return new Map(xs.map(x=>[x.id,x]));}
+export function findFirstIncompleteRound(participantIds:string[],maxRounds:number,contributions:Array<{agentId:string;round:number}>){
+ const rounds=Math.max(1,Math.min(8,maxRounds));
+ for(let round=1;round<=rounds;round++)if(participantIds.some(agentId=>!contributions.some(c=>c.agentId===agentId&&c.round===round)))return round;
+ return rounds;
+}
 export function assessDeliberationCoverage(participantIds:string[],maxRounds:number,contributions:Array<{agentId:string;round:number}>){
  const rounds=Math.max(1,Math.min(8,maxRounds));
  const expected=rounds*participantIds.length;
@@ -179,7 +184,7 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  const findings:AuditFinding[]=[];
  const qualityLimitations:string[]=[];
  const restoredContributions=persisted.map(c=>{const decoded=decodeContributionBody(c.body);for(const finding of decoded.findings){try{findings.push(validateFinding(finding,eMap));}catch(error){qualityLimitations.push("Constat restauré écarté : "+(error instanceof Error?error.message:"validation impossible"));}}return{id:c.id,round:c.round_no,agentId:c.agent_id,kind:c.contribution_type,body:decoded.text,evidenceIds:c.evidence_ids??[],respondsTo:c.responds_to??undefined,createdAt:c.created_at};});
- const firstIncompleteRound=Array.from({length:row.max_rounds},(_,index)=>index+1).find(round=>agents.some(agent=>!restoredContributions.some(c=>c.round===round&&c.agentId===agent.id)))??row.max_rounds;\n state={...state,round:firstIncompleteRound,contributions:restoredContributions};
+ const firstIncompleteRound=findFirstIncompleteRound(agents.map(a=>a.id),row.max_rounds,restoredContributions);\n state={...state,round:firstIncompleteRound,contributions:restoredContributions};
  for(let round=state.round;round<=state.maxRounds;round++){
   for(const participant of agents){
    if(state.contributions.length>=state.maxContributions)break;
