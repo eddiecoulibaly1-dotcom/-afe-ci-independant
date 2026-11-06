@@ -203,7 +203,7 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
   if(invalidEvidence||!candidate.rationale?.trim())return{findingId:f.id,decision:"unresolved",rationale:"La décision proposée cite une preuve non liée au constat ou ne fournit pas de justification suffisante; elle est écartée.",evidenceIds:[],dissent:["Réponse de l'arbitre rejetée par le contrôle de cohérence automatique."]};
   return candidate;
  });
- const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:completeDecisions,limitations:[...(arb.limitations??[]),...collection.limitations,...qualityLimitations]});
+ const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:completeDecisions,limitations:[...(arb.limitations??[]),...collection.limitations,...qualityLimitations,"Couverture de collecte : "+evidence.length+" sources collectées, "+collection.limitations.length+" sources non collectées, sur "+(evidence.length+collection.limitations.length)+" tentatives."]});
  report.decisions=report.decisions.map(decision=>({...decision,finding:uniqueFindings.find(f=>f.id===decision.findingId)??null})) as any;
  const savedReport=await saveReport(report);
  await db("afe_deliberations?id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({status:"completed",updated_at:new Date().toISOString()})});
