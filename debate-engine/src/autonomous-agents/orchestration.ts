@@ -78,8 +78,25 @@ function encodeContributionBody(body:string,items:AuditFinding[]):string{
   return JSON.stringify({schema:"afe-contribution-v2",text:safeText(body,maxBody),findings:compact});
  };
  const limits:ReadonlyArray<readonly [number,number,number]>=[[4000,4,700],[2000,3,400],[1000,2,250]];
-  for(const [maxBody,maxFindings,maxText] of limits){
-   const encoded=pack(maxBody,maxFindings,maxText);if(Buffer.byteLength(encoded,"utf8")<=19500)return encoded;
+ for(const [maxBody,maxFindings,maxText] of limits){
+  const encoded=pack(maxBody,maxFindings,maxText);
+  if(Buffer.byteLength(encoded,"utf8")<=19500)return encoded;
+ }
+ return JSON.stringify({schema:"afe-contribution-v2",text:safeText(body,500),findings:[]});
+}
+function normalizeFindingText(value:string){return value.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();}
+function consolidateFindings(items:AuditFinding[]):AuditFinding[]{
+ const groups:AuditFinding[]=[];
+ for(const item of items){
+  const normalized=normalizeFindingText(item.title+" "+item.statement);
+  const tokens=new Set(normalized.split(" ").filter(x=>x.length>3));
+  let target:AuditFinding|undefined;
+  for(const candidate of groups){
+   if(candidate.severity!==item.severity)continue;
+   const other=new Set(normalizeFindingText(candidate.title+" "+candidate.statement).split(" ").filter(x=>x.length>3));
+   const intersection=[...tokens].filter(x=>other.has(x)).length;
+   const similarity=intersection/Math.max(1,new Set([...tokens,...other]).size);
+   if(normalized===normalizeFindingText(candidate.title+" "+candidate.statement)||similarity>=0.88){target=candidate;break;}
   }
   if(!target){groups.push({...item,evidenceIds:[...new Set(item.evidenceIds)],evidenceAssessments:[...(item.evidenceAssessments??[])],duplicateIds:[]} as any);continue;}
   (target as any).duplicateIds=[...new Set([...((target as any).duplicateIds??[]),item.id])];
@@ -91,7 +108,24 @@ function encodeContributionBody(body:string,items:AuditFinding[]):string{
  }
  return groups;
 }
-
+function normalizeArgumentText(value:string){return value.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();}
+function argumentSimilarity(left:string,right:string){
+ const a=new Set(normalizeArgumentText(left).split(" ").filter(x=>x.length>3)),b=new Set(normalizeArgumentText(right).split(" ").filter(x=>x.length>3));
+ const intersection=[...a].filter(x=>b.has(x)).length;return intersection/Math.max(1,new Set([...a,...b]).size);
+}
+export function contributionQualityIssue(state:Deliberation,agentId:string,round:number,kind:ContributionKind,body:string,evidenceIds:string[],respondsTo?:string):string|null{
+ if(round===1&&kind!=="position")return "Le premier tour doit présenter des positions indépendantes.";
+ if(round>1){
+  const target=state.contributions.find(c=>c.id===respondsTo);
+  if(!target||target.agentId===agentId)return "Chaque contribution après le premier tour doit répondre à une contribution existante d'un autre agent.";
+  if(kind==="position")return "Les tours suivants doivent produire une objection, une réfutation, une revue de preuve ou une révision.";
+ }
+ const priorEvidence=new Set(state.contributions.flatMap(c=>c.evidenceIds));
+ const hasNewEvidence=evidenceIds.some(id=>!priorEvidence.has(id));
+ const duplicate=state.contributions.find(c=>argumentSimilarity(c.body,body)>=0.92);
+ if(duplicate&&!hasNewEvidence)return "Contribution répétitive écartée : aucun argument nouveau ni nouvelle preuve n'a été apporté.";
+ return null;
+}
 const contributionSchema={type:"object",additionalProperties:false,properties:{kind:{type:"string",enum:["position","objection","rebuttal","evidence_review","revision"]},body:{type:"string"},evidenceIds:{type:"array",items:{type:"string"}},respondsTo:{type:"string"}},required:["kind","body","evidenceIds","respondsTo"]};
 const findingSchema={type:"object",additionalProperties:false,properties:{id:{type:"string"},title:{type:"string"},statement:{type:"string"},severity:{type:"string",enum:["critical","high","medium","low","info","not_rated"]},likelihood:{type:["integer","null"],minimum:1,maximum:5},impact:{type:["integer","null"],minimum:1,maximum:5},riskRationale:{type:"string"},rationale:{type:"string"},evidenceIds:{type:"array",items:{type:"string"}},evidenceAssessments:{type:"array",items:{type:"object",additionalProperties:false,properties:{evidenceId:{type:"string"},relation:{type:"string",enum:["supports","contradicts","context_only"]},rationale:{type:"string"}},required:["evidenceId","relation","rationale"]}},verification:{type:"string",enum:["verified","partially_verified","unverified","out_of_scope"]},limitations:{type:"array",items:{type:"string"}},counterArguments:{type:"array",items:{type:"string"}},recommendation:{type:"string"},closureCriteria:{type:"array",items:{type:"string"}}},required:["id","title","statement","severity","likelihood","impact","riskRationale","rationale","evidenceIds","evidenceAssessments","verification","limitations","counterArguments","recommendation","closureCriteria"]};
 const decisionSchema={type:"object",additionalProperties:false,properties:{findingId:{type:"string"},decision:{type:"string",enum:["upheld","partially_upheld","rejected","unresolved"]},rationale:{type:"string"},evidenceIds:{type:"array",items:{type:"string"}},dissent:{type:"array",items:{type:"string"}}},required:["findingId","decision","rationale","evidenceIds","dissent"]};
