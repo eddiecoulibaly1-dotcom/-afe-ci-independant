@@ -66,16 +66,22 @@ export async function collectGitEvidence(
 export type AuditFinding = {
   id:string; title:string; statement:string; severity:"critical"|"high"|"medium"|"low"|"info";
   likelihood:1|2|3|4|5; impact:1|2|3|4|5; rationale:string;
-  evidenceIds:string[]; verification:"verified"|"partially_verified"|"unverified"|"out_of_scope";
+  evidenceIds:string[]; evidenceAssessments?:EvidenceAssessment[]; verification:"verified"|"partially_verified"|"unverified"|"out_of_scope";
   limitations:string[]; counterArguments:string[]; recommendation:string; closureCriteria:string[];
 };
 export function validateFinding(f:AuditFinding, evidence:ReadonlyMap<string,EvidenceArtifact>): AuditFinding {
   if (!f.id || !f.title || !f.statement || !f.rationale || !f.recommendation) throw new Error("Finding is missing required explanation.");
   if (f.likelihood<1 || f.likelihood>5 || f.impact<1 || f.impact>5) throw new Error("Risk scores must be between 1 and 5.");
   const found=f.evidenceIds.map(id=>evidence.get(id)).filter((x):x is EvidenceArtifact=>!!x);
-  if (f.verification==="verified" && found.length===0) throw new Error("Verified finding requires at least one resolvable evidence artifact.");
   if (f.evidenceIds.some(id=>!evidence.has(id))) throw new Error("Finding references unknown evidence.");
-  if (f.verification==="verified" && found.some(x=>x.verification!=="verified")) throw new Error("Verified finding cannot rely on unverified evidence.");
+  const assessments=f.evidenceAssessments??[];
+  if(assessments.some(a=>!f.evidenceIds.includes(a.evidenceId)||!evidence.has(a.evidenceId)||!a.rationale.trim())) throw new Error("Evidence assessment must reference a finding evidence item and explain its relationship.");
+  if (f.verification==="verified") {
+    if(found.length===0) throw new Error("Verified finding requires at least one resolvable evidence artifact.");
+    if(found.some(x=>x.verification!=="verified")) throw new Error("Verified finding cannot rely on unverified provenance.");
+    if(!assessments.some(a=>a.relation==="supports")) throw new Error("Verified finding requires an explicit supporting evidence assessment; source integrity alone is insufficient.");
+  }
+  if(f.verification==="partially_verified" && !assessments.some(a=>a.relation==="supports"||a.relation==="contradicts")) throw new Error("Partially verified finding requires an explicit evidence assessment.");
   return f;
 }
 export class EvidenceRegistry {
