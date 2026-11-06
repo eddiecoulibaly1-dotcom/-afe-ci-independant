@@ -6,22 +6,22 @@ const source = await readFile(new URL("../src/team-platform.ts", import.meta.url
 const agents = await readFile(new URL("../src/autonomous-agents/platform.ts", import.meta.url), "utf8");
 
 test("Team & Governance normalizes API collections before rendering lists", () => {
-  assert.match(source, /arr=x=>Array\\.isArray\\(x\\)\\?x:\\[\\]/);
-  assert.match(source, /arr\\(d\\.recentActivity\\)\\.map/);
-  assert.match(source, /arr\\(a\\.suggestions\\)\\.map/);
+  assert.ok(source.includes("arr=x=>Array.isArray(x)?x:[]"));
+  assert.ok(source.includes("arr(d.recentActivity).map"));
+  assert.ok(source.includes("arr(a.suggestions).map"));
 });
 
 test("Team & Governance exposes autonomous agent and mission workspaces", () => {
-  assert.match(source, /data-tab="agents"/);
-  assert.match(source, /data-tab="missions"/);
-  assert.match(source, /if\\(tab==="agents"\\)/);
-  assert.match(source, /if\\(tab==="missions"\\)/);
+  assert.ok(source.includes('data-tab="agents"'));
+  assert.ok(source.includes('data-tab="missions"'));
+  assert.ok(source.includes('if(tab==="agents")'));
+  assert.ok(source.includes('if(tab==="missions")'));
 });
 
 test("agent UI uses workspace-scoped API contracts for creation and activation", () => {
-  assert.match(source, /api\\(p\\+"\\/agents"/);
-  assert.match(source, /status:"active"/);
-  assert.match(source, /api\\(p\\+"\\/missions"/);
-  assert.match(agents, /createMission\\(wid,user,i\\)/);
-  assert.match(agents, /if\\(method==="PATCH"\\)/);
+  assert.ok(source.includes('api(p+"/agents"'));
+  assert.ok(source.includes('status:"active"'));
+  assert.ok(source.includes('api(p+"/missions"'));
+  assert.ok(agents.includes("createMission(wid,user,i)"));
+  assert.ok(agents.includes('if(method==="PATCH")'));
 });
