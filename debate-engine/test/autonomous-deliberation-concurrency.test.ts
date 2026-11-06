@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {createDeliberation,addContribution,advanceRound,beginArbitration} from "../src/autonomous-agents/deliberation.js";
 import {EvidenceRegistry,validateFinding} from "../src/autonomous-agents/evidence.js";
 import {buildArbitration} from "../src/autonomous-agents/arbitration.js";
-import {assessDeliberationCoverage,findFirstIncompleteRound} from "../src/autonomous-agents/orchestration.js";
+import {assessDeliberationCoverage,findFirstIncompleteRound,normalizeContributionKind,selectResponseTarget} from "../src/autonomous-agents/orchestration.js";
 test("deliberation enforces round and contribution budgets",()=>{
  let d=createDeliberation({workspaceId:"w",missionId:"m",maxRounds:2,maxContributions:2});
  d=addContribution(d,{agentId:"a",kind:"position",body:"Analyse initiale suffisamment détaillée."});
@@ -79,4 +79,23 @@ test("incomplete deliberation remains a proposal and cannot be submitted for hum
  const report=buildArbitration({deliberation:{...d,status:"arbitrating"},findings:[],evidence:new Map(),decisions:[],status:"proposed",limitations:["Couverture incomplète."]});
  assert.equal(report.status,"proposed");
  assert.equal(report.humanApprovalRequired,true);
+});
+
+test("first round is normalized to an independent position",()=>{
+ assert.equal(normalizeContributionKind(1,"objection"),"position");
+ assert.equal(normalizeContributionKind(1,"revision"),"position");
+});
+test("later rounds normalize invalid kinds to objections",()=>{
+ assert.equal(normalizeContributionKind(2,"position"),"objection");
+ assert.equal(normalizeContributionKind(2,"unknown"),"objection");
+ assert.equal(normalizeContributionKind(3,"rebuttal"),"rebuttal");
+});
+test("response target must belong to another participant and falls back to latest other contribution",()=>{
+ const contributions=[
+  {id:"a1",agentId:"a",round:1},
+  {id:"b1",agentId:"b",round:1},
+  {id:"a2",agentId:"a",round:2}
+ ];
+ assert.equal(selectResponseTarget(contributions,"a","a2")?.id,"b1");
+ assert.equal(selectResponseTarget(contributions,"a","missing")?.id,"b1");
 });
