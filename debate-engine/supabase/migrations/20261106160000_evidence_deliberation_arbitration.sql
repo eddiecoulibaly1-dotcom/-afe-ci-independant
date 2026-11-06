@@ -52,7 +52,9 @@ CREATE TABLE IF NOT EXISTS public.afe_deliberation_contributions (
  created_at timestamptz NOT NULL DEFAULT now(),
  FOREIGN KEY(deliberation_id,workspace_id) REFERENCES public.afe_deliberations(id,workspace_id) ON DELETE CASCADE,
  FOREIGN KEY(agent_id,workspace_id) REFERENCES public.afe_agents(id,workspace_id) ON DELETE CASCADE,
- UNIQUE(deliberation_id,idempotency_key)
+ UNIQUE(deliberation_id,idempotency_key),
+ UNIQUE(id,deliberation_id,workspace_id),
+ FOREIGN KEY(responds_to,deliberation_id,workspace_id) REFERENCES public.afe_deliberation_contributions(id,deliberation_id,workspace_id) ON DELETE RESTRICT
 );
 CREATE TABLE IF NOT EXISTS public.afe_arbitration_reports (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -66,7 +68,8 @@ CREATE TABLE IF NOT EXISTS public.afe_arbitration_reports (
  approved_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
  approved_at timestamptz,
  created_at timestamptz NOT NULL DEFAULT now(),
- FOREIGN KEY(deliberation_id,workspace_id) REFERENCES public.afe_deliberations(id,workspace_id) ON DELETE CASCADE
+ FOREIGN KEY(deliberation_id,workspace_id) REFERENCES public.afe_deliberations(id,workspace_id) ON DELETE CASCADE,
+ UNIQUE(deliberation_id)
 );
 CREATE INDEX IF NOT EXISTS afe_evidence_workspace_idx ON public.afe_evidence_artifacts(workspace_id,collected_at DESC);
 CREATE INDEX IF NOT EXISTS afe_deliberations_mission_idx ON public.afe_deliberations(mission_id,created_at DESC);
@@ -83,7 +86,7 @@ BEGIN
 END $$;
 -- Immutable evidence: corrections create a new artifact; no UPDATE/DELETE path.
 CREATE OR REPLACE FUNCTION public.afe_reject_evidence_mutation()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=public AS $
 BEGIN RAISE EXCEPTION 'Evidence artifacts are immutable; create a new artifact.'; END $$;
 DROP TRIGGER IF EXISTS afe_evidence_immutable ON public.afe_evidence_artifacts;
 CREATE TRIGGER afe_evidence_immutable BEFORE UPDATE OR DELETE ON public.afe_evidence_artifacts
