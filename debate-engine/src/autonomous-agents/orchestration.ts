@@ -160,7 +160,8 @@ async function saveReport(report:any){
 export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent){
  const config=mission.input_context?.deliberation;
  if(!config||config.enabled!==true)return null;
- const participants=[...new Set((Array.isArray(config.participantAgentIds)?config.participantAgentIds:[]).filter((x:any)=>typeof x==="string"&&x.trim()).map((x:string)=>x.trim()))].slice(0,4);
+ const configuredParticipants:unknown[]=Array.isArray(config.participantAgentIds)?config.participantAgentIds:[];
+ const participants=[...new Set(configuredParticipants.filter((x):x is string=>typeof x==="string"&&x.trim().length>0).map(x=>x.trim()))].slice(0,4);
  const agents=await db<Agent[]>("afe_agents?workspace_id=eq."+enc(mission.workspace_id)+"&id=in.("+participants.map(enc).join(",")+")&status=eq.active");
  if(agents.length<2||agents.length!==participants.length)throw new Error("Une délibération exige au moins deux agents actifs du même espace.");
 
