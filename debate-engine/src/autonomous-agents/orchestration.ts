@@ -59,8 +59,33 @@ async function collectEvidence(workspaceId:string,deliberationId:string,requests
  return{artifacts:out,limitations};
 }
 function evidenceMap(xs:EvidenceArtifact[]){return new Map(xs.map(x=>[x.id,x]));}
+function normalizeFindingText(value:string){return value.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();}
+function consolidateFindings(items:AuditFinding[]):AuditFinding[]{
+ const groups:AuditFinding[]=[];
+ for(const item of items){
+  const normalized=normalizeFindingText(item.title+" "+item.statement);
+  const tokens=new Set(normalized.split(" ").filter(x=>x.length>3));
+  let target:AuditFinding|undefined;
+  for(const candidate of groups){
+   if(candidate.severity!==item.severity)continue;
+   const other=new Set(normalizeFindingText(candidate.title+" "+candidate.statement).split(" ").filter(x=>x.length>3));
+   const intersection=[...tokens].filter(x=>other.has(x)).length;
+   const similarity=intersection/Math.max(1,new Set([...tokens,...other]).size);
+   if(normalized===normalizeFindingText(candidate.title+" "+candidate.statement)||similarity>=0.88){target=candidate;break;}
+  }
+  if(!target){groups.push({...item,evidenceIds:[...new Set(item.evidenceIds)],evidenceAssessments:[...(item.evidenceAssessments??[])],duplicateIds:[]} as any);continue;}
+  (target as any).duplicateIds=[...new Set([...((target as any).duplicateIds??[]),item.id])];
+  target.evidenceIds=[...new Set([...target.evidenceIds,...item.evidenceIds])];
+  target.evidenceAssessments=[...(target.evidenceAssessments??[]),...(item.evidenceAssessments??[])].filter((a,i,x)=>x.findIndex(y=>y.evidenceId===a.evidenceId&&y.relation===a.relation&&y.rationale===a.rationale)===i);
+  target.limitations=[...new Set([...target.limitations,...item.limitations])];
+  target.counterArguments=[...new Set([...target.counterArguments,...item.counterArguments])];
+  target.closureCriteria=[...new Set([...target.closureCriteria,...item.closureCriteria])];
+ }
+ return groups;
+}
+
 const contributionSchema={type:"object",additionalProperties:false,properties:{kind:{type:"string",enum:["position","objection","rebuttal","evidence_review","revision"]},body:{type:"string"},evidenceIds:{type:"array",items:{type:"string"}},respondsTo:{type:"string"}},required:["kind","body","evidenceIds","respondsTo"]};
-const findingSchema={type:"object",additionalProperties:false,properties:{id:{type:"string"},title:{type:"string"},statement:{type:"string"},severity:{type:"string",enum:["critical","high","medium","low","info"]},likelihood:{type:"integer",minimum:1,maximum:5},impact:{type:"integer",minimum:1,maximum:5},rationale:{type:"string"},evidenceIds:{type:"array",items:{type:"string"}},verification:{type:"string",enum:["verified","partially_verified","unverified","out_of_scope"]},limitations:{type:"array",items:{type:"string"}},counterArguments:{type:"array",items:{type:"string"}},recommendation:{type:"string"},closureCriteria:{type:"array",items:{type:"string"}}},required:["id","title","statement","severity","likelihood","impact","rationale","evidenceIds","verification","limitations","counterArguments","recommendation","closureCriteria"]};
+const findingSchema={type:"object",additionalProperties:false,properties:{id:{type:"string"},title:{type:"string"},statement:{type:"string"},severity:{type:"string",enum:["critical","high","medium","low","info"]},likelihood:{type:"integer",minimum:1,maximum:5},impact:{type:"integer",minimum:1,maximum:5},rationale:{type:"string"},evidenceIds:{type:"array",items:{type:"string"}},evidenceAssessments:{type:"array",items:{type:"object",additionalProperties:false,properties:{evidenceId:{type:"string"},relation:{type:"string",enum:["supports","contradicts","context_only"]},rationale:{type:"string"}},required:["evidenceId","relation","rationale"]}},verification:{type:"string",enum:["verified","partially_verified","unverified","out_of_scope"]},limitations:{type:"array",items:{type:"string"}},counterArguments:{type:"array",items:{type:"string"}},recommendation:{type:"string"},closureCriteria:{type:"array",items:{type:"string"}}},required:["id","title","statement","severity","likelihood","impact","rationale","evidenceIds","evidenceAssessments","verification","limitations","counterArguments","recommendation","closureCriteria"]};
 const decisionSchema={type:"object",additionalProperties:false,properties:{findingId:{type:"string"},decision:{type:"string",enum:["upheld","partially_upheld","rejected","unresolved"]},rationale:{type:"string"},evidenceIds:{type:"array",items:{type:"string"}},dissent:{type:"array",items:{type:"string"}}},required:["findingId","decision","rationale","evidenceIds","dissent"]};
 async function model<T>(agent:Agent,schemaName:string,schema:any,prompt:string):Promise<T>{
  const provider=agent.model_provider==="gemini"?"gemini":"openai";
@@ -112,10 +137,14 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  state=beginArbitration(state);
  await db("afe_deliberations?id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({status:"arbitrating",current_round:state.round,updated_at:new Date().toISOString()})});
  const arbitrator=agents.find(a=>a.id!==primaryAgent.id)??agents[0];
- const uniqueFindings=[...new Map(findings.map(f=>[f.id,f])).values()];
+ const uniqueFindings=consolidateFindings([...new Map(findings.map(f=>[f.id,f])).values()]);
  const arb=await model<any>(arbitrator,"afe_arbitration_decision",{type:"object",additionalProperties:false,properties:{decisions:{type:"array",items:decisionSchema},limitations:{type:"array",items:{type:"string"}}},required:["decisions","limitations"]},
   "ARBITRAGE INDÉPENDANT. Évalue chaque constat sans inventer de preuve. Préserve les désaccords. CONSTATS: "+JSON.stringify(uniqueFindings)+"\nCONTRIBUTIONS: "+JSON.stringify(state.contributions)+"\nPREUVES: "+JSON.stringify(evidence)+"\nRetourne une décision pour chaque constat.");
- const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:(arb.decisions??[]) as ArbitrationDecision[],limitations:[...(arb.limitations??[]),...collection.limitations]});
+ const returned=(arb.decisions??[]) as ArbitrationDecision[];
+ const seenDecisions=new Set<string>();
+ const validDecisions=returned.filter(x=>uniqueFindings.some(f=>f.id===x.findingId)&&!seenDecisions.has(x.findingId)&&seenDecisions.add(x.findingId));
+ const completeDecisions:ArbitrationDecision[]=uniqueFindings.map(f=>validDecisions.find(x=>x.findingId===f.id)??({findingId:f.id,decision:"unresolved",rationale:"Aucune décision d'arbitrage exploitable n'a été retournée pour ce constat; investigation complémentaire requise.",evidenceIds:[],dissent:["Décision manquante ou invalide dans la réponse de l'arbitre."]}));
+ const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:completeDecisions,limitations:[...(arb.limitations??[]),...collection.limitations]});
  report.decisions=report.decisions.map(decision=>({...decision,finding:uniqueFindings.find(f=>f.id===decision.findingId)??null})) as any;
  const savedReport=await saveReport(report);
  await db("afe_deliberations?id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({status:"completed",updated_at:new Date().toISOString()})});
