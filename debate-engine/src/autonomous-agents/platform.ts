@@ -72,6 +72,24 @@ if(p[4]==="deliberations"&&p[5]&&method==="GET"){
  const evidence=workspaceEvidence.filter(item=>item.deliberation_id===id||linkedEvidenceIds.has(item.id));
  send(res,200,{deliberation:d,contributions,evidence,arbitrations});return true;
 }
+if(p[4]==="deliberations"&&p[5]&&p[6]==="approval"&&p.length===7&&method==="POST"){
+ await requireRole(wid,user,"admin");
+ const id=p[5],input=await body(req);
+ if(!["approved","rejected"].includes(input.decision))throw fail("La décision doit être approved ou rejected.");
+ const deliberations=await db<any[]>("afe_deliberations?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&limit=1");
+ const deliberation=deliberations[0];if(!deliberation)throw fail("Délibération introuvable.",404);
+ if(deliberation.created_by&&deliberation.created_by===user.id)throw fail("Séparation des tâches : le créateur de la délibération ne peut pas approuver son propre arbitrage.",403);
+ const reports=await db<any[]>("afe_arbitration_reports?deliberation_id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&status=eq.human_review_required&limit=1");
+ const report=reports[0];if(!report)throw fail("Aucun arbitrage en attente de validation humaine.",409);
+ const approved=input.decision==="approved";
+ const updated=await db<any[]>("afe_arbitration_reports?id=eq."+enc(report.id)+"&workspace_id=eq."+enc(wid)+"&status=eq.human_review_required",{
+  method:"PATCH",headers:{Prefer:"return=representation"},
+  body:JSON.stringify({status:approved?"approved":"rejected",approved_by:approved?user.id:null,approved_at:approved?new Date().toISOString():null})
+ });
+ if(!updated[0])throw fail("L'arbitrage a été modifié par un autre opérateur; rechargez avant de réessayer.",409);
+ await audit(wid,user,"arbitration."+input.decision,id,{reportId:report.id,note:clean(input.note,4000)});
+ send(res,200,{report:updated[0],decision:input.decision,approvedBy:approved?user.id:null});return true;
+}
 if(p[4]==="missions"&&p.length===5){
  if(method==="POST"){const i=await body(req);send(res,202,{mission:await createMission(wid,user,i),execution:"queued_server_side"});return true;}
  if(method==="GET"){await requireRole(wid,user);const rows=await db<any[]>("afe_agent_missions?workspace_id=eq."+enc(wid)+"&order=created_at.desc&limit=100");send(res,200,{missions:rows});return true;}
