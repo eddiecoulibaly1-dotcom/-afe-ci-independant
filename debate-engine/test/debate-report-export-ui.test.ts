@@ -12,5 +12,5 @@ test("autonomous debate result exposes readable report, exports and human approv
  assert.match(source,/aria-label="Copier le rapport"/);
  assert.match(source,/approveArbitration/);
  assert.match(source,/rejectArbitration/);
- assert.match(source,/\/approval/);
+ assert.match(source,/\/approval/);\n assert.match(source,/delibNewMissionTitle/);\n assert.match(source,/evidenceDiscovery:true/);
 });
