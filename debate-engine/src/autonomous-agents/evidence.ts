@@ -73,7 +73,14 @@ export type AuditFinding = {
 };
 export function validateFinding(f:AuditFinding, evidence:ReadonlyMap<string,EvidenceArtifact>): AuditFinding {
   if (!f.id || !f.title || !f.statement || !f.rationale || !f.recommendation) throw new Error("Finding is missing required explanation.");
-  if (f.likelihood<1 || f.likelihood>5 || f.impact<1 || f.impact>5) throw new Error("Risk scores must be between 1 and 5.");
+  if(f.likelihood===null||f.impact===null){
+    if(f.likelihood!==null||f.impact!==null||f.severity!=="not_rated"||!f.riskRationale?.trim())throw new Error("Unrated risk requires null likelihood and impact, not_rated severity, and a rationale.");
+  }else{
+    if(f.likelihood<1||f.likelihood>5||f.impact<1||f.impact>5||f.severity==="not_rated")throw new Error("Risk scores must be between 1 and 5 and have a rated severity.");
+    const score=f.likelihood*f.impact;
+    const expected=score>=17?"critical":score>=10?"high":score>=5?"medium":"low";
+    if(f.severity!==expected)throw new Error("Risk severity does not match the documented probability × impact matrix.");
+  }
   const found=f.evidenceIds.map(id=>evidence.get(id)).filter((x):x is EvidenceArtifact=>!!x);
   if (f.evidenceIds.some(id=>!evidence.has(id))) throw new Error("Finding references unknown evidence.");
   const assessments=f.evidenceAssessments??[];
