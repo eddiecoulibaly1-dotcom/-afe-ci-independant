@@ -63,6 +63,8 @@ export async function collectGitEvidence(
     excerpt,metadata:{redacted:excerpt.includes("[REDACTED]"),totalLines:lines.length}
   };
 }
+export type EvidenceRelation = "supports" | "contradicts" | "context_only";
+export type EvidenceAssessment = { evidenceId:string; relation:EvidenceRelation; rationale:string };
 export type AuditFinding = {
   id:string; title:string; statement:string; severity:"critical"|"high"|"medium"|"low"|"info";
   likelihood:1|2|3|4|5; impact:1|2|3|4|5; rationale:string;
