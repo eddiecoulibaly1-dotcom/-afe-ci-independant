@@ -42,7 +42,7 @@ if(p[4]==="agents"&&p[5]){
 if(p[4]==="deliberations"&&p.length===5){
  if(method==="POST"){
   await requireRole(wid,user,"editor");const i=await body(req);
-  const missionId=clean(i.missionId,64);const ids: string[]=Array.isArray(i.participantAgentIds)?Array.from(new Set<string>(i.participantAgentIds.filter((x:unknown):x is string=>typeof x==="string").map((x)=>clean(x,64)))).slice(0,4):[];
+  const missionId=clean(i.missionId,64);const ids: string[]=Array.isArray(i.participantAgentIds)?Array.from(new Set<string>(i.participantAgentIds.filter((x:unknown):x is string=>typeof x==="string").map((x:string)=>clean(x,64)))).slice(0,4):[];
   if(!missionId||ids.length<2)throw fail("Une mission et au moins deux agents participants sont requis.");
   const missions=await db<any[]>("afe_agent_missions?id=eq."+enc(missionId)+"&workspace_id=eq."+enc(wid)+"&limit=1");const mission=missions[0];if(!mission)throw fail("Mission introuvable dans cet espace.",404);
   const participants=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&id=in.("+ids.map((id)=>enc(id)).join(",")+")&status=eq.active");
