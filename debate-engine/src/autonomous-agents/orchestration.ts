@@ -163,9 +163,9 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  state={...state,id:row.id};
  const persisted=await db<any[]>("afe_deliberation_contributions?deliberation_id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id)+"&order=round_no.asc,created_at.asc");
  const findings:AuditFinding[]=[];
- const restoredContributions=persisted.map(c=>{const decoded=decodeContributionBody(c.body);for(const finding of decoded.findings){try{findings.push(validateFinding(finding,eMap));}catch{/* Ignore invalid persisted findings; the evidence check will keep them out of arbitration. */}}return{id:c.id,round:c.round_no,agentId:c.agent_id,kind:c.contribution_type,body:decoded.text,evidenceIds:c.evidence_ids??[],respondsTo:c.responds_to??undefined,createdAt:c.created_at};});
- state={...state,round:Math.max(1,...persisted.map(c=>Number(c.round_no)||1)),contributions:restoredContributions};
  const qualityLimitations:string[]=[];
+ const restoredContributions=persisted.map(c=>{const decoded=decodeContributionBody(c.body);for(const finding of decoded.findings){try{findings.push(validateFinding(finding,eMap));}catch(error){qualityLimitations.push("Constat restauré écarté : "+(error instanceof Error?error.message:"validation impossible"));}}return{id:c.id,round:c.round_no,agentId:c.agent_id,kind:c.contribution_type,body:decoded.text,evidenceIds:c.evidence_ids??[],respondsTo:c.responds_to??undefined,createdAt:c.created_at};});
+ state={...state,round:Math.max(1,...persisted.map(c=>Number(c.round_no)||1)),contributions:restoredContributions};
  for(let round=state.round;round<=state.maxRounds;round++){
   for(const participant of agents){
    if(state.contributions.length>=state.maxContributions)break;
