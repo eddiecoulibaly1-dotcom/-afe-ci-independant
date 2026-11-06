@@ -144,7 +144,13 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  const returned=(arb.decisions??[]) as ArbitrationDecision[];
  const seenDecisions=new Set<string>();
  const validDecisions=returned.filter(x=>uniqueFindings.some(f=>f.id===x.findingId)&&!seenDecisions.has(x.findingId)&&seenDecisions.add(x.findingId));
- const completeDecisions:ArbitrationDecision[]=uniqueFindings.map(f=>validDecisions.find(x=>x.findingId===f.id)??({findingId:f.id,decision:"unresolved",rationale:"Aucune décision d'arbitrage exploitable n'a été retournée pour ce constat; investigation complémentaire requise.",evidenceIds:[],dissent:["Décision manquante ou invalide dans la réponse de l'arbitre."]}));
+ const completeDecisions:ArbitrationDecision[]=uniqueFindings.map(f=>{
+  const candidate=validDecisions.find(x=>x.findingId===f.id);
+  if(!candidate)return{findingId:f.id,decision:"unresolved",rationale:"Aucune décision d'arbitrage exploitable n'a été retournée pour ce constat; investigation complémentaire requise.",evidenceIds:[],dissent:["Décision manquante ou invalide dans la réponse de l'arbitre."]};
+  const invalidEvidence=candidate.evidenceIds.some(id=>!f.evidenceIds.includes(id)||!eMap.has(id));
+  if(invalidEvidence||!candidate.rationale?.trim())return{findingId:f.id,decision:"unresolved",rationale:"La décision proposée cite une preuve non liée au constat ou ne fournit pas de justification suffisante; elle est écartée.",evidenceIds:[],dissent:["Réponse de l'arbitre rejetée par le contrôle de cohérence automatique."]};
+  return candidate;
+ });
  const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:completeDecisions,limitations:[...(arb.limitations??[]),...collection.limitations]});
  report.decisions=report.decisions.map(decision=>({...decision,finding:uniqueFindings.find(f=>f.id===decision.findingId)??null})) as any;
  const savedReport=await saveReport(report);
