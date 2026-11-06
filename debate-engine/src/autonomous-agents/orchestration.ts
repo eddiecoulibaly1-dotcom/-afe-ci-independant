@@ -179,7 +179,7 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  const findings:AuditFinding[]=[];
  const qualityLimitations:string[]=[];
  const restoredContributions=persisted.map(c=>{const decoded=decodeContributionBody(c.body);for(const finding of decoded.findings){try{findings.push(validateFinding(finding,eMap));}catch(error){qualityLimitations.push("Constat restauré écarté : "+(error instanceof Error?error.message:"validation impossible"));}}return{id:c.id,round:c.round_no,agentId:c.agent_id,kind:c.contribution_type,body:decoded.text,evidenceIds:c.evidence_ids??[],respondsTo:c.responds_to??undefined,createdAt:c.created_at};});
- state={...state,round:Math.max(1,...persisted.map(c=>Number(c.round_no)||1)),contributions:restoredContributions};
+ const firstIncompleteRound=Array.from({length:row.max_rounds},(_,index)=>index+1).find(round=>agents.some(agent=>!restoredContributions.some(c=>c.round===round&&c.agentId===agent.id)))??row.max_rounds;\n state={...state,round:firstIncompleteRound,contributions:restoredContributions};
  for(let round=state.round;round<=state.maxRounds;round++){
   for(const participant of agents){
    if(state.contributions.length>=state.maxContributions)break;
@@ -205,7 +205,8 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
    if(saved){state=addContribution(state,{agentId:participant.id,kind:contribution.kind,body:contribution.body,evidenceIds:contribution.evidenceIds,respondsTo:contribution.respondsTo});const lastIndex=state.contributions.length-1;state={...state,contributions:state.contributions.map((item,index)=>index===lastIndex?{...item,id:saved.id}:item)};findings.push(...validFindings);}
   }
   if(round<state.maxRounds&&state.contributions.length<state.maxContributions){
-   if(state.contributions.filter(c=>c.round===round).length===0){qualityLimitations.push("Tour "+round+" interrompu : aucune contribution nouvelle et recevable.");break;}
+   const roundComplete=agents.every(agent=>state.contributions.some(c=>c.round===round&&c.agentId===agent.id));
+   if(!roundComplete){qualityLimitations.push("Tour "+round+" non franchi : au moins un agent n'a pas fourni de contribution recevable. Le moteur conservera ce tour comme point de reprise.");break;}
    state=advanceRound(state);
   }
  }
