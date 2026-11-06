@@ -41,7 +41,7 @@ export async function collectGitEvidence(
 ): Promise<EvidenceArtifact> {
   if (!policy.allowedRepositories.has(request.repository)) throw new Error("Repository outside evidence allow-list.");
   if (!policy.allowedRefs.has(request.ref)) throw new Error("Ref outside evidence allow-list.");
-  if (!safePath(request.path) || !policy.allowedPathPrefixes.some(p=>request.path.startsWith(p))) throw new Error("Path outside evidence allow-list.");
+  if (!safePath(request.path) || !policy.allowedPathPrefixes.some(p=>request.path.startsWith(p.endsWith("/")?p:p+"/") || request.path===p)) throw new Error("Path outside evidence allow-list.");
   const resolved = await provider.resolveCommit(request.repository, request.ref);
   if (resolved !== request.commitSha) throw new Error("Commit changed; evidence request must be refreshed.");
   const raw = await provider.readFile(request.repository, resolved, request.path);
