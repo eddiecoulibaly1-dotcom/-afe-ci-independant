@@ -98,6 +98,7 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  const arb=await model<any>(arbitrator,"afe_arbitration_decision",{type:"object",additionalProperties:false,properties:{decisions:{type:"array",items:decisionSchema},limitations:{type:"array",items:{type:"string"}}},required:["decisions","limitations"]},
   "ARBITRAGE INDÉPENDANT. Évalue chaque constat sans inventer de preuve. Préserve les désaccords. CONSTATS: "+JSON.stringify(uniqueFindings)+"\nCONTRIBUTIONS: "+JSON.stringify(state.contributions)+"\nPREUVES: "+JSON.stringify(evidence)+"\nRetourne une décision pour chaque constat.");
  const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:(arb.decisions??[]) as ArbitrationDecision[],limitations:arb.limitations??[]});
+ report.decisions=report.decisions.map(decision=>({...decision,finding:uniqueFindings.find(f=>f.id===decision.findingId)??null})) as any;
  const savedReport=await saveReport(report);
  await db("afe_deliberations?id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({status:"completed",updated_at:new Date().toISOString()})});
  return {deliberationId:row.id,evidenceCount:evidence.length,contributionCount:state.contributions.length,findingCount:uniqueFindings.length,arbitrationReportId:savedReport.id,humanApprovalRequired:true};
