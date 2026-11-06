@@ -47,14 +47,18 @@ if(p[4]==="deliberations"&&p.length===5){
   const missions=await db<any[]>("afe_agent_missions?id=eq."+enc(missionId)+"&workspace_id=eq."+enc(wid)+"&limit=1");const mission=missions[0];if(!mission)throw fail("Mission introuvable dans cet espace.",404);
   const participants=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&id=in.("+ids.map((id)=>enc(id)).join(",")+")&status=eq.active");
   if(participants.length!==ids.length)throw fail("Tous les agents participants doivent être actifs dans cet espace.",403);
+  const arbitratorAgentId=clean(i.arbitratorAgentId,64);
+  if(!arbitratorAgentId||ids.includes(arbitratorAgentId))throw fail("Désignez un arbitre indépendant distinct des participants.");
+  const arbitrators=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&id=eq."+enc(arbitratorAgentId)+"&status=eq.active&limit=1");
+  if(!arbitrators[0])throw fail("L’arbitre indépendant doit être actif dans cet espace.",403);
   const prior=await db<any[]>("afe_deliberations?mission_id=eq."+enc(missionId)+"&workspace_id=eq."+enc(wid)+"&limit=1");if(prior[0])throw fail("Une délibération existe déjà pour cette mission.",409);
   const maxRounds=Math.max(1,Math.min(5,Number(i.maxRounds)||3));
   const evidenceRequests=Array.isArray(i.evidenceRequests)?i.evidenceRequests.slice(0,12).map((x:any)=>({repository:clean(x.repository,200),ref:clean(x.ref,120),commitSha:clean(x.commitSha,40),path:clean(x.path,500),startLine:Number.isInteger(x.startLine)?x.startLine:undefined,endLine:Number.isInteger(x.endLine)?x.endLine:undefined})): [];
   const rows=await db<any[]>("afe_deliberations",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({workspace_id:wid,mission_id:missionId,max_rounds:maxRounds,max_contributions:Math.min(24,ids.length*maxRounds)})});
   const deliberation=rows[0];if(!deliberation)throw new Error("Impossible de créer la délibération.");
-  const context={...(mission.input_context&&typeof mission.input_context==="object"?mission.input_context:{}),deliberation:{enabled:true,participantAgentIds:ids,maxRounds,evidenceRequests}};
+  const context={...(mission.input_context&&typeof mission.input_context==="object"?mission.input_context:{}),deliberation:{enabled:true,participantAgentIds:ids,arbitratorAgentId,maxRounds,evidenceRequests}};
   await db("afe_agent_missions?id=eq."+enc(missionId)+"&workspace_id=eq."+enc(wid),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({input_context:context,updated_at:new Date().toISOString()})});
-  await audit(wid,user,"deliberation.created",deliberation.id,{missionId,participantCount:ids.length});
+  await audit(wid,user,"deliberation.created",deliberation.id,{missionId,participantCount:ids.length,arbitratorAgentId});
   send(res,201,{deliberation,participants:participants.map(x=>({id:x.id,name:x.name})),execution:"queued_with_mission"});return true;
  }
  if(method==="GET"){await requireRole(wid,user);const rows=await db<any[]>("afe_deliberations?workspace_id=eq."+enc(wid)+"&order=created_at.desc&limit=100");send(res,200,{deliberations:rows});return true;}
