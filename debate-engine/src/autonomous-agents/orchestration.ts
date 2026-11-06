@@ -86,7 +86,7 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
    const validEvidence=(output.evidenceIds??[]).filter((id:string)=>eMap.has(id));
    const contribution={kind:output.kind as ContributionKind,body:safeText(output.body,20000),evidenceIds:validEvidence,respondsTo:state.contributions.some(c=>c.id===output.respondsTo)?output.respondsTo:undefined};
    const saved=await persistContribution(mission.workspace_id,row.id,contribution,participant.id,round);
-   if(saved)state=addContribution(state,{agentId:participant.id,...contribution});
+   if(saved){state=addContribution(state,{agentId:participant.id,...contribution});const lastIndex=state.contributions.length-1;state={...state,contributions:state.contributions.map((item,index)=>index===lastIndex?{...item,id:saved.id}:item)};}
    for(const f of output.findings??[]){try{findings.push(validateFinding(f,eMap));}catch{/* Invalid/unsubstantiated findings are excluded from verified findings. */}}
   }
   if(round<state.maxRounds&&state.contributions.length<state.maxContributions)state=advanceRound(state);
