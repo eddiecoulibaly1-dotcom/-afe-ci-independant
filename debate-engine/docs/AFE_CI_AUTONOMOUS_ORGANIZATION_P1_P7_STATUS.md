@@ -23,7 +23,7 @@ All routes are under `/team/api/workspaces/:workspaceId` and use the existing be
 - `GET|POST /memory`; `POST /memory/:memoryId` to validate/reject/supersede
 - `GET|POST /messages`
 - `GET|POST /approvals`
-- `GET /dashboard`
+- `GET /agent-dashboard (the legacy Team & Governance `/dashboard` route remains unchanged)`
 
 Minimum roles: viewer for reads; editor for mission intake, memory proposals and messages; admin for agent configuration, approval decisions, seed and mission pause/cancel. Workspace ownership/admin membership is checked server-side before each request. The service-role key is never returned to the client.
 
@@ -74,3 +74,12 @@ All seeded agents start as `draft`; default autonomy is L2 but activation is an 
 - Supabase security advisor reports the nine agent tables as RLS-enabled with no policies (intentional deny-by-default because all access is server-mediated); it also reports leaked-password protection disabled in Auth, a separate project setting.
 - Static tests cover pending-approval claim exclusion, atomic approval transitions, idempotent handoff creation, bounded dispatch and worker integration. These tests do not substitute for a live multi-worker race test or an end-to-end provider-backed delegation test.
 - No production migration, merge to `main`, or production deployment has been performed.
+
+
+## UI integration increment — 2026-11-06
+
+- Team & Governance now renders workspace-scoped **Agents IA**, **Missions**, **Délégations** and **Approbations IA** views using the existing server API.
+- Added defensive normalization for optional API collections before rendering list views.
+- Fixed a route collision: autonomous agent metrics now use `/agent-dashboard`; the existing Team & Governance `/dashboard` route remains reserved for its original dashboard response.
+- Added source-level UI contract tests. Vercel Preview build/typecheck is used as the deployment build gate; provider-backed browser interaction still requires an authenticated session.
+- The current worker remains analysis-only. Delegations are durable one-way handoffs; automatic debate synthesis, consensus, recursive planning and full parent/child completion aggregation remain future implementation work.
