@@ -112,7 +112,8 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  if(!row){const created=createDeliberation({workspaceId:mission.workspace_id,missionId:mission.id,maxRounds:Number(config.maxRounds)||3,maxContributions:Math.min(24,agents.length*3)});const saved=await db<any[]>("afe_deliberations",{...post,body:JSON.stringify({id:created.id,workspace_id:created.workspaceId,mission_id:created.missionId,max_rounds:created.maxRounds,max_contributions:created.maxContributions})});row=saved[0];}
  if(!row)throw new Error("Deliberation persistence failed.");
  if(row.status==="completed"){const reports=await db<any[]>("afe_arbitration_reports?deliberation_id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id)+"&order=created_at.desc&limit=1");return {deliberationId:row.id,evidenceCount:0,contributionCount:0,findingCount:0,arbitrationReportId:reports[0]?.id??null,humanApprovalRequired:true,reusedCompleted:true};}
- const evidence=await collectEvidence(mission.workspace_id,row.id,Array.isArray(config.evidenceRequests)?config.evidenceRequests:[]);
+ const collection=await collectEvidence(mission.workspace_id,row.id,Array.isArray(config.evidenceRequests)?config.evidenceRequests:[]);
+ const evidence=collection.artifacts;
  const eMap=evidenceMap(evidence);
  let state:Deliberation=createDeliberation({workspaceId:mission.workspace_id,missionId:mission.id,maxRounds:row.max_rounds,maxContributions:row.max_contributions});
  state={...state,id:row.id};
