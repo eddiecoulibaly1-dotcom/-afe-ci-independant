@@ -66,8 +66,8 @@ export async function collectGitEvidence(
 export type EvidenceRelation = "supports" | "contradicts" | "context_only";
 export type EvidenceAssessment = { evidenceId:string; relation:EvidenceRelation; rationale:string };
 export type AuditFinding = {
-  id:string; title:string; statement:string; severity:"critical"|"high"|"medium"|"low"|"info";
-  likelihood:1|2|3|4|5; impact:1|2|3|4|5; rationale:string;
+  id:string; title:string; statement:string; severity:"critical"|"high"|"medium"|"low"|"info"|"not_rated";
+  likelihood:1|2|3|4|5|null; impact:1|2|3|4|5|null; riskRationale:string; rationale:string;
   evidenceIds:string[]; evidenceAssessments?:EvidenceAssessment[]; verification:"verified"|"partially_verified"|"unverified"|"out_of_scope";
   limitations:string[]; counterArguments:string[]; recommendation:string; closureCriteria:string[];
 };
