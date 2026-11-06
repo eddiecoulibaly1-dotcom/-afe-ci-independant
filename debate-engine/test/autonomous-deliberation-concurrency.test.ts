@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {createDeliberation,addContribution,advanceRound,beginArbitration} from "../src/autonomous-agents/deliberation.js";
 import {EvidenceRegistry,validateFinding} from "../src/autonomous-agents/evidence.js";
+import {buildArbitration} from "../src/autonomous-agents/arbitration.js";
 import {assessDeliberationCoverage,findFirstIncompleteRound} from "../src/autonomous-agents/orchestration.js";
 test("deliberation enforces round and contribution budgets",()=>{
  let d=createDeliberation({workspaceId:"w",missionId:"m",maxRounds:2,maxContributions:2});
@@ -70,4 +71,12 @@ test("recovery advances only after every participant has contributed",()=>{
   {agentId:"a",round:2},{agentId:"b",round:2}
  ]);
  assert.equal(resume,3);
+});
+
+
+test("incomplete deliberation remains a proposal and cannot be submitted for human approval",()=>{
+ const d=createDeliberation({workspaceId:"w",missionId:"m",maxRounds:2});
+ const report=buildArbitration({deliberation:{...d,status:"arbitrating"},findings:[],evidence:new Map(),decisions:[],status:"proposed",limitations:["Couverture incomplète."]});
+ assert.equal(report.status,"proposed");
+ assert.equal(report.humanApprovalRequired,true);
 });
