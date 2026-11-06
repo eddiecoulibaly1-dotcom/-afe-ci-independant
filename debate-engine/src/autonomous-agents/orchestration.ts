@@ -167,10 +167,10 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
 
  const prior=await db<PersistedDeliberation[]>("afe_deliberations?mission_id=eq."+enc(mission.id)+"&workspace_id=eq."+enc(mission.workspace_id)+"&limit=1");
  let row=prior[0];
- if(!row){const created=createDeliberation({workspaceId:mission.workspace_id,missionId:mission.id,maxRounds:Number(config.maxRounds)||3,maxContributions:Math.min(24,agents.length*Math.max(1,Math.min(8,Number(config.maxRounds)||3)))});const saved=await db<any[]>("afe_deliberations",{...post,body:JSON.stringify({id:created.id,workspace_id:created.workspaceId,mission_id:created.missionId,max_rounds:created.maxRounds,max_contributions:created.maxContributions})});row=saved[0];}
+ if(!row){const created=createDeliberation({workspaceId:mission.workspace_id,missionId:mission.id,maxRounds:Number(config.maxRounds)||3,maxContributions:Math.min(64,agents.length*Math.max(1,Math.min(8,Number(config.maxRounds)||3)))});const saved=await db<any[]>("afe_deliberations",{...post,body:JSON.stringify({id:created.id,workspace_id:created.workspaceId,mission_id:created.missionId,max_rounds:created.maxRounds,max_contributions:created.maxContributions})});row=saved[0];}
  if(!row)throw new Error("Deliberation persistence failed.");
  const configuredRounds=Math.max(1,Math.min(8,Number(config.maxRounds)||row.max_rounds||3));
- const requiredContributionBudget=Math.min(24,agents.length*configuredRounds);
+ const requiredContributionBudget=Math.min(64,agents.length*configuredRounds);
  if(row.max_contributions<requiredContributionBudget){
   await db("afe_deliberations?id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({max_contributions:requiredContributionBudget,updated_at:new Date().toISOString()})});
   row={...row,max_contributions:requiredContributionBudget};
