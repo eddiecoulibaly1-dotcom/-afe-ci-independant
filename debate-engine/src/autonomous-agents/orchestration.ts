@@ -158,7 +158,7 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  const participants=[...new Set((Array.isArray(config.participantAgentIds)?config.participantAgentIds:[]).filter((x:any)=>typeof x==="string"&&x.trim()).map((x:string)=>x.trim()))].slice(0,4);
  const agents=await db<Agent[]>("afe_agents?workspace_id=eq."+enc(mission.workspace_id)+"&id=in.("+participants.map(enc).join(",")+")&status=eq.active");
  if(agents.length<2||agents.length!==participants.length)throw new Error("Une délibération exige au moins deux agents actifs du même espace.");
- if(!agents.some(a=>a.id===primaryAgent.id))agents.unshift(primaryAgent);
+
  const prior=await db<PersistedDeliberation[]>("afe_deliberations?mission_id=eq."+enc(mission.id)+"&workspace_id=eq."+enc(mission.workspace_id)+"&limit=1");
  let row=prior[0];
  if(!row){const created=createDeliberation({workspaceId:mission.workspace_id,missionId:mission.id,maxRounds:Number(config.maxRounds)||3,maxContributions:Math.min(24,agents.length*Math.max(1,Math.min(8,Number(config.maxRounds)||3)))});const saved=await db<any[]>("afe_deliberations",{...post,body:JSON.stringify({id:created.id,workspace_id:created.workspaceId,mission_id:created.missionId,max_rounds:created.maxRounds,max_contributions:created.maxContributions})});row=saved[0];}
@@ -211,7 +211,9 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  }
  state=beginArbitration(state);
  await db("afe_deliberations?id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({status:"arbitrating",current_round:state.round,updated_at:new Date().toISOString()})});
- const arbitrator=agents.find(a=>a.id!==primaryAgent.id)??agents[0];
+ const activeAgents=await db<Agent[]>("afe_agents?workspace_id=eq."+enc(mission.workspace_id)+"&status=eq.active&limit=20");
+ const arbitrator=activeAgents.find(a=>!participants.includes(a.id))??agents.find(a=>a.id!==primaryAgent.id)??agents[0];
+ const arbitratorIsIndependent=!participants.includes(arbitrator.id);
  const uniqueFindings=consolidateFindings([...new Map(findings.map(f=>[f.id,f])).values()]);
  let arb:any={decisions:[],limitations:[]};
  try{
@@ -230,7 +232,7 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  });
  const coverage=assessDeliberationCoverage(agents.map(a=>a.id),row.max_rounds,state.contributions);
  const coverageLimitations=coverage.complete?[]:[ "DÉLIBÉRATION INCOMPLÈTE : "+coverage.completed+"/"+coverage.expected+" contributions attendues. Le statut ne peut pas être déclaré completed.", ...coverage.missing.map(x=>"Contribution manquante · agent "+x.agentId+" · tour "+x.round) ];
- const independenceLimitations=["Arbitrageur "+arbitrator.id+" : l’arbitre est également participant au débat; son indépendance doit être confirmée par validation humaine."];\n const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:completeDecisions,limitations:[...(arb.limitations??[]),...independenceLimitations,...collection.limitations,...qualityLimitations,...coverageLimitations,...(uniqueFindings.length?[]:["Aucun constat recevable n'a été consolidé; aucune conclusion substantielle ne peut être tirée."]),"Couverture de collecte : "+evidence.length+" sources collectées, "+collection.limitations.length+" sources non collectées, sur "+(evidence.length+collection.limitations.length)+" tentatives."]});
+ const independenceLimitations=arbitratorIsIndependent?[]:["Arbitrageur "+arbitrator.id+" : aucun arbitre distinct des participants n’est disponible; son indépendance n’est pas garantie et doit être confirmée par validation humaine."];\n const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:completeDecisions,limitations:[...(arb.limitations??[]),...independenceLimitations,...collection.limitations,...qualityLimitations,...coverageLimitations,...(uniqueFindings.length?[]:["Aucun constat recevable n'a été consolidé; aucune conclusion substantielle ne peut être tirée."]),"Couverture de collecte : "+evidence.length+" sources collectées, "+collection.limitations.length+" sources non collectées, sur "+(evidence.length+collection.limitations.length)+" tentatives."]});
  report.decisions=report.decisions.map(decision=>({...decision,finding:uniqueFindings.find(f=>f.id===decision.findingId)??null})) as any;
  const savedReport=await saveReport(report);
  await db("afe_deliberations?id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({status:coverage.complete?"completed":"open",current_round:Math.min(row.max_rounds,Math.max(1,...state.contributions.map(c=>c.round))),updated_at:new Date().toISOString()})});
