@@ -13,7 +13,7 @@ const artifact:EvidenceArtifact={
 };
 const finding=(overrides:Partial<AuditFinding>={}):AuditFinding=>({
  id:"F1",title:"Contrôle d'accès",statement:"Le contrôle d'accès est contournable dans le cas étudié.",
- severity:"high",likelihood:3,impact:4,rationale:"Analyse à vérifier.",
+ severity:"high",likelihood:3,impact:4,riskRationale:"Probabilité 3 × impact 4 = 12, niveau élevé.",rationale:"Analyse à vérifier.",
  evidenceIds:["ev-1"],evidenceAssessments:[],verification:"verified",
  limitations:[],counterArguments:[],recommendation:"Corriger le contrôle.",closureCriteria:["Test d'accès négatif."],
  ...overrides
@@ -45,4 +45,13 @@ test("arbitration must return exactly one decision per canonical finding",()=>{
   {findingId:"F1",decision:"unresolved",rationale:"Analyse insuffisante.",evidenceIds:[],dissent:[]},
   {findingId:"F1",decision:"unresolved",rationale:"Deuxième décision.",evidenceIds:[],dissent:[]}
  ]}),/exactly one decision/);
+});
+
+test("risk can remain unrated when evidence is insufficient",()=>{
+ const f=finding({severity:"not_rated",likelihood:null,impact:null,riskRationale:"Les données disponibles ne permettent pas d'estimer probabilité et impact.",verification:"unverified",evidenceIds:[],evidenceAssessments:[]});
+ assert.equal(validateFinding(f,new Map()).severity,"not_rated");
+});
+test("risk severity must match the probability-impact matrix",()=>{
+ const f=finding({severity:"critical"});
+ assert.throws(()=>validateFinding(f,new Map([["ev-1",artifact]])),/does not match/);
 });
