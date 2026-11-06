@@ -212,3 +212,22 @@ Actions : icône Copier le rapport avec retour accessible; Télécharger Word (D
 Spécification versionnée; code et tests; migrations Supabase TEST uniquement après revue; audit RLS; CI; Preview READY sur le commit exact; rapport E2E avec preuves; rapport final listant tests réussis, échoués, non exécutés et limites.
 
 **Règle de clôture :** ne jamais déclarer l'application réceptionnée tant que le débat réel E2E, la persistance, les exports et l'approbation humaine ne sont pas vérifiés sur Preview.
+
+
+## 13. Notes d'implémentation de la livraison Preview
+
+La branche implémente déjà plusieurs contrats de cette spécification :
+- collecte GitHub automatique sur un manifeste de chemins allow-listés lorsque la mission ne fournit pas de demandes de preuves;
+- persistance idempotente des artefacts et résolution des preuves réutilisées via les références de contributions/arbitrages;
+- séparation provenance de source et support sémantique du constat;
+- normalisation et consolidation prudente des constats proches;
+- décisions d'arbitrage exhaustives et limitées aux preuves rattachées au constat;
+- tours contradictoires ciblés, contrôle de répétition et conservation des raisons de rejet dans les limites du rapport;
+- persistance des constats structurés dans une enveloppe versionnée du champ body des contributions, avec décodage à l'affichage;
+- rapport lisible, copie, export Word HTML-compatible (.doc), impression PDF navigateur;
+- endpoint de validation humaine avec séparation des tâches et journalisation;
+- création d'une mission directement depuis l'écran Débats lorsqu'aucune mission ouverte n'existe.
+
+Les tables de findings et d'évaluations de preuves dédiées décrites à la section 5 restent une évolution de schéma. Dans la livraison actuelle, les évaluations et constats sont conservés dans le contenu structuré versionné des contributions et dans le JSON de l'arbitrage existant. Cette solution évite une migration supplémentaire pendant la protection de la baseline; elle devra être normalisée en colonnes/tables dédiées avant un usage à grande échelle.
+
+Le bouton PDF ouvre l'impression du navigateur; il ne constitue pas une génération PDF serveur. Le document Word livré est un fichier .doc HTML-compatible, et non un DOCX natif. Ces formats sont annoncés explicitement dans l'interface.
