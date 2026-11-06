@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {createDeliberation,addContribution,advanceRound,beginArbitration} from "../src/autonomous-agents/deliberation.js";
 import {EvidenceRegistry,validateFinding} from "../src/autonomous-agents/evidence.js";
+import {assessDeliberationCoverage} from "../src/autonomous-agents/orchestration.js";
 test("deliberation enforces round and contribution budgets",()=>{
  let d=createDeliberation({workspaceId:"w",missionId:"m",maxRounds:2,maxContributions:2});
  d=addContribution(d,{agentId:"a",kind:"position",body:"Analyse initiale suffisamment détaillée."});
@@ -32,4 +33,26 @@ test("concurrent attempts to advance same immutable snapshot do not mutate origi
 test("arbitration cannot start without explicit arbitration transition",()=>{
  const d=createDeliberation({workspaceId:"w",missionId:"m"});
  assert.equal(beginArbitration(d).status,"arbitrating");
+});
+
+test("coverage requires every selected agent in every configured round",()=>{
+ const agents=["a","b","c"];
+ const partial=assessDeliberationCoverage(agents,2,[
+  {agentId:"a",round:1},{agentId:"b",round:1},{agentId:"c",round:1},
+  {agentId:"a",round:2},{agentId:"b",round:2}
+ ]);
+ assert.equal(partial.expected,6);
+ assert.equal(partial.completed,5);
+ assert.equal(partial.complete,false);
+ assert.deepEqual(partial.missing,[{agentId:"c",round:2}]);
+});
+test("coverage is complete only when all agent-round pairs are present",()=>{
+ const result=assessDeliberationCoverage(["a","b"],3,[
+  {agentId:"a",round:1},{agentId:"b",round:1},
+  {agentId:"a",round:2},{agentId:"b",round:2},
+  {agentId:"a",round:3},{agentId:"b",round:3}
+ ]);
+ assert.equal(result.complete,true);
+ assert.equal(result.completed,result.expected);
+ assert.equal(result.missing.length,0);
 });
