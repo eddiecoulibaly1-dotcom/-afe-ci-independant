@@ -64,6 +64,14 @@ export function findFirstIncompleteRound(participantIds:string[],maxRounds:numbe
  for(let round=1;round<=rounds;round++)if(participantIds.some(agentId=>!contributions.some(c=>c.agentId===agentId&&c.round===round)))return round;
  return rounds;
 }
+export function normalizeContributionKind(round:number,kind:unknown):ContributionKind{
+ if(round===1)return "position";
+ return kind==="objection"||kind==="rebuttal"||kind==="evidence_review"||kind==="revision"?kind:"objection";
+}
+export function selectResponseTarget<T extends {id:string;agentId:string}>(contributions:T[],agentId:string,requestedId?:string):T|undefined{
+ const requested=contributions.find(c=>c.id===requestedId&&c.agentId!==agentId);
+ return requested??[...contributions].reverse().find(c=>c.agentId!==agentId);
+}
 export function assessDeliberationCoverage(participantIds:string[],maxRounds:number,contributions:Array<{agentId:string;round:number}>){
  const rounds=Math.max(1,Math.min(8,maxRounds));
  const expected=rounds*participantIds.length;
@@ -216,10 +224,8 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
      validFindings.push(validateFinding(finding,eMap));
     }catch(error){qualityLimitations.push("Agent "+participant.id+" · constat écarté après assainissement des preuves : "+(error instanceof Error?error.message:"validation impossible"));}
    }
-   const fallbackTarget=round>1?[...state.contributions].reverse().find(c=>c.agentId!==participant.id):undefined;
-   const requestedTarget=state.contributions.find(c=>c.id===output.respondsTo&&c.agentId!==participant.id);
-   const responseTarget=requestedTarget??fallbackTarget;
-   const normalizedKind:ContributionKind=round===1?"position":(["objection","rebuttal","evidence_review","revision"].includes(output.kind)?output.kind:"objection");
+   const responseTarget=selectResponseTarget(state.contributions,participant.id,output.respondsTo);
+   const normalizedKind=normalizeContributionKind(round,output.kind);
    const contribution={kind:normalizedKind,body:safeText(output.body,4000),evidenceIds:validEvidence,respondsTo:round===1?undefined:responseTarget?.id,findings:validFindings};
    const qualityIssue=contributionQualityIssue(state,participant.id,round,contribution.kind,contribution.body,contribution.evidenceIds,contribution.respondsTo);
    if(qualityIssue){qualityLimitations.push("Agent "+participant.id+" · tour "+round+" : "+qualityIssue);continue;}
