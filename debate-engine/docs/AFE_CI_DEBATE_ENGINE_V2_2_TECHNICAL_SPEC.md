@@ -52,7 +52,7 @@ type EvidenceSupport = "supports" | "contradicts" | "context_only" | "not_assess
 type FindingVerification = "confirmed" | "partially_confirmed" | "unverified" | "refuted" | "out_of_scope";
 type FindingDecision = "upheld" | "partially_upheld" | "rejected" | "unresolved";
 type ContributionKind = "position" | "objection" | "rebuttal" | "evidence_review" | "revision";
-type RiskSeverity = "critical" | "high" | "medium" | "low" | "info";
+type RiskSeverity = "critical" | "high" | "medium" | "low" | "info" | "not_rated";
 
 interface EvidenceArtifactV2 {
  id:string; workspaceId:string; deliberationId:string;
