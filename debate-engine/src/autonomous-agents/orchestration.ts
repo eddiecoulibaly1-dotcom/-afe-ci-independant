@@ -21,24 +21,42 @@ function githubProvider():ReadOnlyGitProvider{
  };
 }
 function evidencePolicy():EvidencePolicy{
- const repositories=(process.env.AFE_EVIDENCE_REPOSITORIES??"").split(",").map(x=>x.trim()).filter(Boolean);
+ const repositories=(process.env.AFE_EVIDENCE_REPOSITORIES??"eddiecoulibaly1-dotcom/-afe-ci-independant").split(",").map(x=>x.trim()).filter(Boolean);
  const refs=(process.env.AFE_EVIDENCE_REFS??"feature/autonomous-organization-v1").split(",").map(x=>x.trim()).filter(Boolean);
- const prefixes=(process.env.AFE_EVIDENCE_PATH_PREFIXES??"debate-engine/src/,debate-engine/test/,debate-engine/supabase/migrations/").split(",").map(x=>x.trim()).filter(Boolean);
+ const prefixes=(process.env.AFE_EVIDENCE_PATH_PREFIXES??"debate-engine/src/,debate-engine/test/,debate-engine/supabase/migrations/,debate-engine/docs/,debate-engine/package.json").split(",").map(x=>x.trim()).filter(Boolean);
  return{allowedRepositories:new Set(repositories),allowedRefs:new Set(refs),allowedPathPrefixes:prefixes,maxBytes:180000,maxExcerptChars:12000};
 }
-async function collectEvidence(workspaceId:string,deliberationId:string,requests:any[]):Promise<EvidenceArtifact[]>{
- if(!requests.length)return [];
- const policy=evidencePolicy(),provider=githubProvider(),out:EvidenceArtifact[]=[];
- for(const item of requests.slice(0,12)){
-  const repository=safeText(item.repository,200),ref=safeText(item.ref,120),path=safeText(item.path,500);
-  const commitSha=safeText(item.commitSha,40);
-  if(!repository||!ref||!path||!/^[0-9a-f]{40}$/.test(commitSha))throw new Error("Evidence request is incomplete or has an invalid commit SHA.");
-  const artifact=await collectGitEvidence({workspaceId,repository,ref,commitSha,path,startLine:Number.isInteger(item.startLine)?item.startLine:undefined,endLine:Number.isInteger(item.endLine)?item.endLine:undefined},policy,provider);
-  const rows=await db<any[]>("afe_evidence_artifacts", {...post,body:JSON.stringify({id:randomUUID(),workspace_id:workspaceId,deliberation_id:deliberationId,source_kind:artifact.sourceKind,source_uri:artifact.sourceUri,repository:artifact.repository,source_ref:artifact.ref,commit_sha:artifact.commitSha,source_path:artifact.path,line_start:artifact.lineStart,line_end:artifact.lineEnd,content_sha256:artifact.contentSha256,collector_version:artifact.collectorVersion,access_mode:artifact.accessMode,verification:artifact.verification,excerpt:artifact.excerpt,metadata:artifact.metadata})});
-  const row=rows[0];if(!row)throw new Error("Evidence artifact was not persisted.");
-  out.push({...artifact,id:row.id});
+async function collectEvidence(workspaceId:string,deliberationId:string,requests:any[]):Promise<{artifacts:EvidenceArtifact[];limitations:string[]}>{
+ const policy=evidencePolicy(),provider=githubProvider(),out:EvidenceArtifact[]=[],limitations:string[]=[];
+ let work=requests.slice(0,12);
+ if(!work.length){
+  const repository=[...policy.allowedRepositories][0],ref=[...policy.allowedRefs][0];
+  if(!repository||!ref)return{artifacts:[],limitations:["Aucune source de dépôt autorisée n'est configurée; aucune preuve n'a été collectée."]};
+  try{
+   const commitSha=await provider.resolveCommit(repository,ref);
+   const paths=(process.env.AFE_EVIDENCE_DEFAULT_PATHS??"debate-engine/package.json,debate-engine/src/autonomous-agents/evidence.ts,debate-engine/src/autonomous-agents/deliberation.ts,debate-engine/src/autonomous-agents/arbitration.ts,debate-engine/src/autonomous-agents/orchestration.ts,debate-engine/src/autonomous-agents/worker.ts,debate-engine/test/autonomous-deliberation-concurrency.test.ts,debate-engine/supabase/migrations/20261106160000_evidence_deliberation_arbitration.sql").split(",").map(x=>x.trim()).filter(Boolean).slice(0,12);
+   work=paths.map(path=>({repository,ref,commitSha,path}));
+  }catch(error){return{artifacts:[],limitations:["Découverte du commit impossible : "+(error instanceof Error?error.message:"erreur source").slice(0,240)]};}
  }
- return out;
+ for(const item of work){
+  try{
+   const repository=safeText(item.repository,200),ref=safeText(item.ref,120),path=safeText(item.path,500);
+   if(!repository||!ref||!path)throw new Error("Source incomplète.");
+   const commitSha=safeText(item.commitSha,40)||await provider.resolveCommit(repository,ref);
+   if(!/^[0-9a-f]{40}$/.test(commitSha))throw new Error("Commit SHA invalide.");
+   const artifact=await collectGitEvidence({workspaceId,repository,ref,commitSha,path,startLine:Number.isInteger(item.startLine)?item.startLine:undefined,endLine:Number.isInteger(item.endLine)?item.endLine:undefined},policy,provider);
+   const payload={workspace_id:workspaceId,deliberation_id:deliberationId,source_kind:artifact.sourceKind,source_uri:artifact.sourceUri,repository:artifact.repository,source_ref:artifact.ref,commit_sha:artifact.commitSha,source_path:artifact.path,line_start:artifact.lineStart,line_end:artifact.lineEnd,content_sha256:artifact.contentSha256,collector_version:artifact.collectorVersion,access_mode:artifact.accessMode,verification:artifact.verification,excerpt:artifact.excerpt,metadata:artifact.metadata};
+   const rows=await db<any[]>("afe_evidence_artifacts?on_conflict=workspace_id,content_sha256,repository,commit_sha,source_path,line_start,line_end",{method:"POST",headers:{"Prefer":"resolution=ignore-duplicates,return=representation"},body:JSON.stringify(payload)});
+   let row=rows[0];
+   if(!row){
+    const existing=await db<any[]>("afe_evidence_artifacts?workspace_id=eq."+enc(workspaceId)+"&content_sha256=eq."+enc(artifact.contentSha256)+"&repository=eq."+enc(repository)+"&commit_sha=eq."+enc(commitSha)+"&source_path=eq."+enc(path)+"&line_start=eq."+artifact.lineStart+"&line_end=eq."+artifact.lineEnd+"&limit=1");
+    row=existing[0];
+   }
+   if(!row)throw new Error("Preuve non persistée après insertion idempotente.");
+   out.push({...artifact,id:row.id});
+  }catch(error){limitations.push("Source non collectée ("+safeText(item.path,180)+") : "+(error instanceof Error?error.message:"erreur inconnue").slice(0,240));}
+ }
+ return{artifacts:out,limitations};
 }
 function evidenceMap(xs:EvidenceArtifact[]){return new Map(xs.map(x=>[x.id,x]));}
 const contributionSchema={type:"object",additionalProperties:false,properties:{kind:{type:"string",enum:["position","objection","rebuttal","evidence_review","revision"]},body:{type:"string"},evidenceIds:{type:"array",items:{type:"string"}},respondsTo:{type:"string"}},required:["kind","body","evidenceIds","respondsTo"]};
@@ -97,7 +115,7 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  const uniqueFindings=[...new Map(findings.map(f=>[f.id,f])).values()];
  const arb=await model<any>(arbitrator,"afe_arbitration_decision",{type:"object",additionalProperties:false,properties:{decisions:{type:"array",items:decisionSchema},limitations:{type:"array",items:{type:"string"}}},required:["decisions","limitations"]},
   "ARBITRAGE INDÉPENDANT. Évalue chaque constat sans inventer de preuve. Préserve les désaccords. CONSTATS: "+JSON.stringify(uniqueFindings)+"\nCONTRIBUTIONS: "+JSON.stringify(state.contributions)+"\nPREUVES: "+JSON.stringify(evidence)+"\nRetourne une décision pour chaque constat.");
- const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:(arb.decisions??[]) as ArbitrationDecision[],limitations:arb.limitations??[]});
+ const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:(arb.decisions??[]) as ArbitrationDecision[],limitations:[...(arb.limitations??[]),...collection.limitations]});
  report.decisions=report.decisions.map(decision=>({...decision,finding:uniqueFindings.find(f=>f.id===decision.findingId)??null})) as any;
  const savedReport=await saveReport(report);
  await db("afe_deliberations?id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({status:"completed",updated_at:new Date().toISOString()})});
