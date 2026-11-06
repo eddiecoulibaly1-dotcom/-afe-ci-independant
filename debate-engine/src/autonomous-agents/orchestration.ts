@@ -54,7 +54,7 @@ async function persistContribution(workspaceId:string,deliberationId:string,c:an
  return rows[0];
 }
 async function saveReport(report:any){
- const rows=await db<any[]>("afe_arbitration_reports",{...post,body:JSON.stringify({workspace_id:report.workspaceId,deliberation_id:report.deliberationId,status:report.status,decisions:report.decisions,unresolved_disagreements:report.unresolvedDisagreements,limitations:report.limitations,human_approval_required:true})});
+ const rows=await db<any[]>("afe_arbitration_reports?on_conflict=deliberation_id",{method:"POST",headers:{"Prefer":"resolution=merge-duplicates,return=representation"},body:JSON.stringify({workspace_id:report.workspaceId,deliberation_id:report.deliberationId,status:report.status,decisions:report.decisions,unresolved_disagreements:report.unresolvedDisagreements,limitations:report.limitations,human_approval_required:true})});
  if(!rows[0])throw new Error("Arbitration report was not persisted.");return rows[0];
 }
 export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent){
