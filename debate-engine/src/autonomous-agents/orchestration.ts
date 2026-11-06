@@ -223,25 +223,33 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  const arbitrator=activeAgents.find(a=>!participants.includes(a.id))??agents.find(a=>a.id!==primaryAgent.id)??agents[0];
  const arbitratorIsIndependent=!participants.includes(arbitrator.id);
  const uniqueFindings=consolidateFindings([...new Map(findings.map(f=>[f.id,f])).values()]);
+ const coverage=assessDeliberationCoverage(agents.map(a=>a.id),row.max_rounds,state.contributions);
+ const readyForArbitration=coverage.complete&&uniqueFindings.length>0;
  let arb:any={decisions:[],limitations:[]};
- try{
-  arb=await model<any>(arbitrator,"afe_arbitration_decision",{type:"object",additionalProperties:false,properties:{decisions:{type:"array",items:decisionSchema},limitations:{type:"array",items:{type:"string"}}},required:["decisions","limitations"]},
-   "ARBITRAGE. Évalue chaque constat sans inventer de preuve. Préserve les désaccords et expose les incertitudes. CONSTATS: "+JSON.stringify(uniqueFindings)+"\\nCONTRIBUTIONS: "+JSON.stringify(state.contributions)+"\\nPREUVES: "+JSON.stringify(evidence)+"\\nRetourne une décision pour chaque constat.");
- }catch(error){arb={decisions:[],limitations:["Arbitrage IA non exécuté : "+(error instanceof Error?error.message:"erreur modèle inconnue").slice(0,400)+". Toutes les décisions sont conservées comme non résolues."]};}
+ if(readyForArbitration){
+  try{
+   arb=await model<any>(arbitrator,"afe_arbitration_decision",{type:"object",additionalProperties:false,properties:{decisions:{type:"array",items:decisionSchema},limitations:{type:"array",items:{type:"string"}}},required:["decisions","limitations"]},
+    "ARBITRAGE CONTRADICTOIRE FINAL. Tu es un arbitre indépendant des agents participants. Évalue séparément chaque constat et chaque argument contraire. N'invente aucune preuve. Une provenance vérifiée ne prouve pas la pertinence du contenu. Conserve les dissensions explicites. Pour chaque constat, rends une décision motivée et ne cite que les identifiants de preuves effectivement liées à ce constat.\nCONSTATS: "+JSON.stringify(uniqueFindings)+"\nCONTRIBUTIONS: "+JSON.stringify(state.contributions)+"\nPREUVES: "+JSON.stringify(evidence)+"\nRetourne exactement une décision par constat.");
+  }catch(error){arb={decisions:[],limitations:["Arbitrage IA non exécuté : "+(error instanceof Error?error.message:"erreur modèle inconnue").slice(0,400)+". Toutes les décisions sont conservées comme non résolues."]};}
+ }else{
+  arb.limitations.push(coverage.complete
+   ?"Aucun constat recevable n'a été consolidé : aucune conclusion substantielle ne peut être soumise à arbitrage."
+   :"Arbitrage final suspendu : la couverture des agents et des tours est incomplète. Les constats restent provisoires jusqu'à la reprise de tous les participants.");
+ }
  const returned=(arb.decisions??[]) as ArbitrationDecision[];
  const seenDecisions=new Set<string>();
  const validDecisions=returned.filter(x=>uniqueFindings.some(f=>f.id===x.findingId)&&!seenDecisions.has(x.findingId)&&seenDecisions.add(x.findingId));
  const completeDecisions:ArbitrationDecision[]=uniqueFindings.map(f=>{
+  if(!readyForArbitration)return{findingId:f.id,decision:"unresolved",rationale:"Constat provisoire : la délibération n'a pas atteint la couverture complète requise pour un arbitrage final.",evidenceIds:[],dissent:["Validation différée jusqu'à la contribution de tous les agents à tous les tours configurés."]};
   const candidate=validDecisions.find(x=>x.findingId===f.id);
   if(!candidate)return{findingId:f.id,decision:"unresolved",rationale:"Aucune décision d'arbitrage exploitable n'a été retournée pour ce constat; investigation complémentaire requise.",evidenceIds:[],dissent:["Décision manquante ou invalide dans la réponse de l'arbitre."]};
   const invalidEvidence=candidate.evidenceIds.some(id=>!f.evidenceIds.includes(id)||!eMap.has(id));
   if(invalidEvidence||!candidate.rationale?.trim())return{findingId:f.id,decision:"unresolved",rationale:"La décision proposée cite une preuve non liée au constat ou ne fournit pas de justification suffisante; elle est écartée.",evidenceIds:[],dissent:["Réponse de l'arbitre rejetée par le contrôle de cohérence automatique."]};
   return candidate;
  });
- const coverage=assessDeliberationCoverage(agents.map(a=>a.id),row.max_rounds,state.contributions);
  const coverageLimitations=coverage.complete?[]:[ "DÉLIBÉRATION INCOMPLÈTE : "+coverage.completed+"/"+coverage.expected+" contributions attendues. Le statut ne peut pas être déclaré completed.", ...coverage.missing.map(x=>"Contribution manquante · agent "+x.agentId+" · tour "+x.round) ];
  const independenceLimitations=arbitratorIsIndependent?[]:["Arbitrageur "+arbitrator.id+" : aucun arbitre distinct des participants n’est disponible; son indépendance n’est pas garantie et doit être confirmée par validation humaine."];
- const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:completeDecisions,limitations:[...(arb.limitations??[]),...independenceLimitations,...collection.limitations,...qualityLimitations,...coverageLimitations,...(uniqueFindings.length?[]:["Aucun constat recevable n'a été consolidé; aucune conclusion substantielle ne peut être tirée."]),"Couverture de collecte : "+evidence.length+" sources collectées, "+collection.limitations.length+" sources non collectées, sur "+(evidence.length+collection.limitations.length)+" tentatives."]});
+ const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:completeDecisions,status:readyForArbitration?"human_review_required":"proposed",limitations:[...(arb.limitations??[]),...independenceLimitations,...collection.limitations,...qualityLimitations,...coverageLimitations,...(uniqueFindings.length?[]:["Aucun constat recevable n'a été consolidé; aucune conclusion substantielle ne peut être tirée."]),"Couverture de collecte : "+evidence.length+" sources collectées, "+collection.limitations.length+" sources non collectées, sur "+(evidence.length+collection.limitations.length)+" tentatives."]});
  report.decisions=report.decisions.map(decision=>({...decision,finding:uniqueFindings.find(f=>f.id===decision.findingId)??null})) as any;
  const savedReport=await saveReport(report);
  await db("afe_deliberations?id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({status:coverage.complete?"completed":"open",current_round:Math.min(row.max_rounds,Math.max(1,...state.contributions.map(c=>c.round))),updated_at:new Date().toISOString()})});
