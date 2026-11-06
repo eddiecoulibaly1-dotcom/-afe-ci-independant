@@ -83,6 +83,25 @@ function encodeContributionBody(body:string,items:AuditFinding[]):string{
  return JSON.stringify({schema:"afe-contribution-v2",text:safeText(body,500),findings:[]});
 }
 
+
+function normalizeArgumentText(value:string){return value.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();}
+function argumentSimilarity(left:string,right:string){
+ const a=new Set(normalizeArgumentText(left).split(" ").filter(x=>x.length>3)),b=new Set(normalizeArgumentText(right).split(" ").filter(x=>x.length>3));
+ const intersection=[...a].filter(x=>b.has(x)).length;return intersection/Math.max(1,new Set([...a,...b]).size);
+}
+function contributionQualityIssue(state:Deliberation,agentId:string,round:number,kind:ContributionKind,body:string,evidenceIds:string[],respondsTo?:string):string|null{
+ if(round===1&&kind!=="position")return "Le premier tour doit présenter des positions indépendantes.";
+ if(round>1){
+  const target=state.contributions.find(c=>c.id===respondsTo);
+  if(!target||target.agentId===agentId)return "Chaque contribution après le premier tour doit répondre à une contribution existante d'un autre agent.";
+  if(kind==="position")return "Les tours suivants doivent produire une objection, une réfutation, une revue de preuve ou une révision.";
+ }
+ const priorEvidence=new Set(state.contributions.flatMap(c=>c.evidenceIds));
+ const hasNewEvidence=evidenceIds.some(id=>!priorEvidence.has(id));
+ const duplicate=state.contributions.find(c=>argumentSimilarity(c.body,body)>=0.92);
+ if(duplicate&&!hasNewEvidence)return "Contribution répétitive écartée : aucun argument nouveau ni nouvelle preuve n'a été apporté.";
+ return null;
+}
 function normalizeFindingText(value:string){return value.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();}
 function consolidateFindings(items:AuditFinding[]):AuditFinding[]{
  const groups:AuditFinding[]=[];
@@ -147,21 +166,27 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  const findings:AuditFinding[]=[];
  const restoredContributions=persisted.map(c=>{const decoded=decodeContributionBody(c.body);for(const finding of decoded.findings){try{findings.push(validateFinding(finding,eMap));}catch{/* Ignore invalid persisted findings; the evidence check will keep them out of arbitration. */}}return{id:c.id,round:c.round_no,agentId:c.agent_id,kind:c.contribution_type,body:decoded.text,evidenceIds:c.evidence_ids??[],respondsTo:c.responds_to??undefined,createdAt:c.created_at};});
  state={...state,round:Math.max(1,...persisted.map(c=>Number(c.round_no)||1)),contributions:restoredContributions};
+ const qualityLimitations:string[]=[];
  for(let round=state.round;round<=state.maxRounds;round++){
   for(const participant of agents){
    if(state.contributions.length>=state.maxContributions)break;
    const priorContrib=state.contributions.find(c=>c.round===round&&c.agentId===participant.id);
    if(priorContrib)continue;
    const output=await model<any>(participant,"afe_deliberation_contribution",{type:"object",additionalProperties:false,properties:{kind:contributionSchema.properties.kind,body:{type:"string"},evidenceIds:contributionSchema.properties.evidenceIds,respondsTo:contributionSchema.properties.respondsTo,findings:{type:"array",items:findingSchema}},required:["kind","body","evidenceIds","respondsTo","findings"]},
-    "MISSION: "+mission.title+"\nOBJECTIF: "+mission.objective+"\nTOUR: "+round+"\nCONTRIBUTIONS PRÉCÉDENTES: "+JSON.stringify(state.contributions)+"\nSOURCES COLLECTÉES (la provenance vérifiée ne signifie pas que le contenu soutient un constat): "+JSON.stringify(evidence)+"\nPour chaque preuve citée, retourne evidenceAssessments avec supports/contradicts/context_only et une justification. Une affirmation sans preuve pertinente doit être unverified; ne confonds jamais absence de preuve et preuve d'absence.");
+    "MISSION: "+mission.title+"\\nOBJECTIF: "+mission.objective+"\\nTOUR: "+round+"\\nCONTRIBUTIONS PRÉCÉDENTES: "+JSON.stringify(state.contributions)+"\\nSOURCES COLLECTÉES (la provenance vérifiée ne signifie pas que le contenu soutient un constat): "+JSON.stringify(evidence)+"\\nTour 1 : position indépendante. Tours suivants : réponds obligatoirement à une contribution d'un autre agent en renseignant son ID exact dans respondsTo et en choisissant objection, rebuttal, evidence_review ou revision; n'émets pas une nouvelle position générale. N'apporte pas de répétition sans argument nouveau ou preuve nouvelle. Pour chaque preuve citée, retourne evidenceAssessments avec supports/contradicts/context_only et une justification. Une affirmation sans preuve pertinente doit être unverified; ne confonds jamais absence de preuve et preuve d'absence. Si les données ne permettent pas de coter probabilité et impact, utilise null pour les deux et severity=not_rated. Sinon applique score=probabilité×impact : 1–4 low, 5–9 medium, 10–16 high, 17–25 critical; explique la cotation dans riskRationale."
    const validEvidence=(output.evidenceIds??[]).filter((id:string)=>eMap.has(id));
    const validFindings:AuditFinding[]=[];
    for(const finding of (output.findings??[]).slice(0,2)){try{validFindings.push(validateFinding(finding,eMap));}catch{/* Invalid or unsubstantiated findings are excluded. */}}
    const contribution={kind:output.kind as ContributionKind,body:safeText(output.body,4000),evidenceIds:validEvidence,respondsTo:state.contributions.some(c=>c.id===output.respondsTo)?output.respondsTo:undefined,findings:validFindings};
+   const qualityIssue=contributionQualityIssue(state,participant.id,round,contribution.kind,contribution.body,contribution.evidenceIds,contribution.respondsTo);
+   if(qualityIssue){qualityLimitations.push("Agent "+participant.id+" · tour "+round+" : "+qualityIssue);continue;}
    const saved=await persistContribution(mission.workspace_id,row.id,contribution,participant.id,round);
    if(saved){state=addContribution(state,{agentId:participant.id,kind:contribution.kind,body:contribution.body,evidenceIds:contribution.evidenceIds,respondsTo:contribution.respondsTo});const lastIndex=state.contributions.length-1;state={...state,contributions:state.contributions.map((item,index)=>index===lastIndex?{...item,id:saved.id}:item)};findings.push(...validFindings);}
   }
-  if(round<state.maxRounds&&state.contributions.length<state.maxContributions)state=advanceRound(state);
+  if(round<state.maxRounds&&state.contributions.length<state.maxContributions){
+   if(state.contributions.filter(c=>c.round===round).length===0){qualityLimitations.push("Tour "+round+" interrompu : aucune contribution nouvelle et recevable.");break;}
+   state=advanceRound(state);
+  }
  }
  state=beginArbitration(state);
  await db("afe_deliberations?id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({status:"arbitrating",current_round:state.round,updated_at:new Date().toISOString()})});
@@ -179,7 +204,7 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
   if(invalidEvidence||!candidate.rationale?.trim())return{findingId:f.id,decision:"unresolved",rationale:"La décision proposée cite une preuve non liée au constat ou ne fournit pas de justification suffisante; elle est écartée.",evidenceIds:[],dissent:["Réponse de l'arbitre rejetée par le contrôle de cohérence automatique."]};
   return candidate;
  });
- const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:completeDecisions,limitations:[...(arb.limitations??[]),...collection.limitations]});
+ const report=buildArbitration({deliberation:state,findings:uniqueFindings,evidence:eMap,decisions:completeDecisions,limitations:[...(arb.limitations??[]),...collection.limitations,...qualityLimitations]});
  report.decisions=report.decisions.map(decision=>({...decision,finding:uniqueFindings.find(f=>f.id===decision.findingId)??null})) as any;
  const savedReport=await saveReport(report);
  await db("afe_deliberations?id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({status:"completed",updated_at:new Date().toISOString()})});
