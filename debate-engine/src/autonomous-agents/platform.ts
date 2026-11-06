@@ -42,10 +42,10 @@ if(p[4]==="agents"&&p[5]){
 if(p[4]==="deliberations"&&p.length===5){
  if(method==="POST"){
   await requireRole(wid,user,"editor");const i=await body(req);
-  const missionId=clean(i.missionId,64);const ids=Array.isArray(i.participantAgentIds)?[...new Set(i.participantAgentIds.filter((x:unknown):x is string=>typeof x==="string").map((x:string)=>clean(x,64)))].slice(0,4):[];
+  const missionId=clean(i.missionId,64);const ids: string[]=Array.isArray(i.participantAgentIds)?Array.from(new Set<string>(i.participantAgentIds.filter((x:unknown):x is string=>typeof x==="string").map((x)=>clean(x,64)))).slice(0,4):[];
   if(!missionId||ids.length<2)throw fail("Une mission et au moins deux agents participants sont requis.");
   const missions=await db<any[]>("afe_agent_missions?id=eq."+enc(missionId)+"&workspace_id=eq."+enc(wid)+"&limit=1");const mission=missions[0];if(!mission)throw fail("Mission introuvable dans cet espace.",404);
-  const participants=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&id=in.("+ids.map((id:string)=>enc(id)).join(",")+")&status=eq.active");
+  const participants=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&id=in.("+ids.map((id)=>enc(id)).join(",")+")&status=eq.active");
   if(participants.length!==ids.length)throw fail("Tous les agents participants doivent être actifs dans cet espace.",403);
   const prior=await db<any[]>("afe_deliberations?mission_id=eq."+enc(missionId)+"&workspace_id=eq."+enc(wid)+"&limit=1");if(prior[0])throw fail("Une délibération existe déjà pour cette mission.",409);
   const maxRounds=Math.max(1,Math.min(5,Number(i.maxRounds)||3));
