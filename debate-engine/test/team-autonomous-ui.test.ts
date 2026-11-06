@@ -9,6 +9,7 @@ test("Team & Governance normalizes API collections before rendering lists", () =
   assert.ok(source.includes("arr=x=>Array.isArray(x)?x:[]"));
   assert.ok(source.includes("arr(d.recentActivity).map"));
   assert.ok(source.includes("arr(a.suggestions).map"));
+  assert.ok(source.includes('api(p+"/agent-dashboard")'));
 });
 
 test("Team & Governance exposes autonomous agent and mission workspaces", () => {
@@ -24,4 +25,6 @@ test("agent UI uses workspace-scoped API contracts for creation and activation",
   assert.ok(source.includes('api(p+"/missions"'));
   assert.ok(agents.includes("createMission(wid,user,i)"));
   assert.ok(agents.includes('if(method==="PATCH")'));
+  assert.ok(agents.includes('p[4]==="agent-dashboard"'));
+  assert.ok(agents.includes('p[4]==="dashboard"') === false);
 });
