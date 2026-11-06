@@ -59,6 +59,30 @@ async function collectEvidence(workspaceId:string,deliberationId:string,requests
  return{artifacts:out,limitations};
 }
 function evidenceMap(xs:EvidenceArtifact[]){return new Map(xs.map(x=>[x.id,x]));}
+function decodeContributionBody(raw:string):{text:string;findings:AuditFinding[]}{
+ try{const parsed=JSON.parse(raw);if(parsed&&parsed.schema==="afe-contribution-v2"&&typeof parsed.text==="string"&&Array.isArray(parsed.findings))return{text:parsed.text,findings:parsed.findings as AuditFinding[]};}catch{}
+ return{text:raw,findings:[]};
+}
+function encodeContributionBody(body:string,items:AuditFinding[]):string{
+ const pack=(maxBody:number,maxFindings:number,maxText:number)=>{
+  const compact=items.slice(0,maxFindings).map(f=>({
+   ...f,title:safeText(f.title,maxText),statement:safeText(f.statement,maxText*2),
+   rationale:safeText(f.rationale,maxText),riskRationale:safeText(f.riskRationale,maxText),
+   recommendation:safeText(f.recommendation,maxText*2),
+   evidenceIds:f.evidenceIds.slice(0,12),
+   evidenceAssessments:(f.evidenceAssessments??[]).slice(0,6).map(a=>({...a,rationale:safeText(a.rationale,maxText)})),
+   limitations:f.limitations.slice(0,4).map(x=>safeText(x,maxText)),
+   counterArguments:f.counterArguments.slice(0,4).map(x=>safeText(x,maxText)),
+   closureCriteria:f.closureCriteria.slice(0,4).map(x=>safeText(x,maxText))
+  }));
+  return JSON.stringify({schema:"afe-contribution-v2",text:safeText(body,maxBody),findings:compact});
+ };
+ for(const limits of [[4000,4,700],[2000,3,400],[1000,2,250]] as const){
+  const encoded=pack(...limits);if(Buffer.byteLength(encoded,"utf8")<=19500)return encoded;
+ }
+ return JSON.stringify({schema:"afe-contribution-v2",text:safeText(body,500),findings:[]});
+}
+
 function normalizeFindingText(value:string){return value.normalize("NFD").replace(/\p{Diacritic}/gu,"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();}
 function consolidateFindings(items:AuditFinding[]):AuditFinding[]{
  const groups:AuditFinding[]=[];
@@ -93,8 +117,10 @@ async function model<T>(agent:Agent,schemaName:string,schema:any,prompt:string):
 }
 async function persistContribution(workspaceId:string,deliberationId:string,c:any,agentId:string,round:number){
  const key="r"+round+":"+agentId+":"+c.kind;
- const rows=await db<any[]>("afe_deliberation_contributions?on_conflict=deliberation_id,idempotency_key",{method:"POST",headers:{"Prefer":"resolution=ignore-duplicates,return=representation"},body:JSON.stringify({workspace_id:workspaceId,deliberation_id:deliberationId,round_no:round,agent_id:agentId,contribution_type:c.kind,body:safeText(c.body,20000),evidence_ids:c.evidenceIds??[],responds_to:c.respondsTo||null,idempotency_key:key})});
- return rows[0];
+ const rows=await db<any[]>("afe_deliberation_contributions?on_conflict=deliberation_id,idempotency_key",{method:"POST",headers:{"Prefer":"resolution=ignore-duplicates,return=representation"},body:JSON.stringify({workspace_id:workspaceId,deliberation_id:deliberationId,round_no:round,agent_id:agentId,contribution_type:c.kind,body:encodeContributionBody(c.body,c.findings??[]),evidence_ids:c.evidenceIds??[],responds_to:c.respondsTo||null,idempotency_key:key})});
+ if(rows[0])return rows[0];
+ const existing=await db<any[]>("afe_deliberation_contributions?workspace_id=eq."+enc(workspaceId)+"&deliberation_id=eq."+enc(deliberationId)+"&idempotency_key=eq."+enc(key)+"&limit=1");
+ return existing[0];
 }
 async function saveReport(report:any){
  const rows=await db<any[]>("afe_arbitration_reports?on_conflict=deliberation_id",{method:"POST",headers:{"Prefer":"resolution=merge-duplicates,return=representation"},body:JSON.stringify({workspace_id:report.workspaceId,deliberation_id:report.deliberationId,status:report.status,decisions:report.decisions,unresolved_disagreements:report.unresolvedDisagreements,limitations:report.limitations,human_approval_required:true})});
@@ -118,8 +144,9 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
  let state:Deliberation=createDeliberation({workspaceId:mission.workspace_id,missionId:mission.id,maxRounds:row.max_rounds,maxContributions:row.max_contributions});
  state={...state,id:row.id};
  const persisted=await db<any[]>("afe_deliberation_contributions?deliberation_id=eq."+enc(row.id)+"&workspace_id=eq."+enc(mission.workspace_id)+"&order=round_no.asc,created_at.asc");
- state={...state,round:Math.max(1,...persisted.map(c=>Number(c.round_no)||1)),contributions:persisted.map(c=>({id:c.id,round:c.round_no,agentId:c.agent_id,kind:c.contribution_type,body:c.body,evidenceIds:c.evidence_ids??[],respondsTo:c.responds_to??undefined,createdAt:c.created_at}))};
  const findings:AuditFinding[]=[];
+ const restoredContributions=persisted.map(c=>{const decoded=decodeContributionBody(c.body);for(const finding of decoded.findings){try{findings.push(validateFinding(finding,eMap));}catch{/* Ignore invalid persisted findings; the evidence check will keep them out of arbitration. */}}return{id:c.id,round:c.round_no,agentId:c.agent_id,kind:c.contribution_type,body:decoded.text,evidenceIds:c.evidence_ids??[],respondsTo:c.responds_to??undefined,createdAt:c.created_at};});
+ state={...state,round:Math.max(1,...persisted.map(c=>Number(c.round_no)||1)),contributions:restoredContributions};
  for(let round=state.round;round<=state.maxRounds;round++){
   for(const participant of agents){
    if(state.contributions.length>=state.maxContributions)break;
@@ -128,10 +155,11 @@ export async function runMissionDeliberation(mission:Mission,primaryAgent:Agent)
    const output=await model<any>(participant,"afe_deliberation_contribution",{type:"object",additionalProperties:false,properties:{kind:contributionSchema.properties.kind,body:{type:"string"},evidenceIds:contributionSchema.properties.evidenceIds,respondsTo:contributionSchema.properties.respondsTo,findings:{type:"array",items:findingSchema}},required:["kind","body","evidenceIds","respondsTo","findings"]},
     "MISSION: "+mission.title+"\nOBJECTIF: "+mission.objective+"\nTOUR: "+round+"\nCONTRIBUTIONS PRÉCÉDENTES: "+JSON.stringify(state.contributions)+"\nSOURCES COLLECTÉES (la provenance vérifiée ne signifie pas que le contenu soutient un constat): "+JSON.stringify(evidence)+"\nPour chaque preuve citée, retourne evidenceAssessments avec supports/contradicts/context_only et une justification. Une affirmation sans preuve pertinente doit être unverified; ne confonds jamais absence de preuve et preuve d'absence.");
    const validEvidence=(output.evidenceIds??[]).filter((id:string)=>eMap.has(id));
-   const contribution={kind:output.kind as ContributionKind,body:safeText(output.body,20000),evidenceIds:validEvidence,respondsTo:state.contributions.some(c=>c.id===output.respondsTo)?output.respondsTo:undefined};
+   const validFindings:AuditFinding[]=[];
+   for(const finding of output.findings??[]){try{validFindings.push(validateFinding(finding,eMap));}catch{/* Invalid or unsubstantiated findings are excluded. */}}
+   const contribution={kind:output.kind as ContributionKind,body:safeText(output.body,4000),evidenceIds:validEvidence,respondsTo:state.contributions.some(c=>c.id===output.respondsTo)?output.respondsTo:undefined,findings:validFindings};
    const saved=await persistContribution(mission.workspace_id,row.id,contribution,participant.id,round);
-   if(saved){state=addContribution(state,{agentId:participant.id,...contribution});const lastIndex=state.contributions.length-1;state={...state,contributions:state.contributions.map((item,index)=>index===lastIndex?{...item,id:saved.id}:item)};}
-   for(const f of output.findings??[]){try{findings.push(validateFinding(f,eMap));}catch{/* Invalid/unsubstantiated findings are excluded from verified findings. */}}
+   if(saved){state=addContribution(state,{agentId:participant.id,kind:contribution.kind,body:contribution.body,evidenceIds:contribution.evidenceIds,respondsTo:contribution.respondsTo});const lastIndex=state.contributions.length-1;state={...state,contributions:state.contributions.map((item,index)=>index===lastIndex?{...item,id:saved.id}:item)};findings.push(...validFindings);}
   }
   if(round<state.maxRounds&&state.contributions.length<state.maxContributions)state=advanceRound(state);
  }
