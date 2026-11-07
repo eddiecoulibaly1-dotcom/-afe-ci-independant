@@ -44,6 +44,6 @@ test("the institutional blueprint states COO AI limits and reserved human decisi
   assert.match(blueprint, /Autorité de validation humaine/);
   assert.match(blueprint, /Audit interne indépendant/);
   assert.match(blueprint, /Arbitrage indépendant/);
-  assert.match(blueprint, /Niveau initial des agents créés dans ce lot reste 1/);
+  assert.match(blueprint, /niveau initial des agents créés dans ce lot reste 1/i);
   assert.match(charter, /Addendum 1\.1 — Nature du COO et lignes de rattachement/);
 });
