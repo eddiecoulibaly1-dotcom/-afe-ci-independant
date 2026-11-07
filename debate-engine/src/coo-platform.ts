@@ -116,14 +116,15 @@ async function ensureDepartments(workspaceId: string, actorId?: string) {
       });
     }
   }
-  const cfg = await settings(workspaceId);
+  const cfgRows = await db<any[]>("afe_coo_settings?workspace_id=eq." + enc(workspaceId) + "&limit=1");
+  const cooUserId = cfgRows[0]?.coo_user_id ?? null;
   const operations = all.find(x => x.slug === "direction-operations");
-  if (operations && operations.director_user_id !== (cfg.coo_user_id ?? null)) {
+  if (operations && operations.director_user_id !== cooUserId) {
     await db("afe_org_departments?id=eq." + enc(operations.id) + "&workspace_id=eq." + enc(workspaceId), {
       method: "PATCH", headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ director_user_id: cfg.coo_user_id ?? null, updated_at: nowIso() })
+      body: JSON.stringify({ director_user_id: cooUserId, updated_at: nowIso() })
     });
-    operations.director_user_id = cfg.coo_user_id ?? null;
+    operations.director_user_id = cooUserId;
   }
   return all;
 }
