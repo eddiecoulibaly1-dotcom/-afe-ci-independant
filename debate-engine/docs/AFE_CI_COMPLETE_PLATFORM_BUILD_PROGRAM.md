@@ -192,3 +192,15 @@ Ce registre doit être mis à jour à chaque livraison avec commit, tests, preuv
 
 ### Limites restantes du lot P10
 Le schéma et les fonctions de validation du graphe sont en place, mais l'API de création/délégation de sous-missions, le dispatch conditionné par les dépendances, l'agrégation persistée du parent, les réponses/handoffs et la synthèse finale doivent encore être raccordés au worker et à l'interface. P10 n'est donc pas déclaré terminé.
+
+
+## 11. Mise à jour d'exécution — P10 orchestration terminale (2026-11-07)
+
+- Le worker charge désormais les résultats des enfants et des prérequis, avec leurs statuts, résultats et codes/messages d'échec.
+- Une mission coordinatrice n'est exécutable qu'une fois tous ses enfants dans un état terminal (completed, failed ou cancelled). Les échecs/annulations restent visibles dans le contexte remis au coordinateur; ils ne sont jamais assimilés à une réussite.
+- Les missions dépendantes peuvent reprendre lorsque chaque prérequis est terminal. Les résultats des prérequis sont injectés dans le contexte d'exécution afin que l'agent traite explicitement les exceptions.
+- Le chemin worker manuel workspace utilise maintenant le même contexte enrichi pour le prompt et la délibération.
+- Migration corrective 20261107000700_p10_terminal_prerequisite_recovery.sql appliquée sur afe-ci-test uniquement. Vérification SQL des deux fonctions : anon et authenticated sans EXECUTE; service_role autorisé; définitions conformes au filtre terminal.
+- CI GitHub du commit 0ed9257cee9f85dfc178e598b3bfd3cd0067b989 : npm ci réussi, TypeScript strict réussi, tests unitaires/intégration réussis; run 42388455238 conclu success.
+- Un échec de CI intermédiaire a détecté des séquences de nouvelle ligne échappées dans le test du coordinateur; le fichier de test a été corrigé et la CI du commit suivant est verte.
+- Limites encore ouvertes : atomicité transactionnelle de la création mission+dépendances+événement, synthèse parent persistée, messages/handoffs/revue indépendante formalisés, retries ciblés et tests réels de crash/reprise/concurrence multi-workers. P10 reste ouvert.
