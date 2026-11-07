@@ -76,7 +76,7 @@ async function settings(workspaceId: string, ownerId?: string) {
   if (found[0]) return found[0];
   const rows = await db<any[]>("afe_coo_settings?on_conflict=workspace_id", {
     method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
-    body: JSON.stringify({ workspace_id: workspaceId, dg_user_id: ownerId ?? null, daily_report_enabled: true, report_hour_utc: 8 })
+    body: JSON.stringify({ workspace_id: workspaceId, dg_user_id: ownerId ?? null, daily_report_enabled: true })
   });
   if (rows[0]) return rows[0];
   const retry = await db<any[]>("afe_coo_settings?workspace_id=eq." + enc(workspaceId) + "&limit=1");
