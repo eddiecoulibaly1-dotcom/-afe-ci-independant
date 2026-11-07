@@ -100,7 +100,7 @@ All seeded agents start as `draft`; default autonomy is L2 but activation is an 
 
 ### Not yet verified
 
-- Both migrations were applied successfully to the isolated `afe-ci-test` Supabase project on 2026-11-07. The five new tables were verified with RLS enabled; browser roles `anon` and `authenticated` have no direct table grants, while `service_role` has the required privileges.
+- All three migrations were applied successfully to the isolated `afe-ci-test` Supabase project on 2026-11-07. The five new tables were verified with RLS enabled; browser roles `anon` and `authenticated` have no direct table grants, while `service_role` has the required privileges.
 - GitHub Actions passed TypeScript strict typecheck and the complete test suite on commit `038afc5dc32be34b0e1292ca1e9ebaa2523e7e4d` (127 tests in the run; all passed).
 - Supabase Performance Advisor reports no unindexed foreign keys on the new COO tables or the modified agent/mission relations after the companion index migration. Thirty-four pre-existing unindexed-FK findings remain elsewhere in the broader database.
 - Supabase Security Advisor reports the expected informational `RLS enabled / no policy` findings for the five server-only tables; this is intentional because browser grants are revoked and the API uses the server secret. The project also has a pre-existing leaked-password-protection warning.
