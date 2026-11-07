@@ -39,5 +39,5 @@ export function coordinatorSynthesisInstructions() {
     "Compare les conclusions des enfants, relève contradictions et dépendances, puis formule une synthèse intégrée et cohérente.",
     "Si des enfants ont échoué ou été annulés, indique ce qui peut être conclu, ce qui reste incertain et les actions correctives nécessaires.",
     "Si aucun enfant n'est présent, indique explicitement que la synthèse ne repose sur aucune sous-mission."
-  ].join("\\n");
+  ].join("\n");
 }
