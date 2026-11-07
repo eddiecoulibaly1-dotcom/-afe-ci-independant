@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateMissionGraph, aggregateChildMissionStatus, canStartMission, type MissionNode } from "../src/autonomous-agents/mission-graph.js";
+import { validateMissionGraph, aggregateChildMissionStatus, canStartMission, canStartCoordinator, type MissionNode } from "../src/autonomous-agents/mission-graph.js";
 const n=(id:string,parentMissionId:string|null=null,depth=0,status:MissionNode["status"]="queued"):MissionNode=>({id,parentMissionId,depth,status});
 
 test("validates hierarchical mission parent links and depth",()=>{
@@ -31,7 +31,7 @@ test("aggregates child status without hiding failures or approvals",()=>{
 });
 
 test("coordinator waits for all direct children to complete",()=>{
- const {canStartCoordinator}=requireMissionGraphForTest();
+
  const parent=n("parent");
  assert.equal(canStartCoordinator(parent,[]),true);
  assert.equal(canStartCoordinator(parent,[n("a","parent",1,"completed"),n("b","parent",1,"running")]),false);
