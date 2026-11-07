@@ -206,3 +206,18 @@ test("agent worker preserves partial mission results when COO tasks are blocked"
   assert.match(source, /status:"paused",blocked_reason:reason/);
   assert.match(source, /error:error instanceof Error\?error\.message/);
 });
+
+
+test("COO archived reports are human-readable and support one-click copy plus PDF and Word exports", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /function reportText\(/);
+  assert.match(source, /function reportHtml\(/);
+  assert.match(source, /navigator\.clipboard\.writeText\(reportText\(r\)\)/);
+  assert.match(source, /id="copyReport"/);
+  assert.match(source, /id="downloadPdf"/);
+  assert.match(source, /id="downloadWord"/);
+  assert.match(source, /jsPDF/);
+  assert.match(source, /lib\.Packer\.toBlob/);
+  assert.match(source, /Qualité et limites des données/);
+  assert.match(source, /missionCount!==byDept/);
+});
