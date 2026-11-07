@@ -196,3 +196,13 @@ test("COO portfolio offers bounded worker execution and exposes verified mission
   assert.match(source, /m\.result\.deliverables/);
   assert.match(source, /m\.blocked_reason/);
 });
+
+
+test("agent worker preserves partial mission results when COO tasks are blocked", async () => {
+  const workerUrl = new URL("../src/autonomous-agents/worker.ts", import.meta.url);
+  const source = await readFile(workerUrl, "utf8");
+  assert.match(source, /execution_state:"partial"/);
+  assert.match(source, /blocked_task_count:blockedCount/);
+  assert.match(source, /status:"paused",blocked_reason:reason/);
+  assert.match(source, /error:error instanceof Error\?error\.message/);
+});
