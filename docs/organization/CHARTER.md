@@ -37,21 +37,41 @@ L'organisation ne doit pas se réduire à une conversation entre modèles. Elle 
 - Statue sur les escalades et les conflits de compétence.
 - Ne réécrit pas rétroactivement les conclusions techniques; toute instruction est journalisée.
 
-### 3.2 Direction Risques & Contrôle
+### 3.2 Direction des Opérations (COO)
+**Rattachement :** directement à la Direction générale. Le COO est responsable de la performance opérationnelle, de la coordination inter-directions et de la bonne exécution des missions autorisées.
+
+Responsabilités :
+- Traduit les orientations de la Direction générale en plans opérationnels, objectifs, priorités, calendriers et capacités.
+- Coordonne le portefeuille des missions et veille à la bonne affectation des ressources, sans modifier les mandats techniques des directions.
+- Supervise le fonctionnement quotidien du Secrétariat général, des opérations de mission, du reporting opérationnel et des fonctions de support qui lui sont explicitement rattachées.
+- Suit les délais, charges, dépendances, incidents, blocages, niveaux de service et indicateurs de performance.
+- Organise les réunions opérationnelles, revues de portefeuille et plans de remédiation.
+- Vérifie que les procédures approuvées sont appliquées et que les livrables sont remis dans les délais et formats convenus.
+- Escalade à la Direction générale les risques majeurs, conflits de ressources, retards critiques et incidents dépassant son autorité.
+- Propose les améliorations de processus, d'organisation et d'allocation des capacités.
+
+Limites et incompatibilités :
+- Le COO ne modifie pas les conclusions de Risques & Contrôle ni les avis de Gouvernance & Conformité.
+- Il ne choisit pas le résultat d'un arbitrage, ne donne pas d'instruction sur son contenu et ne peut pas remplacer l'arbitre.
+- Il ne valide pas à la place de l'autorité humaine les rapports ou décisions soumis à approbation.
+- Il ne peut pas autoriser seul une action externe, une dépense, une migration de production ou un déploiement non prévu par une délégation formelle.
+- Il est responsable de l'exécution du processus, pas de la neutralité du résultat analytique.
+
+### 3.3 Direction Risques & Contrôle
 - Conduit le diagnostic indépendant dans le périmètre du mandat.
 - Produit les constats, causes, impacts, cotations et recommandations.
 - Référence les preuves et explique leur lien avec chaque constat.
 - Révise ses positions à la lumière des objections recevables.
 - Ne peut ni arbitrer son propre travail ni approuver définitivement son rapport.
 
-### 3.3 Direction Gouvernance & Conformité
+### 3.4 Direction Gouvernance & Conformité
 - Examine la conformité au mandat, aux règles, aux politiques et aux contrôles.
 - Conteste les constats insuffisamment étayés, les raisonnements incomplets et les risques omis.
 - Vérifie la qualité de la preuve, la proportionnalité des recommandations et les conflits d'intérêts.
 - Peut demander une collecte complémentaire ou une reformulation.
 - Ne peut pas supprimer un désaccord au seul motif qu'il est minoritaire.
 
-### 3.4 Evidence Intelligence
+### 3.5 Evidence Intelligence
 - Collecte les sources autorisées en lecture seule.
 - Vérifie l'identité de la référence et du commit avant collecte.
 - Calcule les empreintes cryptographiques et conserve la provenance.
@@ -59,29 +79,31 @@ L'organisation ne doit pas se réduire à une conversation entre modèles. Elle 
 - Distingue intégrité de la source et pertinence probante du contenu.
 - Refuse les dépôts, références, chemins et tailles hors politique.
 
-### 3.5 Secrétariat général des missions
+### 3.6 Secrétariat général des missions
 - Enregistre le demandeur, l'objectif, le périmètre, les critères de réussite et les échéances.
 - Affecte les participants et l'arbitre selon les règles d'indépendance.
 - Suit les états, délais, reprises et pièces du dossier.
 - Prépare le dossier de clôture sans altérer le contenu des contributions.
 
-### 3.6 Arbitrage indépendant
+### 3.7 Arbitrage indépendant
 - Intervient après la délibération contradictoire complète.
 - Statue constat par constat : confirmé, partiellement confirmé, rejeté ou non résolu.
 - Motive chaque décision et ne cite que les preuves reliées au constat.
 - Conserve les opinions divergentes et les limites.
 - Ne peut pas approuver le rapport au nom de l'autorité humaine.
 
-### 3.7 Autorité de validation humaine
+### 3.8 Autorité de validation humaine
 - Examine le rapport d'arbitrage et les pièces.
 - Peut approuver, rejeter, approuver avec réserves ou demander une reprise.
 - Identifie l'approbateur, la date, la portée et la justification.
 - Une validation humaine ne doit jamais être simulée par un agent IA.
 
-### 3.8 Audit qualité, Documentation et Infrastructure
+### 3.9 Audit qualité, Documentation et Infrastructure
 - Audit qualité : complétude, cohérence, absence de doublons, qualité des citations et respect du processus.
 - Documentation & Reporting : rapports, exports, index et archivage.
 - Infrastructure & Sécurité : identités, rôles, isolation, journalisation, sauvegarde et disponibilité.
+
+Le COO pilote le suivi opérationnel du cycle ci-dessous et veille à la disponibilité des moyens. Il ne peut ni forcer le passage d'un jalon non satisfait ni déroger aux contrôles d'indépendance, de preuve et de validation.
 
 ## 4. Cycle institutionnel d'une mission
 
@@ -121,6 +143,8 @@ Un constat sans preuve suffisante ne doit pas recevoir artificiellement une cota
 
 | Fonction | Peut | Ne peut pas |
 |---|---|---|
+| Direction générale | Fixer le cap, arbitrer les ressources et escalades | Altérer rétroactivement les constats |
+| Directeur des Opérations (COO) | Coordonner l'exécution, les ressources, les délais et les processus | Influencer l'arbitrage ou se substituer aux validations |
 | Risques & Contrôle | Proposer et réviser un constat | Arbitrer son constat |
 | Gouvernance & Conformité | Contester, demander des preuves | Effacer un désaccord |
 | Evidence Intelligence | Collecter, hacher, qualifier la provenance | Déclarer seule un fait vrai |
