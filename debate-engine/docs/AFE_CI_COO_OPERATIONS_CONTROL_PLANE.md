@@ -83,7 +83,7 @@ The alert register deduplicates operational signals by workspace and stable key.
 - overdue task;
 - blocked task.
 
-Alerts can be acknowledged or resolved by an authorized operator. A resolved signal is reopened if the same underlying condition is detected again.
+Alerts can be acknowledged or resolved by an authorized operator. When the underlying condition clears, the next refresh automatically resolves the alert; if the same condition persists after a manual resolution, the alert is reopened.
 
 Alerts are refreshed when the dashboard, alert centre or report generation is read. A separate continuous alert daemon is not claimed.
 
