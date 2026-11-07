@@ -63,7 +63,7 @@ set search_path=pg_catalog,public
 as $$
 declare
   v_depth integer;
-  v_parent_status text;
+  v_cycle boolean;
 begin
   if new.parent_mission_id is null then
     new.orchestration_depth := 0;
@@ -89,6 +89,9 @@ begin
     into v_depth, new.parent_mission_id
     from ancestors;
 
+  if coalesce(v_cycle,false) then
+    raise exception 'mission hierarchy cycle detected' using errcode='23514';
+  end if;
   if v_depth=0 then
     raise exception 'parent mission not found in workspace' using errcode='23503';
   end if;
