@@ -177,3 +177,22 @@ test("partial COO dispatch failures remain visible with their created missions a
   assert.match(source, /dispatchRecord\.taskCount = createdTasks\.length/);
   assert.match(source, /coo\.orchestration\.partial_failure/);
 });
+
+test("COO execution trigger is Preview-only, DG-owner-only and respects the kill switch", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /resource === "execute-next"/);
+  assert.match(source, /process\.env\.VERCEL_ENV !== "preview"/);
+  assert.match(source, /requireAccess\(workspaceId, user, "owner"\)/);
+  assert.match(source, /cfg\.coo_enabled \|\| cfg\.coo_kill_switch/);
+  assert.match(source, /runAgentWorkerForWorkspace\(workspaceId\)/);
+  assert.match(source, /coo\.execution\.worker_triggered/);
+});
+
+test("COO portfolio offers bounded worker execution and exposes verified mission outputs", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /for \(let i=0;i<5;i\+\+\)/);
+  assert.match(source, /if \(!r\.claimed\) break/);
+  assert.match(source, /m\.result\?\.summary/);
+  assert.match(source, /m\.result\.deliverables/);
+  assert.match(source, /m\.blocked_reason/);
+});
