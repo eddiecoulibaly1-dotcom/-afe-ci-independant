@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthUser } from "../auth.js";
 import { AGENT_DEPARTMENT_TEMPLATES } from "./types.js";
 import { runAgentWorkerForWorkspace } from "./worker.js";
+import { canAddChildToCoordinator, summarizeDelegation } from "./delegation.js";
 
 type Role="owner"|"admin"|"editor"|"viewer";
 const rank:Record<Role,number>={owner:4,admin:3,editor:2,viewer:1};
@@ -25,7 +26,7 @@ async function createMission(wid:string,user:AuthUser,input:any){
  if(!agentId||title.length<3||objective.length<10)throw fail("Agent, titre et objectif (10 caractères minimum) sont requis.");
  const a=await agent(wid,agentId);if(!a||a.status!=="active")throw fail("Agent introuvable ou non actif.",404);
  const parentId=clean(input.parentMissionId,64)||null;let parent:any=null;
- if(parentId){const parents=await db<any[]>("afe_agent_missions?id=eq."+enc(parentId)+"&workspace_id=eq."+enc(wid)+"&limit=1");parent=parents[0];if(!parent)throw fail("Mission parente introuvable dans cet espace.",404);if(parent.orchestration_mode!=="coordinator")throw fail("La mission parente doit être coordinatrice.",409);if(parent.delegation_state!=="open")throw fail("La fenêtre de délégation de cette mission est fermée.",409);if(["completed","failed","cancelled"].includes(parent.status))throw fail("La mission parente est déjà terminée.",409);if(Number(parent.orchestration_depth)>=5)throw fail("Profondeur maximale de sous-missions atteinte.",409);}
+ if(parentId){const parents=await db<any[]>("afe_agent_missions?id=eq."+enc(parentId)+"&workspace_id=eq."+enc(wid)+"&limit=1");parent=parents[0];if(!parent)throw fail("Mission parente introuvable dans cet espace.",404);if(!canAddChildToCoordinator({orchestrationMode:parent.orchestration_mode,delegationState:parent.delegation_state,status:parent.status}))throw fail("La mission parente n’accepte plus de sous-missions : vérifie son type, son statut et sa fenêtre de délégation.",409);if(Number(parent.orchestration_depth)>=5)throw fail("Profondeur maximale de sous-missions atteinte.",409);}
  const key=clean(input.idempotencyKey,160)||randomUUID();
  const prior=await db<any[]>("afe_agent_missions?workspace_id=eq."+enc(wid)+"&idempotency_key=eq."+enc(key)+"&limit=1");if(prior[0])return prior[0];
  const dependencies=Array.isArray(input.dependsOnMissionIds)?[...new Set<string>(input.dependsOnMissionIds.filter((x:unknown):x is string=>typeof x==="string").map((x:string)=>clean(x,64)))].slice(0,20):[];
@@ -152,7 +153,7 @@ if(p[4]==="missions"&&p[5]&&p[6]==="delegation"&&p[7]==="close"&&p.length===8&&m
 if(p[4]==="missions"&&p[5]&&p[6]==="children"&&p.length===7){
  const parentId=p[5];
  if(method==="POST"){await requireRole(wid,user,"editor");const parentRows=await db<any[]>("afe_agent_missions?id=eq."+enc(parentId)+"&workspace_id=eq."+enc(wid)+"&limit=1");const parent=parentRows[0];if(!parent)throw fail("Mission parente introuvable.",404);if(parent.orchestration_mode!=="coordinator")throw fail("Cette mission n’est pas coordinatrice.",409);const input=await body(req);input.parentMissionId=parentId;const child=await createMission(wid,user,input);send(res,201,{mission:child,parentMissionId:parentId,execution:"queued_after_dependencies"});return true;}
- if(method==="GET"){await requireRole(wid,user);const [children,dependencies]=await Promise.all([db<any[]>("afe_agent_missions?workspace_id=eq."+enc(wid)+"&parent_mission_id=eq."+enc(parentId)+"&order=created_at.asc"),db<any[]>("afe_agent_mission_dependencies?workspace_id=eq."+enc(wid)+"&select=id,mission_id,depends_on_mission_id,created_at")]);send(res,200,{children,dependencies:dependencies.filter(d=>children.some(c=>c.id===d.mission_id))});return true;}
+ if(method==="GET"){await requireRole(wid,user);const [children,dependencies]=await Promise.all([db<any[]>("afe_agent_missions?workspace_id=eq."+enc(wid)+"&parent_mission_id=eq."+enc(parentId)+"&order=created_at.asc"),db<any[]>("afe_agent_mission_dependencies?workspace_id=eq."+enc(wid)+"&select=id,mission_id,depends_on_mission_id,created_at")]);send(res,200,{children,delegationState:parentId?((await db<any[]>("afe_agent_missions?id=eq."+enc(parentId)+"&workspace_id=eq."+enc(wid)+"&select=delegation_state&limit=1"))[0]?.delegation_state??"closed"):"closed",delegationSummary:summarizeDelegation(children),dependencies:dependencies.filter(d=>children.some(c=>c.id===d.mission_id))});return true;}
 }
 if(p[4]==="missions"&&p[5]){
  const id=p[5];await requireRole(wid,user);const rows=await db<any[]>("afe_agent_missions?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&limit=1");const m=rows[0];if(!m)throw fail("Mission introuvable.",404);
