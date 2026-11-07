@@ -88,3 +88,9 @@ test("COO foreign keys have dedicated covering indexes", async () => {
     "afe_coo_settings_coo_user_idx"
   ]) assert.ok(sql.includes(index), "Missing FK index " + index);
 });
+
+test("only the designated COO or workspace governance can operate and resolve alerts", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /if \(p\[6\] && method === "POST"\) \{ await canOperate\(workspaceId, user\); send\(res, 200, await actOnAlert/);
+  assert.match(source, /rank\[member\.role\] < rank\.editor/);
+});
