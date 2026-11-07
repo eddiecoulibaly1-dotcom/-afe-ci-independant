@@ -154,17 +154,35 @@ The application explicitly prevents the COO from:
 
 The workspace owner remains the Direction générale recipient for executive reports. Human approval remains a separate workflow.
 
-## 6. Validation gates still required
+## 6. Validation status
 
-Before this control plane can be treated as operational:
-1. Apply the migration only to the isolated `afe-ci-test` Supabase project after review.
-2. Run TypeScript typecheck and the complete test suite.
-3. Verify migration compatibility against the actual isolated database schema.
-4. Test workspace isolation, owner/admin/COO/editor/viewer authorization, cross-workspace IDs and independent-function restrictions.
-5. Test mission/task creation, assignment, progress updates and event/audit creation.
-6. Test alert deduplication, acknowledgement, resolution and reopening.
-7. Test report idempotency, notification delivery, worker authentication and retry behavior.
-8. Test the Cron endpoint manually in Preview with an authorized secret; Production Cron remains inactive until a separately approved Production deployment.
-9. Review the resulting Preview and obtain human acceptance.
+| Gate | Result |
+|---|---|
+| Additive schema migration | <strong>Applied</strong> to isolated Supabase project `afe-ci-test` on 2026-11-07 |
+| Table security | <strong>Verified</strong>: five new tables have RLS enabled; no direct grants to `anon` or `authenticated`; server `service_role` grants verified |
+| Foreign-key performance | <strong>Verified</strong>: no remaining unindexed-FK findings on COO tables or modified agent/mission relations after the companion index migration |
+| TypeScript strict typecheck | <strong>Passed</strong> in GitHub Actions |
+| Unit and integration test suite | <strong>Passed</strong> in GitHub Actions (127 tests in the recorded run) |
+| Authenticated API runtime and cross-workspace negative tests | Pending |
+| End-to-end mission/task creation, assignment, alert lifecycle and notifications | Pending |
+| Daily report worker invocation and idempotency in Preview | Pending |
+| Browser acceptance of the SSO-protected Preview | Pending |
+| Production migration/deployment | Not performed; requires separate explicit approval |
 
-No migration has been applied by this implementation increment. No Production environment, `main`, or baseline V1.0.7 has been changed.
+### Advisor notes
+
+The Supabase Security Advisor reports informational `RLS enabled, no policy` findings for the five new server-managed tables. This is intentional: direct browser-role table grants are revoked and the application accesses these tables only through the authenticated server and its service credential. The broader project also has a pre-existing leaked-password-protection warning.
+
+The Supabase Performance Advisor still reports 34 unindexed foreign keys elsewhere in the existing database. None of those findings refer to the new COO tables or the agent/mission relations modified by this increment.
+
+### Remaining operational gates
+
+1. Exercise the authenticated `/coo` page with a workspace owner, designated COO, editor and viewer.
+2. Verify cross-workspace IDs are rejected for every read and mutation route.
+3. Verify the independent arbitration and human-validation departments cannot be assigned, deactivated or have their mandates changed by the COO.
+4. Exercise mission/task creation, task reassignment, progress updates, alert acknowledgement/resolution/reopening, report generation and notification delivery.
+5. Invoke `/internal/coo-report-worker` manually in an authorized Preview/test context with the configured secret and verify idempotency. Vercel Cron itself does not run on Preview deployments.
+6. Complete browser acceptance on the SSO-protected Preview.
+7. Obtain explicit approval before any Production migration, merge to `main` or Production deployment.
+
+The implementation is CI-validated and its schema exists only in `afe-ci-test`. It is not yet declared live in Production or fully operational until the remaining runtime gates pass.
