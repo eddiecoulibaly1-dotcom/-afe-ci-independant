@@ -169,5 +169,7 @@ test("partial COO dispatch failures remain visible with their created missions a
   assert.match(source, /const partial = createdMissions\.length > 0/);
   assert.match(source, /status: partial \? "partial" : "failed"/);
   assert.match(source, /missions_created: createdMissions\.length/);
+  assert.match(source, /createdMissions\.push\(dispatchRecord\)/);
+  assert.match(source, /dispatchRecord\.taskCount = createdTasks\.length/);
   assert.match(source, /coo\.orchestration\.partial_failure/);
 });
