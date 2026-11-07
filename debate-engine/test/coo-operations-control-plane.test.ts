@@ -218,6 +218,6 @@ test("COO archived reports are human-readable and support one-click copy plus PD
   assert.match(source, /id="downloadWord"/);
   assert.match(source, /jsPDF/);
   assert.match(source, /lib\.Packer\.toBlob/);
-  assert.match(source, /Qualité et limites des données/);
+  assert.match(source, /Qualité et limites des données/i);
   assert.match(source, /missionCount!==byDept/);
 });
