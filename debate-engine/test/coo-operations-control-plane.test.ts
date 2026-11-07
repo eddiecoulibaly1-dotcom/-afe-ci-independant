@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const migrationUrl = new URL("../supabase/migrations/20261107100000_afe_ci_coo_operations_control_plane.sql", import.meta.url);
+const migrationUrl = new URL("../supabase/migrations/20261107190000_afe_ci_coo_operations_control_plane.sql", import.meta.url);
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
 const serverUrl = new URL("../src/server.ts", import.meta.url);
 const vercelUrl = new URL("../vercel.json", import.meta.url);
