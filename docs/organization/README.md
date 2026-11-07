@@ -10,13 +10,15 @@ Le pilotage opérationnel transversal relève du Directeur des Opérations (COO)
 1. [Charte institutionnelle et référentiel directeur](./CHARTER.md) — mandat, organigramme fonctionnel, principes, séparation des responsabilités, droits de décision et règles de gouvernance.
 2. [Manuel opératoire](./OPERATING_MODEL.md) — qualification des missions, affectation, Evidence Intelligence, cycle contradictoire, arbitrage, validation humaine et clôture.
 
+Le système de pilotage opérationnel du COO est spécifié dans [`AFE_CI_COO_OPERATIONS_CONTROL_PLANE.md`](../../debate-engine/docs/AFE_CI_COO_OPERATIONS_CONTROL_PLANE.md). Le code est présent sur cette branche, mais le lot A1 bis n'est pas déclaré validé avant exécution des tests et application contrôlée de la migration sur l'environnement isolé.
+
 ## Ordre de mise en œuvre
 
 | Lot | Périmètre | Critère de sortie |
 |---|---|---|
 | G0 | Charte et modèle opératoire | Responsabilités, incompatibilités et cycle approuvés |
 | A1 | Contrats Evidence Intelligence, collecteur GitHub lecture seule, registre SHA-256, liaison constats-preuves, worker et tests | Collecte contrôlée, provenance reproductible, preuves vérifiables, reprise sûre |
-| A1 bis | Mandat et tableau de pilotage du COO | Portefeuille opérationnel, responsabilités, indicateurs et escalades définis |
+| A1 bis | Système de pilotage du COO | Tableau central, directions, portefeuille, affectations, performance, alertes et reporting DG codés dans `debate-engine/`; migration et validation isolée encore requises |
 | A2 | Missions et affectations | Mandat complet, rôles et indépendance contrôlés |
 | A3 | Délibération contradictoire | Couverture complète, réponses et révisions persistées |
 | A4 | Arbitrage indépendant | Décisions motivées par constat, dissensions conservées |
