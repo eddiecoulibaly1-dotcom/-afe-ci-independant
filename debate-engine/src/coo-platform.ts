@@ -467,12 +467,31 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
         const { access: a } = await canOperate(workspaceId, user);
         const rows = await db<any[]>("afe_org_departments?id=eq." + enc(p[6]) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
         const old = rows[0]; if (!old) throw fail("Direction introuvable.", 404);
-        if (old.is_independent || old.human_only) throw fail("Le COO ne peut pas modifier le mandat de l'Arbitrage indépendant ou de la Validation humaine.", 403);
+        if (old.is_independent || old.human_only || old.slug === "direction-generale") throw fail("Cette fonction est protégée de la gestion opérationnelle du COO.", 403);
+        if (old.slug === "direction-operations" && a.role !== "owner") throw fail("Seule la Direction générale peut modifier le mandat du COO.", 403);
         const i = await readBody(req), patch: Record<string, unknown> = { updated_at: nowIso() };
         if (i.name !== undefined && textOk(i.name, 140)) patch.name = i.name.trim();
         if (i.mandate !== undefined && typeof i.mandate === "string" && i.mandate.length <= 12000) patch.mandate = i.mandate;
-        if (i.active !== undefined) patch.active = Boolean(i.active);
+        if (i.active !== undefined) {
+          if (old.slug === "direction-operations" && !i.active) throw fail("La Direction des Opérations ne peut pas être désactivée par cette interface.", 403);
+          patch.active = Boolean(i.active);
+        }
+        if (i.directorUserId !== undefined) {
+          if (old.slug === "direction-operations") throw fail("Le responsable du COO se désigne dans les paramètres de gouvernance.", 403);
+          const uid = clean(i.directorUserId, 64);
+          if (uid) await validateMember(workspaceId, uid);
+          patch.director_user_id = uid || null;
+        }
+        let directorAgent: any = null;
+        if (i.directorAgentId !== undefined) {
+          const aid = clean(i.directorAgentId, 64);
+          if (aid) directorAgent = await validateAgent(workspaceId, aid, old.id);
+          patch.director_agent_id = aid || null;
+        }
         const updated = await db<any[]>("afe_org_departments?id=eq." + enc(p[6]) + "&workspace_id=eq." + enc(workspaceId), { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch) });
+        if (directorAgent && !directorAgent.department_id) {
+          await db("afe_agents?id=eq." + enc(directorAgent.id) + "&workspace_id=eq." + enc(workspaceId), { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ department_id: old.id }) });
+        }
         await audit(workspaceId, user.id, "coo.department.updated", "department", p[6], { fields: Object.keys(patch) });
         send(res, 200, { department: updated[0] }); return true;
       }
@@ -516,6 +535,10 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
         }
         if (i.dailyReportEnabled !== undefined) patch.daily_report_enabled = Boolean(i.dailyReportEnabled);
         const rows = await db<any[]>("afe_coo_settings?workspace_id=eq." + enc(workspaceId), { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch) });
+        if (i.cooUserId !== undefined) {
+          const cooDept = await db<any[]>("afe_org_departments?workspace_id=eq." + enc(workspaceId) + "&slug=eq.direction-operations&limit=1");
+          if (cooDept[0]) await db("afe_org_departments?id=eq." + enc(cooDept[0].id) + "&workspace_id=eq." + enc(workspaceId), { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ director_user_id: i.cooUserId || null, updated_at: nowIso() }) });
+        }
         await audit(workspaceId, user.id, "coo.settings.updated", "settings", workspaceId, { fields: Object.keys(patch) });
         send(res, 200, { settings: rows[0] }); return true;
       }
@@ -588,9 +611,20 @@ async function renderMissions(){
  $("view").querySelectorAll("[data-save-mission]").forEach(b=>b.onclick=async()=>{try{const id=b.dataset.saveMission,p=$("view").querySelector('[data-mission-progress="'+id+'"]').value;await api(base()+"missions/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({progressPercent:Number(p)})});message("Progression de mission mise à jour.");await render()}catch(e){message(e.message,true)}});
 }
 async function renderDepartments(){
- const d=await api(base()+"departments"),items=arr(d.departments);
- $("view").innerHTML='<section class="card"><h2>Organigramme opérationnel</h2><p class="small">La Direction générale supervise le COO. L’Arbitrage indépendant et l’Autorité de validation humaine restent hors de la chaîne de commandement opérationnelle. Leurs mandats sont verrouillés.</p>'+items.map(x=>'<div class="row"><div style="flex:1"><strong>'+esc(x.name)+'</strong><span class="small">'+esc(x.department_kind)+' · rattachement : '+esc(x.reports_to_slug||"indépendant / Direction générale")+' · '+(x.is_independent?"fonction indépendante":"fonction opérationnelle")+'</span><textarea class="field" rows="2" data-mandate="'+esc(x.id)+'" '+(x.is_independent||x.human_only?"disabled":"")+'>'+esc(x.mandate)+'</textarea></div><div class="actions"><span class="tag">'+(x.active?"Active":"Inactive")+'</span>'+(!x.is_independent&&!x.human_only?'<button class="btn" data-save-dept="'+esc(x.id)+'">Enregistrer</button><button class="btn" data-toggle-dept="'+esc(x.id)+'">'+(x.active?"Désactiver":"Activer")+'</button>':'<span class="small">Protégée</span>')+'</div></div>').join("")+'</section>';
- $("view").querySelectorAll("[data-save-dept]").forEach(b=>b.onclick=async()=>{try{const id=b.dataset.saveDept;await api(base()+"departments/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({mandate:$("view").querySelector('[data-mandate="'+id+'"]').value})});message("Mandat mis à jour.");await render()}catch(e){message(e.message,true)}});
+ const [d,a,m,st]=await Promise.all([api(base()+"departments"),api("/team/api/workspaces/"+encodeURIComponent(wid)+"/agents"),api("/team/api/workspaces/"+encodeURIComponent(wid)+"/members"),api(base()+"settings")]);
+ const items=arr(d.departments),agents=arr(a.agents).filter(x=>x.status==="active"),members=arr(m).filter(x=>["owner","admin","editor"].includes(x.role));
+ const userName=id=>{const x=members.find(q=>q.user_id===id);return x?.profile?.display_name||x?.profile?.full_name||x?.profile?.email||id||"Non désigné"};
+ const agentName=id=>agents.find(q=>q.id===id)?.name||id||"Non désigné";
+ $("view").innerHTML='<section class="card"><h2>Organigramme opérationnel</h2><p class="small">La Direction générale supervise le COO. L’Arbitrage indépendant et l’Autorité de validation humaine restent hors de la chaîne de commandement opérationnelle. Les fonctions protégées ne sont ni désactivables ni affectables par le COO.</p>'+items.map(x=>{
+  const protectedDept=x.is_independent||x.human_only||x.slug==="direction-generale";
+  const ownerOnly=x.slug==="direction-operations";
+  const editable=!protectedDept&&(!ownerOnly||role==="owner");
+  const directors=(x.slug==="direction-generale"?"Direction générale · propriétaire de l’espace":x.slug==="direction-operations"?(st.settings.coo_user_id?userName(st.settings.coo_user_id):"COO non désigné"):[x.director_user_id?userName(x.director_user_id):null,x.director_agent_id?agentName(x.director_agent_id):null].filter(Boolean).join(" · ")||"Non désigné");
+  const userOptions=members.map(q=>'<option value="'+esc(q.user_id)+'" '+(x.director_user_id===q.user_id?"selected":"")+'>'+esc(q.profile?.display_name||q.profile?.full_name||q.profile?.email||q.user_id)+'</option>').join("");
+  const agentOptions=agents.filter(q=>!q.department_id||q.department_id===x.id).map(q=>'<option value="'+esc(q.id)+'" '+(x.director_agent_id===q.id?"selected":"")+'>'+esc(q.name)+'</option>').join("");
+  return '<div class="row"><div style="flex:1"><strong>'+esc(x.name)+'</strong><span class="small">'+esc(x.department_kind)+' · rattachement : '+esc(x.reports_to_slug||"indépendant / Direction générale")+' · '+(x.is_independent?"fonction indépendante":"fonction opérationnelle")+'</span><p class="small">Responsable : '+esc(directors)+'</p>'+(editable?'<textarea class="field" rows="2" data-mandate="'+esc(x.id)+'">'+esc(x.mandate)+'</textarea>'+(ownerOnly?'':'<div class="form"><div><label>Responsable humain</label><select class="field" data-director-user="'+esc(x.id)+'"><option value="">Non désigné</option>'+userOptions+'</select></div><div><label>Agent directeur</label><select class="field" data-director-agent="'+esc(x.id)+'"><option value="">Non désigné</option>'+agentOptions+'</select></div></div>'):'<p class="small">'+esc(x.mandate)+'</p>')+'</div><div class="actions"><span class="tag">'+(x.active?"Active":"Inactive")+'</span>'+(editable?'<button class="btn" data-save-dept="'+esc(x.id)+'">Enregistrer</button><button class="btn" data-toggle-dept="'+esc(x.id)+'">'+(x.active?"Désactiver":"Activer")+'</button>':ownerOnly&&role!=="owner"?'<span class="small">Gérée par la Direction générale</span>':'<span class="small">Protégée</span>')+'</div></div>';
+ }).join("")+'</section>';
+ $("view").querySelectorAll("[data-save-dept]").forEach(b=>b.onclick=async()=>{try{const id=b.dataset.saveDept,payload={mandate:$("view").querySelector('[data-mandate="'+id+'"]').value};const du=$("view").querySelector('[data-director-user="'+id+'"]'),da=$("view").querySelector('[data-director-agent="'+id+'"]');if(du)payload.directorUserId=du.value||null;if(da)payload.directorAgentId=da.value||null;await api(base()+"departments/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify(payload)});message("Direction et responsables mis à jour.");await render()}catch(e){message(e.message,true)}});
  $("view").querySelectorAll("[data-toggle-dept]").forEach(b=>b.onclick=async()=>{try{const d=items.find(x=>x.id===b.dataset.toggleDept);await api(base()+"departments/"+encodeURIComponent(d.id),{method:"PATCH",body:JSON.stringify({active:!d.active})});await render()}catch(e){message(e.message,true)}});
 }
 async function renderTasks(){const [t,m,a,d,mem]=await Promise.all([api(base()+"tasks"),api(base()+"missions"),api("/team/api/workspaces/"+encodeURIComponent(wid)+"/agents"),api(base()+"departments"),api("/team/api/workspaces/"+encodeURIComponent(wid)+"/members")]);const departments=arr(d.departments).filter(x=>x.active&&!x.is_independent&&!x.human_only),agents=arr(a.agents).filter(x=>x.status==="active");$("view").innerHTML='<section class="card"><h2>Nouvelle tâche et attribution</h2><div class="form"><div><label>Direction</label><select class="field" id="taskDepartment">'+departments.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join("")+'</select></div><div><label>Mission associée</label><select class="field" id="taskMission"><option value="">Aucune</option>'+arr(m.missions).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.title)+'</option>').join("")+'</select></div><div><label>Agent responsable</label><select class="field" id="taskAgent"><option value="">Non affecté</option>'+agents.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join("")+'</select></div><div><label>Collaborateur responsable</label><select class="field" id="taskUser"><option value="">Non affecté</option>'+arr(mem).filter(x=>["owner","admin","editor"].includes(x.role)).map(x=>'<option value="'+esc(x.user_id)+'">'+esc(x.profile?.full_name||x.profile?.email||x.user_id)+'</option>').join("")+'</select></div><div class="wide"><label>Intitulé</label><input class="field" id="taskTitle" placeholder="Travail à réaliser"></div><div class="wide"><label>Description / critères de réalisation</label><textarea class="field" id="taskDescription" rows="2"></textarea></div><div><label>Priorité</label><select class="field" id="taskPriority"><option value="1">1 · Critique</option><option value="2">2 · Haute</option><option value="3" selected>3 · Normale</option><option value="4">4 · Basse</option><option value="5">5 · Très basse</option></select></div><div><label>Échéance</label><input class="field" id="taskDue" type="datetime-local"></div></div><p><button class="btn primary" id="taskCreate">Attribuer la tâche</button></p></section><section class="card"><h2>Suivi des tâches</h2>'+arr(t.tasks).map(x=>'<div class="row"><div><strong>'+esc(x.title)+'</strong><span class="small">'+esc(x.department_name)+' · '+esc(x.assigned_agent_name||"Sans agent")+' · '+esc(statusLabel(x.status))+' · '+esc(x.progress_percent)+' % · '+date(x.due_at)+'</span></div><select class="field" style="max-width:150px" data-task="'+esc(x.id)+'"><option value="todo" '+(x.status==="todo"?"selected":"")+'>À faire</option><option value="in_progress" '+(x.status==="in_progress"?"selected":"")+'>En cours</option><option value="blocked" '+(x.status==="blocked"?"selected":"")+'>Bloquée</option><option value="done" '+(x.status==="done"?"selected":"")+'>Terminée</option><option value="cancelled" '+(x.status==="cancelled"?"selected":"")+'>Annulée</option></select></div>').join("")||'<div class="empty">Aucune tâche.</div>'+'</section>';function updateTaskChoices(){const departmentId=$("taskDepartment").value;const validAgents=agents.filter(x=>!x.department_id||x.department_id===departmentId);$("taskAgent").innerHTML='<option value="">Non affecté</option>'+validAgents.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join("");const validMissions=arr(m.missions).filter(x=>x.department_id===departmentId);$("taskMission").innerHTML='<option value="">Aucune</option>'+validMissions.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.title)+'</option>').join("")}
