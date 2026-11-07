@@ -29,6 +29,14 @@ Pour chaque mission, le COO veille à ce qu'un responsable opérationnel, un cal
 
 Les indicateurs suivis par le COO incluent : missions par état, respect des jalons, retards et causes, charge par direction, temps de cycle, taux de reprise, incidents ouverts, dépendances bloquantes et respect des niveaux de service. Les indicateurs ne doivent jamais récompenser une clôture prématurée ou une baisse du niveau de preuve.
 
+Le poste de commandement applicatif du COO est documenté dans [AFE-CI COO Operations Control Plane](../../debate-engine/docs/AFE_CI_COO_OPERATIONS_CONTROL_PLANE.md) et accessible sur la branche de développement à la route `/coo`. Il s'appuie sur le portefeuille durable des missions, le registre des directions, les tâches opérationnelles, les alertes dédupliquées, les indicateurs par direction et les rapports périodiques adressés à la Direction générale.
+
+Le COO peut enregistrer une mission dans une direction opérationnelle, désigner un agent actif et un responsable opérationnel, fixer une échéance, attribuer des tâches à un agent ou à un membre de l'espace, suivre leur progression, demander une mise à jour et faire escalader les blocages. Les missions restent exécutées par le worker existant; le tableau de bord n'exécute pas de travail dans le navigateur.
+
+Les alertes actuelles couvrent les missions en retard ou en échec, les validations en attente depuis plus de 24 heures, les tâches en retard et les tâches bloquées. Les rapports quotidiens sont stockés dans le registre de reporting et donnent lieu à une notification dans l'application au propriétaire de l'espace, représentant la Direction générale par défaut.
+
+L'implémentation est additive et reste soumise à la migration et aux tests sur l'environnement isolé. La présence du code et d'une configuration Cron ne signifie pas que le reporting est actif en Production.
+
 ## 3. Affectation et indépendance
 
 Le Secrétariat affecte au minimum deux participants actifs distincts et un arbitre actif distinct de tous les participants. Les mandats sont enregistrés avant le début. L'affectation est refusée si un participant est également désigné arbitre. Les conflits d'intérêts, indisponibilités ou changements d'affectation sont journalisés.
