@@ -53,5 +53,5 @@ export function canStartMission(node:MissionNode,dependencies:MissionDependency[
 export function canStartCoordinator(parent:MissionNode,children:MissionNode[]){
   if(children.length===0)return true;
   if(children.some(child=>child.parentMissionId!==parent.id))return false;
-  return children.every(child=>child.status==="completed");
+  return children.every(child=>TERMINAL.has(child.status));
 }
