@@ -83,3 +83,26 @@ All seeded agents start as `draft`; default autonomy is L2 but activation is an 
 - Fixed a route collision: autonomous agent metrics now use `/agent-dashboard`; the existing Team & Governance `/dashboard` route remains reserved for its original dashboard response.
 - Added source-level UI contract tests. Vercel Preview build/typecheck is used as the deployment build gate; provider-backed browser interaction still requires an authenticated session.
 - The current worker remains analysis-only. Delegations are durable one-way handoffs; automatic debate synthesis, consensus, recursive planning and full parent/child completion aggregation remain future implementation work.
+
+
+## COO Control Plane increment — 2026-11-07
+
+**Implementation added on `feature/autonomous-organization-v1`; validation not yet complete.**
+
+- Added `/coo` operational dashboard and a navigation link from Team & Governance.
+- Added workspace-scoped institutional departments, including the COO chain and separately protected independent arbitration and human validation functions.
+- Added mission portfolio metadata to the existing durable agent mission records.
+- Added operational task assignment to a department, agent and/or workspace member.
+- Added department performance indicators, mission/task progress tracking, overdue/blocked/failed/approval alerts and alert acknowledgement/resolution.
+- Added daily executive report snapshots and in-app notification to the workspace owner (Direction générale by default).
+- Added an hourly Vercel Cron schedule that checks the workspace's configured daily report hour. Requires `CRON_SECRET` or `COO_REPORT_WORKER_SECRET`; Vercel Cron is not active in Preview.
+- Added migration `20261107100000_afe_ci_coo_operations_control_plane.sql`, API/UI source and static contract tests.
+
+### Not yet verified
+
+- The new migration has **not** been applied to `afe-ci-test`.
+- Typecheck and the complete test suite have **not yet been run** against this increment.
+- Cross-workspace authorization, actual Supabase persistence, alert/report delivery and Cron execution require isolated integration tests.
+- No Production migration, merge to `main`, or Production deployment has been performed.
+
+The control plane must not be described as live/operational until the gates in `docs/AFE_CI_COO_OPERATIONS_CONTROL_PLANE.md` have passed.
