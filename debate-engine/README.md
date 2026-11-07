@@ -224,3 +224,8 @@ Server-side Supabase credentials are required. Browser clients receive no write 
 are made by the authenticated API after validating the user's bearer token. The service key
 must never be exposed to the browser. The current view returns only latest versions, while the
 base table retains the complete audit trail.
+
+
+### COO IA — orchestration opérationnelle
+
+Le COO IA dédié dispose d'un moteur d'orchestration de niveau 2 dans l'environnement de test : instruction DG → plan structuré → directions autorisées → missions et tâches → file d'exécution durable. Les décisions réservées à la DG restent bloquantes, un kill switch arrête les nouvelles orchestrations et les exécutions sont journalisées. Voir [AFE-CI COO AI Orchestration Engine](./docs/AFE_CI_COO_AI_ORCHESTRATION_ENGINE.md). Le niveau 3 reste verrouillé jusqu'à la recette de sécurité.
