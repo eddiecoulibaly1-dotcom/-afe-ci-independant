@@ -32,7 +32,7 @@ if(p[4]==="agent-worker"&&p.length===5&&method==="POST"){
  return true;
 }
 if(p[4]==="agents"&&p.length===5){
- if(method==="GET"){await requireRole(wid,user);const rows=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&order=created_at.asc");send(res,200,{agents:rows,templates:AGENT_DEPARTMENT_TEMPLATES});return true;}
+ if(method==="GET"){await requireRole(wid,user);const rows=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&order=created_at.asc");send(res,200,{agents:rows,templates:AGENT_DEPARTMENT_TEMPLATES,hardDeleteEnabled:process.env.VERCEL_ENV==="preview"&&process.env.AGENT_HARD_DELETE_ENABLED==="true"});return true;}
  if(method==="POST"){await requireRole(wid,user,"admin");const i=await body(req);if(i.action==="seed"){send(res,200,{agents:await seedAgents(wid,user)});return true;}const slug=clean(i.slug,64).toLowerCase();if(!/^[a-z0-9][a-z0-9-]{1,62}$/.test(slug))throw fail("Identifiant d'agent invalide.");const rows=await db<any[]>("afe_agents",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({workspace_id:wid,slug,name:clean(i.name,120),specialty:clean(i.specialty,160),mandate:clean(i.mandate,12000),system_instructions:clean(i.instructions,30000),autonomy_level:Math.max(1,Math.min(3,Number(i.autonomyLevel)||1)),status:"draft",created_by:user.id})});send(res,201,{agent:rows[0]});return true;}
 }
 if(p[4]==="agents"&&p[5]){
