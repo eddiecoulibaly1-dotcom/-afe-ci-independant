@@ -22,7 +22,7 @@ test("only starts dependent missions after all prerequisites complete",()=>{
  const nodes=[n("a",null,0,"completed"),n("b"),n("c")],deps=[{missionId:"c",dependsOnMissionId:"a"},{missionId:"c",dependsOnMissionId:"b"}];
  assert.equal(canStartMission(nodes[2],deps,nodes),false);
  nodes[1].status="completed";assert.equal(canStartMission(nodes[2],deps,nodes),true);
- assert.deepEqual(validateMissionGraph(nodes,deps).readyMissionIds,["b","c"]);
+ assert.deepEqual(validateMissionGraph(nodes,deps).readyMissionIds,["c"]);
 });
 test("aggregates child status without hiding failures or approvals",()=>{
  assert.equal(aggregateChildMissionStatus([n("a",null,0,"completed"),n("b",null,0,"completed")]),"completed");
