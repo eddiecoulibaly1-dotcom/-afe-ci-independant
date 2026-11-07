@@ -49,3 +49,9 @@ export function canStartMission(node:MissionNode,dependencies:MissionDependency[
   const byId=new Map(nodes.map(n=>[n.id,n]));
   return dependencies.filter(d=>d.missionId===node.id).every(d=>byId.get(d.dependsOnMissionId)?.status==="completed");
 }
+
+export function canStartCoordinator(parent:MissionNode,children:MissionNode[]){
+  if(children.length===0)return true;
+  if(children.some(child=>child.parentMissionId!==parent.id))return false;
+  return children.every(child=>child.status==="completed");
+}
