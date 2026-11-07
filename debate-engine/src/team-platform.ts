@@ -109,12 +109,37 @@ function printDebatePdf(html){
  const w=window.open("","_blank");if(!w)throw Error("Autorisez les fenêtres contextuelles pour exporter le PDF.");
  w.document.open();w.document.write(html.replace("</body>","<script>window.addEventListener('load',function(){setTimeout(function(){window.focus();window.print()},250)})<\/script></body>"));w.document.close();
 }
+let activeSpeechButton=null;
+let speechQueue=[];
 function speakReport(textValue,button){
- if(!("speechSynthesis" in window)||!("SpeechSynthesisUtterance" in window))throw Error("La lecture vocale n’est pas prise en charge par ce navigateur.");
- if(window.speechSynthesis.speaking){window.speechSynthesis.cancel();if(button)button.textContent="🔊 Écouter la conclusion";return;}
- const utterance=new SpeechSynthesisUtterance(textValue);utterance.lang="fr-FR";utterance.rate=0.92;
- utterance.onend=()=>{if(button)button.textContent="🔊 Écouter la conclusion"};utterance.onerror=()=>{if(button)button.textContent="🔊 Écouter la conclusion"};
- window.speechSynthesis.cancel();window.speechSynthesis.speak(utterance);if(button)button.textContent="■ Arrêter la lecture";
+ if(!("speechSynthesis" in window)||!("SpeechSynthesisUtterance" in window)){msg("La lecture vocale n’est pas disponible dans ce navigateur. Essayez Chrome ou activez le moteur de synthèse vocale Android.");return;}
+ const synth=window.speechSynthesis;
+ if(synth.speaking||synth.pending||activeSpeechButton===button){synth.cancel();speechQueue=[];if(activeSpeechButton)activeSpeechButton.textContent="🔊 Écouter la conclusion";activeSpeechButton=null;return;}
+ const summary=textValue.match(/SYNTHÈSE\s*([\s\S]*?)(?=\n(?:EXÉCUTION DE LA MISSION|CONTRIBUTIONS|PREUVES|CONSTATS ET ARBITRAGES|DÉSACCORDS NON RÉSOLUS|LIMITES DE L'ANALYSE))/i);
+ const conclusion=(summary?summary[1]:textValue.replace(/^AFE-CI[^\n]*\n?/,"")).trim().slice(0,5000);
+ if(!conclusion){msg("Aucun texte de conclusion disponible à lire.");return;}
+ const sentences=conclusion.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[conclusion];
+ speechQueue=[];
+ let chunk="";
+ for(const sentence of sentences){const s=sentence.trim();if(!s)continue;if((chunk+" "+s).trim().length>220){if(chunk)speechQueue.push(chunk);chunk=s;}else chunk=(chunk+" "+s).trim();}
+ if(chunk)speechQueue.push(chunk);
+ activeSpeechButton=button;
+ if(button)button.textContent="■ Arrêter la lecture";
+ const voices=synth.getVoices();
+ const voice=voices.find(v=>/^fr[-_]/i.test(v.lang)&&/français|french/i.test(v.name))||voices.find(v=>/^fr[-_]/i.test(v.lang));
+ let index=0;
+ const finish=()=>{speechQueue=[];if(activeSpeechButton)activeSpeechButton.textContent="🔊 Écouter la conclusion";activeSpeechButton=null;};
+ const playNext=()=>{
+  if(index>=speechQueue.length){finish();return;}
+  const utterance=new SpeechSynthesisUtterance(speechQueue[index++]);
+  utterance.lang="fr-FR";utterance.rate=0.88;utterance.pitch=1;
+  if(voice)utterance.voice=voice;
+  utterance.onend=()=>{if(activeSpeechButton===button)playNext();};
+  utterance.onerror=(event)=>{if(event.error==="canceled"||event.error==="interrupted")return;finish();msg("Le moteur vocal a interrompu la lecture. Vérifiez que la synthèse vocale Google est installée et activée sur Android.");};
+  synth.speak(utterance);
+ };
+ synth.cancel();
+ window.setTimeout(()=>{if(activeSpeechButton===button)playNext();},120);
 }
 function missionReportText(m){const result=m?.result??{};return ["AFE-CI — RAPPORT DE MISSION","Titre : "+(m?.title||"Mission sans titre"),"Statut : "+(m?.status||"non renseigné"),"Tentatives : "+(m?.attempt_count??"—"),"","OBJECTIF",m?.objective||"Non renseigné","","CONCLUSION ET RÉSULTATS",typeof result==="string"?result:JSON.stringify(result,null,2)].join("\n");}
 function missionReportHtml(m){
