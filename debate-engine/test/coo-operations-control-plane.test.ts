@@ -191,7 +191,7 @@ test("COO execution trigger is Preview-only, DG-owner-only and respects the kill
 test("COO portfolio offers bounded worker execution and exposes verified mission outputs", async () => {
   const source = await readFile(platformUrl, "utf8");
   assert.match(source, /for\s*\(let i=0;i<5;i\+\+\)/);
-  assert.match(source, /if \(!r\.claimed\) break/);
+  assert.match(source, /if\s*\(!r\.claimed\)\s*break/);
   assert.match(source, /m\.result\?\.summary/);
   assert.match(source, /m\.result\.deliverables/);
   assert.match(source, /m\.blocked_reason/);
