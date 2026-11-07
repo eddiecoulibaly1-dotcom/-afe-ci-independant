@@ -162,7 +162,10 @@ test("sensitive COO workstreams are held for human approval before any dispatch"
   assert.match(source, /const sensitiveAction =/);
   assert.doesNotMatch(source, /const sensitiveAction = \/\(\?:payer\|paiement/);
   assert.match(source, /Approbation humaine obligatoire/);
-  assert.match(source, /if \(Array\.isArray\(plan\.decisionsRequired\).*length > 0\)/);
+  assert.match(source, /if \(sensitiveItems\.length > 0\)/);
+  assert.match(source, /const status = "dispatched"/);
+  assert.match(source, /Routine DG decisions are recorded for follow-up/);
+  assert.doesNotMatch(source, /const status = plan\.decisionsRequired\.length \? "approval_required"/);
 });
 
 test("partial COO dispatch failures remain visible with their created missions and audit event", async () => {
