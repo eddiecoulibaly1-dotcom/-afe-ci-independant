@@ -15,6 +15,7 @@ import { inviteWorkspaceUser, createNotification, listNotifications, markNotific
 import { LAB_V2_HTML, handleV2Request } from "./v2-platform.js";
 import { TEAM_HTML, handleTeamRequest } from "./team-platform.js";
 import { handleAutonomousAgentsRequest } from "./autonomous-agents/platform.js";
+import { COO_HTML, handleCooRequest, handleCooReportWorker } from "./coo-platform.js";
 import { handleAgentWorker } from "./autonomous-agents/worker.js";
 import type { DebateConfig, Provider } from "./types.js";
 const VERSION="1.1.2",port=Number(process.env.PORT??8787);
@@ -41,7 +42,8 @@ if(req.method==="GET"&&path==="/share"){const token=url.searchParams.get("token"
 if(req.method==="GET"&&path==="/api/share"){const token=url.searchParams.get("token")?.trim();if(!token){send(res,400,{error:"token is required"});return;}const link=await resolveShareLink(token);if(!link){send(res,410,{error:"Share link expired or revoked"});return;}const debate=await getSharedDebate(link.debate_id);if(!debate){send(res,404,{error:"Debate not found"});return;}send(res,200,{permission:link.permission,expiresAt:link.expires_at,debate});return;}
 if(req.method==="GET"&&(path==="/"||path==="/lab"||path==="/lab/")){html(res,200,LAB_HTML.replace("</body>","<a href=\"/team\" style=\"position:fixed;left:14px;bottom:14px;z-index:9999;background:#14243a;color:white;padding:11px 15px;border-radius:12px;text-decoration:none;font-weight:800;box-shadow:0 5px 20px #0003\">Équipe & Gouvernance ↗</a><a href=\"/lab/v2\" style=\"position:fixed;right:14px;bottom:14px;z-index:9999;background:#0d6b4b;color:white;padding:11px 15px;border-radius:12px;text-decoration:none;font-weight:800;box-shadow:0 5px 20px #0003\">Ouvrir Decision Lab V2 ↗</a></body>"));return;}
 if(req.method==="GET"&&path==="/lab/v2"){html(res,200,LAB_V2_HTML);return;}
-if(req.method==="GET"&&path==="/team"){html(res,200,TEAM_HTML);return;}
+if(req.method==="GET"&&path==="/team"){html(res,200,TEAM_HTML.replace("</body>","<a href=\"/coo\" style=\"position:fixed;right:14px;bottom:14px;z-index:9999;background:#176b52;color:white;padding:11px 15px;border-radius:12px;text-decoration:none;font-weight:800;box-shadow:0 5px 20px #0003\">Direction des Opérations ↗</a></body>"));return;}
+if(req.method==="GET"&&path==="/coo"){html(res,200,COO_HTML);return;}
 if(req.method==="GET"&&path==="/lab/manifest.webmanifest"){res.writeHead(200,{"Content-Type":"application/manifest+json; charset=utf-8"});res.end(LAB_MANIFEST);return;}if(req.method==="GET"&&path==="/lab/sw.js"){res.writeHead(200,{"Content-Type":"application/javascript; charset=utf-8"});res.end(LAB_SW);return;}if(req.method==="GET"&&path==="/lab/icon.svg"){res.writeHead(200,{"Content-Type":"image/svg+xml; charset=utf-8"});res.end(LAB_ICON);return;}
 if(req.method==="GET"&&path==="/ready"){try{await assertSupabaseSchemaReady();send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,database:"ready"});}catch(e){send(res,503,{ok:false,service:"afe-ci-debate-engine",version:VERSION,database:"not_ready",error:e instanceof Error?e.message:"Database readiness check failed"});}return;}
 if(req.method==="GET"&&path==="/health"){send(res,200,{ok:true,service:"afe-ci-debate-engine",version:VERSION,evidenceEngine:true,mobileLab:true,pwa:true,auth:true,privateHistory:true,workspaces:true,roles:true,controlledSharing:true,v1_0_3:true,v1_0_5:true,v1_0_6:true,v1_0_7:true,notifications:true,audit:true,secureShareLinks:true,publicShareViewer:true,visualShareViewer:true,shareCenter:true,serverBackedShareLinks:true,invitations:true,realtime:true,deployment:"healthy"});return;}
@@ -59,8 +61,9 @@ try{const upstream=await fetch(a.url+endpoint,{method:"POST",headers,body:input.
 catch(e){console.error("[afe-ci-auth-proxy] Supabase Auth request failed",e);send(res,502,{error:"Le serveur AFE-CI n'arrive pas à joindre le service Auth Supabase."});}
 return;
 }
+if(path==="/internal/coo-report-worker"){if(await handleCooReportWorker(req,res))return;}
 const user=await authenticateRequest(req);if(!user){send(res,401,{error:"Authentication required"});return;}
-if(path.startsWith("/team/api/")){if(await handleAutonomousAgentsRequest(req,res,path,user))return;if(await handleTeamRequest(req,res,path,user))return;}
+if(path.startsWith("/team/api/")){if(await handleCooRequest(req,res,path,user))return;if(await handleAutonomousAgentsRequest(req,res,path,user))return;if(await handleTeamRequest(req,res,path,user))return;}
 if(path.startsWith("/decision-cases")){if(!supabasePersistenceEnabled()){send(res,503,{error:"La plateforme V2 exige la persistance Supabase configurée."});return;}if(await handleV2Request(req,res,path,user))return;}
 // Market Intelligence is an optional subsystem. Keep its HTTP surface disabled unless explicitly enabled.
 if(path.startsWith("/market-prices")&&process.env.MARKET_INTELLIGENCE_ENABLED!=="true"){send(res,404,{error:"Le module Market Intelligence est désactivé sur cet environnement."});return;}
