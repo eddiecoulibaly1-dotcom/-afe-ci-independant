@@ -63,7 +63,7 @@ test("daily executive reporting has a scheduled server-side worker", async () =>
   assert.match(source, /\/internal\/coo-report-worker/);
   assert.match(source, /daily_report_enabled=eq\.true/);
   assert.match(source, /coo\.report\.daily/);
-  assert.ok(config.crons.some((x: {path:string;schedule:string}) => x.path === "/internal/coo-report-worker" && x.schedule === "0 * * * *"));
+  assert.ok(config.crons.some((x: {path:string;schedule:string}) => x.path === "/internal/coo-report-worker" && x.schedule === "0 8 * * *"));
 });
 
 test("COO dashboard exposes portfolio, departments, tasks, alerts and DG reports", async () => {
