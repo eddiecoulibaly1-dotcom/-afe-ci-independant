@@ -5,6 +5,8 @@ Ce dossier constitue le référentiel organisationnel directeur de la branche `f
 
 ## Documents normatifs
 
+Le pilotage opérationnel transversal relève du Directeur des Opérations (COO), directement rattaché à la Direction générale. Ses responsabilités et limites sont définies dans la charte et le manuel opératoire.
+
 1. [Charte institutionnelle et référentiel directeur](./CHARTER.md) — mandat, organigramme fonctionnel, principes, séparation des responsabilités, droits de décision et règles de gouvernance.
 2. [Manuel opératoire](./OPERATING_MODEL.md) — qualification des missions, affectation, Evidence Intelligence, cycle contradictoire, arbitrage, validation humaine et clôture.
 
@@ -14,6 +16,7 @@ Ce dossier constitue le référentiel organisationnel directeur de la branche `f
 |---|---|---|
 | G0 | Charte et modèle opératoire | Responsabilités, incompatibilités et cycle approuvés |
 | A1 | Contrats Evidence Intelligence, collecteur GitHub lecture seule, registre SHA-256, liaison constats-preuves, worker et tests | Collecte contrôlée, provenance reproductible, preuves vérifiables, reprise sûre |
+| A1 bis | Mandat et tableau de pilotage du COO | Portefeuille opérationnel, responsabilités, indicateurs et escalades définis |
 | A2 | Missions et affectations | Mandat complet, rôles et indépendance contrôlés |
 | A3 | Délibération contradictoire | Couverture complète, réponses et révisions persistées |
 | A4 | Arbitrage indépendant | Décisions motivées par constat, dissensions conservées |
