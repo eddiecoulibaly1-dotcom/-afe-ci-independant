@@ -1,0 +1,73 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const migrationUrl = new URL("../supabase/migrations/20261107100000_afe_ci_coo_operations_control_plane.sql", import.meta.url);
+const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
+const serverUrl = new URL("../src/server.ts", import.meta.url);
+const vercelUrl = new URL("../vercel.json", import.meta.url);
+
+test("COO migration creates workspace-scoped operational control-plane entities", async () => {
+  const sql = await readFile(migrationUrl, "utf8");
+  for (const table of ["afe_org_departments","afe_operational_tasks","afe_coo_alerts","afe_coo_reports","afe_coo_settings"]) {
+    assert.match(sql, new RegExp("CREATE TABLE IF NOT EXISTS public\\." + table));
+  }
+  assert.match(sql, /FOREIGN KEY \(task_id, workspace_id\)/);
+  assert.match(sql, /FOREIGN KEY \(department_id, workspace_id\)/);
+  assert.match(sql, /UNIQUE \(id, workspace_id\)/);
+});
+
+test("COO tables are RLS enabled and inaccessible to browser roles", async () => {
+  const sql = await readFile(migrationUrl, "utf8");
+  assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(sql, /REVOKE ALL ON TABLE public\.%I FROM anon, authenticated/);
+  assert.match(sql, /GRANT ALL ON TABLE public\.%I TO service_role/);
+});
+
+test("mission records gain department, operational owner, due date and progress fields", async () => {
+  const sql = await readFile(migrationUrl, "utf8");
+  for (const column of ["department_id","operational_owner_user_id","due_at","progress_percent","blocked_reason"]) {
+    assert.match(sql, new RegExp("ADD COLUMN IF NOT EXISTS " + column));
+  }
+});
+
+test("COO API protects independent arbitration and human validation from operational assignment", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /Le COO ne peut pas affecter ni diriger une tâche de l'Arbitrage indépendant ou de la Validation humaine/);
+  assert.match(source, /Le COO ne peut pas modifier le mandat de l'Arbitrage indépendant ou de la Validation humaine/);
+  assert.match(source, /is_independent/);
+  assert.match(source, /human_only/);
+});
+
+test("COO mission and task mutations validate workspace-scoped assignments", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /validateDepartment\(workspaceId, departmentId\)/);
+  assert.match(source, /validateAgent\(workspaceId, assignedAgentId, departmentId\)/);
+  assert.match(source, /validateMember\(workspaceId, assignedUserId\)/);
+  assert.match(source, /coo\.task\.created/);
+  assert.match(source, /coo\.mission\.created/);
+});
+
+test("COO control plane is routed through the authenticated server and has a dedicated page", async () => {
+  const server = await readFile(serverUrl, "utf8");
+  assert.match(server, /COO_HTML, handleCooRequest, handleCooReportWorker/);
+  assert.match(server, /handleCooRequest\(req,res,path,user\)/);
+  assert.match(server, /path==="\/coo"/);
+  assert.match(server, /handleCooReportWorker\(req,res\)/);
+});
+
+test("daily executive reporting has a scheduled server-side worker", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const config = JSON.parse(await readFile(vercelUrl, "utf8"));
+  assert.match(source, /\/internal\/coo-report-worker/);
+  assert.match(source, /daily_report_enabled=eq\.true/);
+  assert.match(source, /coo\.report\.daily/);
+  assert.ok(config.crons.some((x: {path:string;schedule:string}) => x.path === "/internal/coo-report-worker" && x.schedule === "0 * * * *"));
+});
+
+test("COO dashboard exposes portfolio, departments, tasks, alerts and DG reports", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  for (const label of ["Portefeuille des missions","Directions","Tâches & affectations","Alertes","Reporting DG","Paramètres COO"]) {
+    assert.ok(source.includes(label), "Missing dashboard area: " + label);
+  }
+});
