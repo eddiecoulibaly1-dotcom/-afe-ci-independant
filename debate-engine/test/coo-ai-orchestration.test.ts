@@ -51,3 +51,13 @@ test("COO AI foreign keys have covering indexes", async () => {
     assert.ok(sql.includes(index), "Missing index " + index);
   }
 });
+
+test("COO missions carry task identifiers and workers reconcile task results before mission completion", async () => {
+  const platform = await readFile(platformUrl, "utf8");
+  const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", import.meta.url), "utf8");
+  assert.match(platform, /cooTasks: createdTasks/);
+  assert.match(worker, /task_results/);
+  assert.match(worker, /syncCooTaskResults/);
+  assert.match(worker, /status:"paused"/);
+  assert.match(worker, /coo\.tasks\.incomplete/);
+});
