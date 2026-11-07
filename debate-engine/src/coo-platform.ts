@@ -526,7 +526,7 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
   const cfg = await settings(workspaceId, a.workspace.owner_id);
   if (!cfg.coo_enabled || cfg.coo_kill_switch) throw fail("Le COO IA est désactivé ou son arrêt d'urgence est activé.", 423);
   if (Number(cfg.coo_autonomy_level) !== 2) throw fail("Le moteur de délégation est réservé au niveau d'autonomie 2.", 409);
-  const cooId = clean(s.coo_agent_id, 64);
+  const cooId = clean(cfg.coo_agent_id, 64);
   if (!cooId) throw fail("Aucun agent COO IA n'est désigné.", 409);
   const cooRows = await db<any[]>("afe_agents?id=eq." + enc(cooId) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
   const coo = cooRows[0];
