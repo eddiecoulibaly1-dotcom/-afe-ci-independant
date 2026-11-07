@@ -9,6 +9,8 @@ Le pilotage opérationnel transversal relève du Directeur des Opérations (COO)
 
 1. [Charte institutionnelle et référentiel directeur](./CHARTER.md) — mandat, organigramme fonctionnel, principes, séparation des responsabilités, droits de décision et règles de gouvernance.
 2. [Manuel opératoire](./OPERATING_MODEL.md) — qualification des missions, affectation, Evidence Intelligence, cycle contradictoire, arbitrage, validation humaine et clôture.
+3. [Blueprint institutionnel et organisation opérationnelle](./ORGANIZATION_BLUEPRINT_V1.md) — organigramme, directions, mandats, responsables IA, pouvoirs réservés, cycles de gestion, KPI et état de construction.
+
 
 Le système de pilotage opérationnel du COO est spécifié dans [`AFE_CI_COO_OPERATIONS_CONTROL_PLANE.md`](../../debate-engine/docs/AFE_CI_COO_OPERATIONS_CONTROL_PLANE.md). Le code est présent sur cette branche, mais le lot A1 bis n'est pas déclaré validé avant exécution des tests et application contrôlée de la migration sur l'environnement isolé.
 
@@ -16,7 +18,7 @@ Le système de pilotage opérationnel du COO est spécifié dans [`AFE_CI_COO_OP
 
 | Lot | Périmètre | Critère de sortie |
 |---|---|---|
-| G0 | Charte et modèle opératoire | Responsabilités, incompatibilités et cycle approuvés |
+| G0 | Charte, modèle opératoire et blueprint organisationnel | Organigramme, mandats, incompatibilités et cycle de gestion définis |
 | A1 | Contrats Evidence Intelligence, collecteur GitHub lecture seule, registre SHA-256, liaison constats-preuves, worker et tests | Collecte contrôlée, provenance reproductible, preuves vérifiables, reprise sûre |
 | A1 bis | Système de pilotage du COO | Tableau central, directions, portefeuille, affectations, performance, alertes et reporting DG codés dans `debate-engine/`; migration et validation isolée encore requises |
 | A2 | Missions et affectations | Mandat complet, rôles et indépendance contrôlés |
@@ -37,7 +39,7 @@ Le système de pilotage opérationnel du COO est spécifié dans [`AFE_CI_COO_OP
 
 ## État initial de ce dossier
 
-- G0 — documentation de gouvernance : rédigée et enregistrée dans cette branche.
+- G0 — documentation de gouvernance et blueprint organisationnel : rédigés et enregistrés dans cette branche ; structure de 15 fonctions initialisée dans l'environnement de test.
 - A1 — fondations techniques Evidence Intelligence déjà présentes dans le code de la branche, mais leur audit exhaustif, les tests dédiés et la validation d'intégration restent à terminer.
 - A2 à A7 — non déclarés terminés.
 
