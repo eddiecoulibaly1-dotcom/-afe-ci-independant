@@ -591,7 +591,7 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
       .map(d => ({ slug: d.slug, name: d.name, mandate: d.mandate, director: agentById.get(d.director_agent_id), workload: workloadByAgent.get(d.director_agent_id) ?? {activeMissions:0,openTasks:0} }))
       .filter(x => x.director && x.director.status === "active" && x.director.department_id === departments.find(d => d.slug === x.slug)?.id && x.workload.activeMissions < 2 && x.workload.openTasks < 10);
     if (!eligible.length) throw fail("Aucune direction opérationnelle ne dispose d'un directeur IA actif.", 409);
-    const maxWorkstreams = Math.max(1, Math.min(8, Number(cfg.coo_max_workstreams) || 6));
+    const maxWorkstreams = Math.max(1, Math.min(8, Number(cfg.coo_max_workstreams) || 6, Number(capabilityGrants[2].limits?.max_per_run) || 6));
     const maxTasks = Math.max(1, Math.min(8, Number(cfg.coo_max_tasks_per_workstream) || 5));
     const provider = coo.model_provider === "gemini" ? "gemini" : "openai";
     const model = coo.model_id || (provider === "gemini" ? (process.env.GEMINI_MODEL || "gemini-3.8-flash") : (process.env.OPENAI_MODEL || "gpt-4.1-mini"));
