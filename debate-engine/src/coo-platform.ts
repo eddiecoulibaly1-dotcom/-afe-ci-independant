@@ -116,6 +116,15 @@ async function ensureDepartments(workspaceId: string, actorId?: string) {
       });
     }
   }
+  const cfg = await settings(workspaceId);
+  const operations = all.find(x => x.slug === "direction-operations");
+  if (operations && operations.director_user_id !== (cfg.coo_user_id ?? null)) {
+    await db("afe_org_departments?id=eq." + enc(operations.id) + "&workspace_id=eq." + enc(workspaceId), {
+      method: "PATCH", headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ director_user_id: cfg.coo_user_id ?? null, updated_at: nowIso() })
+    });
+    operations.director_user_id = cfg.coo_user_id ?? null;
+  }
   return all;
 }
 async function audit(workspaceId: string, userId: string, action: string, entityType: string, entityId: string, details: Record<string, unknown> = {}) {
@@ -523,6 +532,7 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
     }
     if (resource === "settings") {
       const a = await requireAccess(workspaceId, user);
+      await ensureDepartments(workspaceId, user.id);
       const s = await settings(workspaceId, a.workspace.owner_id);
       if (method === "GET") { const members = await db<any[]>("debate_workspace_members?workspace_id=eq." + enc(workspaceId) + "&order=created_at.asc"); send(res, 200, { settings: s, members: members.map(x => ({ user_id: x.user_id, role: x.role })) }); return true; }
       if (method === "PATCH") {
