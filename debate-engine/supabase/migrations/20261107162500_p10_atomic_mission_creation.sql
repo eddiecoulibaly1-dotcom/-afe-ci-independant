@@ -42,6 +42,7 @@ begin
    if v.orchestration_mode<>'coordinator' or v.delegation_state<>'open' or v.status not in ('queued','planning','paused') then
      raise exception 'parent coordinator delegation is not open' using errcode='23514';
    end if;
+   if p_parent_mission_id=any(coalesce(p_dependency_ids,'{}'::uuid[])) then raise exception 'child cannot depend on its own parent' using errcode='23514'; end if;
    v_mode:='leaf';
  else
    if p_orchestration_mode not in ('leaf','coordinator') then raise exception 'invalid orchestration mode' using errcode='22023'; end if;
