@@ -230,3 +230,18 @@ Chaque capacité est limitée au workspace, aux opérations réversibles, sans a
 - [ ] Recette de bout en bout avant toute augmentation au niveau 3.
 
 L'activation du niveau 2 est une délégation opérationnelle limitée, pas une autorisation de production. Les environnements Production et la baseline V1.0.7 restent inchangés.
+
+
+## 8. Exécution opérationnelle contrôlée — niveau 2
+
+Le runtime d’agents existant est désormais raccordé au poste COO via une action Preview dédiée :
+- Route POST /team/api/workspaces/:workspaceId/coo/execute-next.
+- Accès réservé au propriétaire de l’espace, uniquement sur Vercel Preview.
+- Vérification côté serveur de coo_enabled et du kill switch avant tout déclenchement.
+- Un appel prend en charge au plus une mission via le worker existant (claim atomique avec lease), l’interface limite une vague à cinq appels.
+- Arrêt de la vague dès qu’aucune mission n’est éligible.
+- Les résultats, livrables, événements et états de tâches sont persistés dans les tables existantes.
+- Si des tâches restent bloquées/incomplètes, la mission est mise en pause et le résultat partiel est conservé ; aucune tâche inachevée n’est artificiellement déclarée terminée.
+- Le portefeuille affiche le résumé, les livrables et les motifs de blocage lorsqu’ils sont disponibles.
+
+Le worker existant reste aussi déclenchable par cron dans l’environnement de production ; cette livraison ne modifie pas la production ni la configuration de ses secrets. La vague manuelle demeure Preview-only. La qualité du résultat doit être vérifiée sur des exécutions réelles avant toute hausse d’autonomie.
