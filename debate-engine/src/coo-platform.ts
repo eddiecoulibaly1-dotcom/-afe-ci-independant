@@ -1,6 +1,7 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthUser } from "./auth.js";
+import { callModel } from "./providers.js";
 
 type Role = "owner" | "admin" | "editor" | "viewer";
 const rank: Record<Role, number> = { owner: 4, admin: 3, editor: 2, viewer: 1 };
@@ -125,14 +126,15 @@ async function ensureDepartments(workspaceId: string, actorId?: string) {
     }
   }
   const cfgRows = await db<any[]>("afe_coo_settings?workspace_id=eq." + enc(workspaceId) + "&limit=1");
-  const cooUserId = cfgRows[0]?.coo_user_id ?? null;
+  const cooAgentId = cfgRows[0]?.coo_agent_id ?? null;
   const operations = all.find(x => x.slug === "direction-operations");
-  if (operations && operations.director_user_id !== cooUserId) {
+  if (operations && (operations.director_agent_id !== cooAgentId || operations.director_user_id !== null)) {
     await db("afe_org_departments?id=eq." + enc(operations.id) + "&workspace_id=eq." + enc(workspaceId), {
       method: "PATCH", headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ director_user_id: cooUserId, updated_at: nowIso() })
+      body: JSON.stringify({ director_user_id: null, director_agent_id: cooAgentId, updated_at: nowIso() })
     });
-    operations.director_user_id = cooUserId;
+    operations.director_user_id = null;
+    operations.director_agent_id = cooAgentId;
   }
   return all;
 }
@@ -501,6 +503,161 @@ async function actOnAlert(workspaceId: string, user: AuthUser, id: string, actio
   return { id, status: patch.status };
 }
 
+
+type CooPlan = {
+  summary: string;
+  priority: number;
+  workstreams: Array<{
+    departmentSlug: string;
+    missionTitle: string;
+    objective: string;
+    priority: number;
+    dueInHours: number;
+    tasks: Array<{ title: string; description: string; priority: number; dueInHours: number }>;
+  }>;
+  decisionsRequired: string[];
+  assumptions: string[];
+};
+
+async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, input: any) {
+  const instruction = clean(input.instruction, 12000);
+  if (instruction.length < 10) throw fail("L'instruction à transmettre au COO doit contenir au moins 10 caractères.");
+  const a = await requireAccess(workspaceId, user, "owner");
+  const cfg = await settings(workspaceId, a.workspace.owner_id);
+  if (!cfg.coo_enabled || cfg.coo_kill_switch) throw fail("Le COO IA est désactivé ou son arrêt d'urgence est activé.", 423);
+  if (Number(cfg.coo_autonomy_level) !== 2) throw fail("Le moteur de délégation est réservé au niveau d'autonomie 2.", 409);
+  const cooId = clean(cfg.coo_agent_id, 64);
+  if (!cooId) throw fail("Aucun agent COO IA n'est désigné.", 409);
+  const cooRows = await db<any[]>("afe_agents?id=eq." + enc(cooId) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
+  const coo = cooRows[0];
+  if (!coo || coo.slug !== "afe-ci-coo" || coo.status !== "active" || Number(coo.autonomy_level) < 2) {
+    throw fail("L'agent COO doit être actif, désigné et configuré au niveau 2.", 409);
+  }
+  const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID();
+  const prior = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
+  if (prior[0]) return { run: prior[0], replayed: true };
+  const runRows = await db<any[]>("afe_coo_runs", {
+    method: "POST", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ workspace_id: workspaceId, coo_agent_id: coo.id, initiated_by: user.id, instruction, idempotency_key: idempotencyKey, status: "planning" })
+  });
+  const run = runRows[0];
+  if (!run) throw new Error("Impossible d'enregistrer l'exécution du COO.");
+  try {
+    const [departments, agents] = await Promise.all([
+      db<any[]>("afe_org_departments?workspace_id=eq." + enc(workspaceId) + "&active=eq.true&order=name.asc"),
+      db<any[]>("afe_agents?workspace_id=eq." + enc(workspaceId) + "&status=eq.active&select=id,slug,name,mandate,specialty,system_instructions,model_provider,model_id,autonomy_level,department_id")
+    ]);
+    const agentById = new Map(agents.map(x => [x.id, x]));
+    const eligible = departments
+      .filter(d => !d.is_independent && !d.human_only && !["direction-generale","direction-operations"].includes(d.slug) && d.director_agent_id)
+      .map(d => ({ slug: d.slug, name: d.name, mandate: d.mandate, director: agentById.get(d.director_agent_id) }))
+      .filter(x => x.director && x.director.status !== "archived" && x.director.department_id === departments.find(d => d.slug === x.slug)?.id);
+    if (!eligible.length) throw fail("Aucune direction opérationnelle ne dispose d'un directeur IA actif.", 409);
+    const maxWorkstreams = Math.max(1, Math.min(8, Number(cfg.coo_max_workstreams) || 6));
+    const maxTasks = Math.max(1, Math.min(8, Number(cfg.coo_max_tasks_per_workstream) || 5));
+    const provider = coo.model_provider === "gemini" ? "gemini" : "openai";
+    const model = coo.model_id || (provider === "gemini" ? (process.env.GEMINI_MODEL || "gemini-3.8-flash") : (process.env.OPENAI_MODEL || "gpt-4.1-mini"));
+    const plan = await callModel<CooPlan>({
+      provider, model, schemaName: "afe_ci_coo_orchestration_plan",
+      system: coo.mandate + "\n\n" + (coo.system_instructions ?? "") + "\n\nTu es le COO IA. Tu transformes une instruction de la Direction générale en plan de travail réaliste, distribué et vérifiable. Tu ne changes pas le mandat. Tu ne délègues jamais à la Direction générale, à l'Audit interne indépendant, à l'Arbitrage indépendant ou à l'Autorité de validation humaine. Tu ne demandes aucune action financière, publication, déploiement, changement d'accès ou action irréversible. Les directions et responsables disponibles ci-dessous sont la seule liste autorisée. Chaque chantier doit avoir un objectif mesurable et au moins une tâche exploitable. N'invente pas les capacités ni les délais; formule les hypothèses. Respecte strictement le schéma JSON.",
+      prompt: "INSTRUCTION DE LA DG :\n" + instruction + "\n\nDIRECTIONS ET RESPONSABLES AUTORISÉS (JSON) :\n" + JSON.stringify(eligible.map(x => ({ departmentSlug: x.slug, department: x.name, mandate: x.mandate, directorAgentSlug: x.director.slug, directorAgentName: x.director.name, directorMandate: x.director.mandate, specialty: x.director.specialty }))) + "\n\nLimites: maximum " + maxWorkstreams + " chantiers; maximum " + maxTasks + " tâches par chantier; délai relatif de 1 à 720 heures; priorité 1 à 5. Ne propose que les chantiers nécessaires.",
+      schema: {
+        type: "object", additionalProperties: false,
+        properties: {
+          summary: { type: "string" },
+          priority: { type: "integer", minimum: 1, maximum: 5 },
+          workstreams: { type: "array", minItems: 1, maxItems: maxWorkstreams, items: {
+            type: "object", additionalProperties: false,
+            properties: {
+              departmentSlug: { type: "string" }, missionTitle: { type: "string" },
+              objective: { type: "string" }, priority: { type: "integer", minimum: 1, maximum: 5 },
+              dueInHours: { type: "integer", minimum: 1, maximum: 720 },
+              tasks: { type: "array", minItems: 1, maxItems: maxTasks, items: {
+                type: "object", additionalProperties: false,
+                properties: { title: { type: "string" }, description: { type: "string" }, priority: { type: "integer", minimum: 1, maximum: 5 }, dueInHours: { type: "integer", minimum: 1, maximum: 720 } },
+                required: ["title","description","priority","dueInHours"]
+              } }
+            },
+            required: ["departmentSlug","missionTitle","objective","priority","dueInHours","tasks"]
+          } },
+          decisionsRequired: { type: "array", items: { type: "string" } },
+          assumptions: { type: "array", items: { type: "string" } }
+        },
+        required: ["summary","priority","workstreams","decisionsRequired","assumptions"]
+      }
+    });
+    if (!Array.isArray(plan.workstreams) || plan.workstreams.length < 1 || plan.workstreams.length > maxWorkstreams) throw new Error("Le plan du COO dépasse les limites de délégation.");
+    const used = new Set<string>();
+    const createdMissions = [];
+    for (const stream of plan.workstreams) {
+      const department = departments.find(d => d.slug === stream.departmentSlug && d.active && !d.is_independent && !d.human_only);
+      if (!department || ["direction-generale","direction-operations","audit-interne","arbitrage-independant","validation-humaine"].includes(department.slug)) {
+        throw new Error("Le COO a proposé une direction non délégable : " + stream.departmentSlug);
+      }
+      if (used.has(stream.departmentSlug)) throw new Error("Le COO a proposé plusieurs chantiers pour la même direction; fusion requise.");
+      used.add(stream.departmentSlug);
+      const director = agentById.get(department.director_agent_id);
+      if (!director || director.status !== "active" || director.department_id !== department.id) throw new Error("Responsable IA indisponible pour " + department.name);
+      if (!textOk(stream.missionTitle, 220) || !textOk(stream.objective, 12000) || !Array.isArray(stream.tasks) || stream.tasks.length < 1 || stream.tasks.length > maxTasks) throw new Error("Chantier COO incomplet ou hors limites.");
+      const missionKey = run.id + ":" + department.slug;
+      const missionRows = await db<any[]>("afe_agent_missions?on_conflict=workspace_id%2Cidempotency_key", {
+        method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+        body: JSON.stringify({
+          workspace_id: workspaceId, agent_id: director.id, department_id: department.id,
+          created_by: user.id, title: clean(stream.missionTitle, 220), objective: clean(stream.objective, 12000),
+          input_context: { cooRunId: run.id, cooAgentId: coo.id, instruction, cooSummary: plan.summary, assumptions: plan.assumptions, decisionsRequired: plan.decisionsRequired },
+          priority: Math.max(1, Math.min(5, Number(stream.priority) || plan.priority || 3)),
+          autonomy_level: Math.max(1, Math.min(2, Number(director.autonomy_level) || 1)),
+          due_at: new Date(Date.now() + Math.max(1, Math.min(720, Number(stream.dueInHours) || 24)) * 3600000).toISOString(),
+          progress_percent: 0, idempotency_key: missionKey, orchestration_mode: "leaf", orchestration_summary: { cooRunId: run.id }
+        })
+      });
+      let mission = missionRows[0];
+      if (!mission) {
+        const priorMission = await db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(missionKey) + "&limit=1");
+        mission = priorMission[0];
+      }
+      if (!mission) throw new Error("Échec de création du chantier pour " + department.name);
+      for (const task of stream.tasks) {
+        if (!textOk(task.title, 220) || !textOk(task.description, 6000)) throw new Error("Tâche COO invalide dans " + department.name);
+        await db("afe_operational_tasks", {
+          method: "POST", headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({
+            workspace_id: workspaceId, mission_id: mission.id, department_id: department.id,
+            title: clean(task.title, 220), description: clean(task.description, 6000),
+            priority: Math.max(1, Math.min(5, Number(task.priority) || 3)),
+            assigned_agent_id: director.id,
+            due_at: new Date(Date.now() + Math.max(1, Math.min(720, Number(task.dueInHours) || Number(stream.dueInHours) || 24)) * 3600000).toISOString(),
+            created_by: user.id
+          })
+        });
+      }
+      await db("afe_agent_events", {
+        method: "POST", headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ workspace_id: workspaceId, mission_id: mission.id, agent_id: coo.id, actor_type: "agent", actor_id: coo.id, event_type: "coo.delegation.dispatched", payload: { cooRunId: run.id, departmentSlug: department.slug, taskCount: stream.tasks.length } })
+      });
+      createdMissions.push({ missionId: mission.id, departmentSlug: department.slug, departmentName: department.name, directorAgent: director.name, taskCount: stream.tasks.length });
+    }
+    const status = plan.decisionsRequired.length ? "approval_required" : "dispatched";
+    const updated = await db<any[]>("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
+      method: "PATCH", headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ status, plan: { ...plan, dispatched: createdMissions }, missions_created: createdMissions.length, completed_at: nowIso() })
+    });
+    await db("afe_agent_events", {
+      method: "POST", headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ workspace_id: workspaceId, agent_id: coo.id, actor_type: "agent", actor_id: coo.id, event_type: "coo.orchestration.completed", payload: { cooRunId: run.id, missionsCreated: createdMissions.length, decisionsRequired: plan.decisionsRequired.length } })
+    });
+    await audit(workspaceId, user.id, "coo.orchestration.dispatched", "coo_run", run.id, { cooAgentId: coo.id, missionsCreated: createdMissions.length });
+    return { run: updated[0] ?? { ...run, status, plan, missions_created: createdMissions.length }, plan, dispatched: createdMissions };
+  } catch (error) {
+    await db("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
+      method: "PATCH", headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ status: "failed", error_message: (error instanceof Error ? error.message : String(error)).slice(0, 3000), completed_at: nowIso() })
+    });
+    throw error;
+  }
+}
+
 export async function handleCooRequest(req: IncomingMessage, res: ServerResponse, path: string, user: AuthUser): Promise<boolean> {
   const p = path.split("/").filter(Boolean);
   if (p.length < 6 || p[0] !== "team" || p[1] !== "api" || p[2] !== "workspaces" || p[4] !== "coo") return false;
@@ -509,6 +666,15 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
   const method = req.method ?? "GET";
   try {
     if (resource === "dashboard" && method === "GET") { send(res, 200, await handleDashboard(workspaceId, user)); return true; }
+    if (resource === "orchestrate" && method === "POST") {
+      const result = await orchestrateCooInstruction(workspaceId, user, await readBody(req));
+      send(res, 201, result); return true;
+    }
+    if (resource === "orchestrations" && method === "GET") {
+      await requireAccess(workspaceId, user);
+      const runs = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&order=created_at.desc&limit=50");
+      send(res, 200, { runs }); return true;
+    }
     if (resource === "departments") {
       await requireAccess(workspaceId, user);
       await ensureDepartments(workspaceId, user.id);
@@ -579,17 +745,46 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
       if (method === "PATCH") {
         if (a.role !== "owner") throw fail("Seul le propriétaire de l'espace, représentant la Direction générale, peut désigner le COO et modifier le reporting.", 403);
         const i = await readBody(req), patch: Record<string, unknown> = { updated_at: nowIso() };
-        if (i.cooUserId !== undefined) {
-          const uid = clean(i.cooUserId, 64);
-          if (uid) await validateMember(workspaceId, uid);
-          patch.coo_user_id = uid || null;
+        if (i.cooAgentId !== undefined) {
+          const aid = clean(i.cooAgentId, 64);
+          let selected: any = null;
+          if (aid) {
+            const found = await db<any[]>("afe_agents?id=eq." + enc(aid) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
+            selected = found[0];
+            if (!selected || selected.slug !== "afe-ci-coo" || selected.status !== "active") throw fail("Seul l'agent COO dédié et actif peut être désigné.", 400);
+            patch.coo_agent_id = aid;
+            patch.coo_user_id = null;
+          } else {
+            patch.coo_agent_id = null;
+            patch.coo_enabled = false;
+          }
         }
+        if (i.cooEnabled !== undefined) {
+          if (Boolean(i.cooEnabled) && !clean(i.cooAgentId, 64) && !cfg.coo_agent_id) throw fail("Désignez d'abord l'agent COO IA.", 400);
+          patch.coo_enabled = Boolean(i.cooEnabled);
+        }
+        if (i.cooAutonomyLevel !== undefined) {
+          const level = Number(i.cooAutonomyLevel);
+          if (level !== 1 && level !== 2) throw fail("Le niveau 3 reste verrouillé jusqu'à validation de la recette de sécurité.", 400);
+          patch.coo_autonomy_level = level;
+        }
+        if (i.cooKillSwitch !== undefined) patch.coo_kill_switch = Boolean(i.cooKillSwitch);
         if (i.dailyReportEnabled !== undefined) patch.daily_report_enabled = Boolean(i.dailyReportEnabled);
         const rows = await db<any[]>("afe_coo_settings?workspace_id=eq." + enc(workspaceId), { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch) });
-        if (i.cooUserId !== undefined) {
+        if (i.cooAgentId !== undefined) {
           const cooDept = await db<any[]>("afe_org_departments?workspace_id=eq." + enc(workspaceId) + "&slug=eq.direction-operations&limit=1");
-          if (cooDept[0]) await db("afe_org_departments?id=eq." + enc(cooDept[0].id) + "&workspace_id=eq." + enc(workspaceId), { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ director_user_id: i.cooUserId || null, updated_at: nowIso() }) });
+          if (cooDept[0]) await db("afe_org_departments?id=eq." + enc(cooDept[0].id) + "&workspace_id=eq." + enc(workspaceId), {
+            method: "PATCH", headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({ director_user_id: null, director_agent_id: i.cooAgentId || null, updated_at: nowIso() })
+          });
+          if (i.cooAgentId) await db("afe_agents?id=eq." + enc(i.cooAgentId) + "&workspace_id=eq." + enc(workspaceId), {
+            method: "PATCH", headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({ autonomy_level: 2, department_id: cooDept[0]?.id ?? null, updated_at: nowIso() })
+          });
         }
+        if (i.cooAutonomyLevel === 2 && cfg.coo_agent_id) await db("afe_agents?id=eq." + enc(cfg.coo_agent_id) + "&workspace_id=eq." + enc(workspaceId), {
+          method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ autonomy_level: 2, updated_at: nowIso() })
+        });
         await audit(workspaceId, user.id, "coo.settings.updated", "settings", workspaceId, { fields: Object.keys(patch) });
         send(res, 200, { settings: rows[0] }); return true;
       }
