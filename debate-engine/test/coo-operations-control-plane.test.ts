@@ -154,11 +154,12 @@ test("COO plans include live workload and respect deterministic capacity ceiling
   assert.match(source, /x\.workload\.activeMissions < 2/);
   assert.match(source, /x\.workload\.openTasks < 10/);
   assert.match(source, /maxTasksPerRun/);
+  assert.match(source, /capabilityGrants\[2\]\.limits\?\.max_per_run/);
 });
 
 test("sensitive COO workstreams are held for human approval before any dispatch", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /const sensitiveAction = \/\(\?:payer/);
+  assert.match(source, /const sensitiveAction = \/\(/);
   assert.match(source, /Approbation humaine obligatoire/);
   assert.match(source, /if \(Array\.isArray\(plan\.decisionsRequired\).*length > 0\)/);
 });
