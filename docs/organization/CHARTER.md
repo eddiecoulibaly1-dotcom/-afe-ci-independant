@@ -187,3 +187,16 @@ Toute modification doit inclure : motif, portée, analyse d'impact, compatibilit
 ## 11. Statut d'approbation
 
 Ce document établit le référentiel directeur de conception pour AFE-CI Autonomous Organization V1. Son ajout à la branche de développement ne constitue ni une validation juridique de l'organisation, ni une approbation de production, ni une délégation de pouvoir à une IA.
+
+
+---
+
+## Addendum 1.1 — Nature du COO et lignes de rattachement
+
+Le Directeur des Opérations est un **agent d'intelligence artificielle dédié**, désigné par la Direction générale humaine. Il coordonne l'exécution dans les limites d'un mandat et d'outils restreints. Il ne détient pas de pouvoir souverain, ne peut pas s'auto-déléguer des privilèges et ne peut pas se substituer à la DG.
+
+Les directions Stratégie & Développement, Risques & Contrôle et Gouvernance & Conformité disposent d'un accès fonctionnel direct à la Direction générale. L'Audit interne indépendant et l'Arbitrage indépendant sont hors de la hiérarchie opérationnelle du COO. L'Autorité de validation humaine est exclusivement humaine.
+
+Le détail de l'organigramme, des responsables, des mandats, des cycles de gestion, des KPI et des niveaux d'autonomie est défini dans [le Blueprint institutionnel et organisationnel](./ORGANIZATION_BLUEPRINT_V1.md).
+
+Cet addendum ne modifie pas rétroactivement les décisions déjà prises. Son intégration applicative et ses contrôles techniques restent soumis aux tests et à l'approbation de gouvernance.
