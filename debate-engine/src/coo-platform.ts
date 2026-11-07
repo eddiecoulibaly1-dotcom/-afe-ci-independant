@@ -386,8 +386,19 @@ async function patchTask(workspaceId: string, user: AuthUser, id: string, input:
   if (input.status !== undefined) {
     if (!["todo", "in_progress", "blocked", "done", "cancelled"].includes(input.status)) throw fail("Statut de tâche invalide.");
     patch.status = input.status;
-    if (input.status === "done") { patch.progress_percent = 100; patch.completed_at = nowIso(); }
-    else if (input.status !== "cancelled") patch.completed_at = null;
+    if (input.status === "done") {
+      patch.progress_percent = 100;
+      patch.completed_at = nowIso();
+      patch.blocked_reason = null;
+    } else if (input.status === "blocked") {
+      patch.completed_at = null;
+    } else if (input.status === "todo" || input.status === "in_progress") {
+      patch.completed_at = null;
+      patch.blocked_reason = null;
+    } else if (input.status === "cancelled") {
+      patch.completed_at = null;
+      patch.blocked_reason = null;
+    }
   }
   if (input.progressPercent !== undefined) {
     const p = Number(input.progressPercent);
@@ -396,8 +407,14 @@ async function patchTask(workspaceId: string, user: AuthUser, id: string, input:
   }
   if (input.blockedReason !== undefined) {
     patch.blocked_reason = clean(input.blockedReason, 3000) || null;
-    if (patch.blocked_reason) patch.status = "blocked";
+    if (patch.blocked_reason) {
+      patch.status = "blocked";
+      patch.completed_at = null;
+    }
   }
+  // Status invariants always win over a stale percentage sent by the UI.
+  if (patch.status === "done") { patch.progress_percent = 100; patch.completed_at = patch.completed_at ?? nowIso(); patch.blocked_reason = null; }
+  if (patch.status === "blocked") patch.completed_at = null;
   if (input.dueAt !== undefined) patch.due_at = input.dueAt || null;
   if (input.assignedUserId !== undefined) {
     const uid = clean(input.assignedUserId, 64);
