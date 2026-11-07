@@ -96,7 +96,7 @@ The authenticated `/coo` page provides the operational command surface for the D
 
 The implementation uses the existing workspace, agent, mission queue, Supabase persistence and notification system. Its schema is additive in `supabase/migrations/20261107190000_afe_ci_coo_operations_control_plane.sql` and `supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql`; the technical specification and validation gates are in `docs/AFE_CI_COO_OPERATIONS_CONTROL_PLANE.md`.
 
-A Vercel Cron worker is configured hourly and checks each workspace's daily report hour (default 08:00 UTC). It requires `CRON_SECRET` or `COO_REPORT_WORKER_SECRET`. Vercel Cron is not active on Preview deployments. The migration, tests, Preview acceptance and any Production rollout remain separate approval gates; this increment does not apply the migration or deploy Production.
+A Vercel Cron worker is configured once daily at 08:00 UTC (Abidjan local time). It requires `CRON_SECRET` or `COO_REPORT_WORKER_SECRET`. Vercel Cron is not active on Preview deployments. The migration, tests, Preview acceptance and any Production rollout remain separate approval gates; this increment does not apply the migration or deploy Production.
 
 ## Production environment
 
