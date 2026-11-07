@@ -29,10 +29,12 @@ test("COO orchestrator calls a model, restricts delegation to active non-indepen
   assert.match(source, /coo\.orchestration\.completed/);
 });
 
-test("COO orchestration never dispatches work when the plan requires a reserved human decision", async () => {
+test("COO orchestration blocks only sensitive actions requiring a reserved human decision", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /plan\.decisionsRequired\.length > 0/);
-  assert.match(source, /status: "approval_required", plan, missions_created: 0/);
+  assert.match(source, /if \(sensitiveItems\.length > 0\)/);
+  assert.match(source, /Approbation humaine obligatoire/);
+  assert.match(source, /Routine DG decisions are recorded for follow-up/);
+  assert.match(source, /const status = "dispatched"/);
 });
 
 test("COO orchestration endpoint is authenticated and settings cap autonomy at level 2", async () => {
