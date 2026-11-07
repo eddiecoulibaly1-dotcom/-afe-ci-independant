@@ -188,3 +188,45 @@ The Supabase Performance Advisor still reports 34 unindexed foreign keys elsewhe
 7. Obtain explicit approval before any Production migration, merge to `main` or Production deployment.
 
 The implementation is CI-validated and its schema exists only in `afe-ci-test`. It is not yet declared live in Production or fully operational until the remaining runtime gates pass.
+
+
+## 7. COO IA — moteur d'orchestration et autonomie de niveau 2
+
+Le COO IA dédié est configuré comme agent actif du workspace de test, désigné dans `afe_coo_settings.coo_agent_id`, avec `coo_enabled=true`, `coo_autonomy_level=2` et arrêt d'urgence inactif. La Direction des Opérations pointe vers cet agent et aucun COO utilisateur humain n'est utilisé.
+
+Le moteur d'orchestration reçoit une instruction de la DG humaine, consulte les directions et leurs responsables IA actifs, lit leur charge réelle (missions et tâches non clôturées), construit un plan structuré, puis crée les missions et tâches dans le même workspace. Il exclut la DG, l'Audit interne indépendant, l'Arbitrage indépendant et l'Autorité de validation humaine des cibles de délégation.
+
+### Capacités explicitement autorisées
+
+La migration additive `20261107212500_afe_ci_coo_scoped_operational_grants.sql` attribue au seul agent COO désigné quatre capacités :
+- `coo.organization.read` — lecture de l'organigramme ;
+- `coo.workload.read` — lecture de la charge des directions ;
+- `coo.missions.create` — création de six missions au maximum par exécution ;
+- `coo.tasks.create` — création de trente tâches au maximum par exécution.
+
+Chaque capacité est limitée au workspace, aux opérations réversibles, sans approbation préalable seulement pour ces actions de faible risque. Le serveur vérifie chaque grant actif, sa permission, son scope et son drapeau d'approbation avant toute orchestration. L'agent ne reçoit aucune clé Supabase, aucun accès SQL et aucun privilège service-role.
+
+### Contrôles de capacité et d'approbation
+
+- Un directeur IA n'est proposé que s'il est actif, rattaché à sa direction et possède moins de deux missions actives et moins de dix tâches ouvertes.
+- Une exécution est limitée à six chantiers et trente tâches au maximum, avec une seule mission nouvelle par direction et par exécution.
+- Les actions potentiellement sensibles ou irréversibles sont bloquées avant dispatch et le plan est placé en `approval_required`.
+- Le plafond reste de dix orchestrations par workspace sur 24 heures.
+- Les erreurs après création partielle sont conservées avec statut `partial`, nombre de missions déjà créées et événement d'audit explicite. Elles ne sont pas présentées comme des échecs sans effet.
+- Le kill switch bloque les nouvelles orchestrations.
+- Le niveau 3 reste verrouillé ; aucune autonomie supérieure n'est activée.
+
+### État de validation du moteur
+
+- [x] COO IA désigné et actif dans l'environnement de test.
+- [x] Autonomie configurée au niveau 2 et moteur activé.
+- [x] Quatre grants de capacité appliqués et vérifiés dans Supabase de test.
+- [x] Contrôles serveur, charge des directions, plafonds et détection déterministe des actions sensibles ajoutés.
+- [x] Traçabilité des dispatchs partiels renforcée.
+- [ ] CI complète du commit contenant ces changements.
+- [ ] Essai réel via session DG authentifiée sur Preview : planification, création des missions et tâches.
+- [ ] Vérification du worker et de l'exécution des missions par les agents directeurs.
+- [ ] Test négatif des capacités absentes, du kill switch, des directions indépendantes et des actions sensibles.
+- [ ] Recette de bout en bout avant toute augmentation au niveau 3.
+
+L'activation du niveau 2 est une délégation opérationnelle limitée, pas une autorisation de production. Les environnements Production et la baseline V1.0.7 restent inchangés.
