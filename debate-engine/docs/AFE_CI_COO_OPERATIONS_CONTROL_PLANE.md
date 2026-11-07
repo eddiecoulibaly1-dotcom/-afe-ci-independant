@@ -77,6 +77,7 @@ A task linked to a mission must belong to the same department. User and agent as
 
 The alert register deduplicates operational signals by workspace and stable key. Current rules:
 - overdue active mission;
+- paused or blocked mission;
 - failed mission;
 - human approval waiting for more than 24 hours;
 - overdue task;
