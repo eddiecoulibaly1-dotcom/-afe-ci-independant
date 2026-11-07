@@ -174,3 +174,21 @@ L'ordre peut être ajusté selon les dépendances techniques découvertes, mais 
 | I — Sécurité/exploitation | P0 lifecycle corrigé sur TEST; revue exhaustive restante |
 
 Ce registre doit être mis à jour à chaque livraison avec commit, tests, preuve et limites.
+
+
+## 10. Mise à jour d'exécution — P10 (2026-11-07)
+
+### Livré dans la branche `build/afe-ci-complete-platform`
+- Migration additive `20261107000300_p10_mission_hierarchy_dependencies.sql` : parent mission, profondeur, mode coordinator/leaf, résumé d'orchestration, dépendances explicites avec clés workspace composites.
+- Migration corrective `20261107000400_p10_hierarchy_trigger_fix.sql` : correction du déclencheur de profondeur/cycle découvert pendant le test SQL.
+- Module `src/autonomous-agents/mission-graph.ts` : validation des nœuds, parents, profondeur, dépendances, détection de cycles, calcul des missions prêtes et agrégation des états enfants.
+- Tests unitaires `test/autonomous-mission-graph.test.ts` : hiérarchie, références absentes, cycles, dépendances et agrégation.
+
+### Validation réelle sur `afe-ci-test`
+- Les deux migrations P10 ont été appliquées sur TEST.
+- Scénario SQL transactionnel : création d'une mission racine et d'une mission enfant, profondeur enfant égale à 1, création d'une dépendance et rejet du cycle.
+- Transaction annulée après le scénario; zéro mission temporaire conservée.
+- Aucun accès à Production.
+
+### Limites restantes du lot P10
+Le schéma et les fonctions de validation du graphe sont en place, mais l'API de création/délégation de sous-missions, le dispatch conditionné par les dépendances, l'agrégation persistée du parent, les réponses/handoffs et la synthèse finale doivent encore être raccordés au worker et à l'interface. P10 n'est donc pas déclaré terminé.
