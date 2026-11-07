@@ -13,7 +13,7 @@ create or replace function public.afe_transition_agent_lifecycle(
 )
 returns jsonb
 language plpgsql
-security definer
+security invoker
 set search_path = pg_catalog, public
 as $function$
 declare
