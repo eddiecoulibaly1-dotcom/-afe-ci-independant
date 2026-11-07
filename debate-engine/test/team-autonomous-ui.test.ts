@@ -49,3 +49,24 @@ test("agent deletion migration changes historical foreign keys to RESTRICT", asy
   assert.ok(migration.includes("afe_agent_missions_agent_id_workspace_id_fkey"));
   assert.ok(migration.includes("afe_deliberation_contributions_agent_id_workspace_id_fkey"));
 });
+
+
+test("agent lifecycle transitions are delegated to an atomic server-side RPC", () => {
+  assert.ok(agents.includes('rpc/afe_transition_agent_lifecycle'));
+  assert.ok(agents.includes('actionByStatus'));
+  assert.ok(agents.includes('Séparez la transition de statut'));
+  assert.ok(!agents.includes('patch.status=i.status'));
+});
+
+test("agent lifecycle SQL serializes transitions and writes a detailed event atomically", async () => {
+  const migration = await readFile(new URL("../supabase/migrations/20261107000200_agent_lifecycle_atomic_audit.sql", import.meta.url), "utf8");
+  assert.ok(migration.includes("for update"));
+  assert.ok(migration.includes("agent.activated"));
+  assert.ok(migration.includes("agent.paused"));
+  assert.ok(migration.includes("agent.archived"));
+  assert.ok(migration.includes("agent.restored"));
+  assert.ok(migration.includes("'previous_status'"));
+  assert.ok(migration.includes("'new_status'"));
+  assert.ok(migration.includes("revoke all on function"));
+  assert.ok(migration.includes("to service_role"));
+});
