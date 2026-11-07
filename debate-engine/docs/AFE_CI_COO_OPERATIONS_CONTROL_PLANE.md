@@ -49,7 +49,7 @@ The first access seeds the workspace with the institutional catalogue:
 
 The two independent functions are marked `is_independent`; human validation is also marked `human_only`. The COO interface cannot modify their mandates, deactivate them or assign their work. Their reporting line is not placed under the COO.
 
-Existing agents are associated with their matching departments when the catalogue is initialized. Agents remain subject to their existing draft/active lifecycle and authorization rules.
+Existing agents are associated with their matching departments when the catalogue is initialized. Operational departments can designate an accountable human lead and/or an active agent lead. The Direction des Opérations lead is synchronized with the COO designated by the Direction générale. Agents remain subject to their existing draft/active lifecycle and authorization rules.
 
 ### 2.3 Mission portfolio
 
