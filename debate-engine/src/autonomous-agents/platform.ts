@@ -25,13 +25,13 @@ async function createMission(wid:string,user:AuthUser,input:any){
  if(!agentId||title.length<3||objective.length<10)throw fail("Agent, titre et objectif (10 caractères minimum) sont requis.");
  const a=await agent(wid,agentId);if(!a||a.status!=="active")throw fail("Agent introuvable ou non actif.",404);
  const parentId=clean(input.parentMissionId,64)||null;let parent:any=null;
- if(parentId){const parents=await db<any[]>("afe_agent_missions?id=eq."+enc(parentId)+"&workspace_id=eq."+enc(wid)+"&limit=1");parent=parents[0];if(!parent)throw fail("Mission parente introuvable dans cet espace.",404);if(parent.orchestration_mode!=="coordinator")throw fail("La mission parente doit être coordinatrice.",409);if(["completed","failed","cancelled"].includes(parent.status))throw fail("La mission parente est déjà terminée.",409);if(Number(parent.orchestration_depth)>=5)throw fail("Profondeur maximale de sous-missions atteinte.",409);}
+ if(parentId){const parents=await db<any[]>("afe_agent_missions?id=eq."+enc(parentId)+"&workspace_id=eq."+enc(wid)+"&limit=1");parent=parents[0];if(!parent)throw fail("Mission parente introuvable dans cet espace.",404);if(parent.orchestration_mode!=="coordinator")throw fail("La mission parente doit être coordinatrice.",409);if(parent.delegation_state!=="open")throw fail("La fenêtre de délégation de cette mission est fermée.",409);if(["completed","failed","cancelled"].includes(parent.status))throw fail("La mission parente est déjà terminée.",409);if(Number(parent.orchestration_depth)>=5)throw fail("Profondeur maximale de sous-missions atteinte.",409);}
  const key=clean(input.idempotencyKey,160)||randomUUID();
  const prior=await db<any[]>("afe_agent_missions?workspace_id=eq."+enc(wid)+"&idempotency_key=eq."+enc(key)+"&limit=1");if(prior[0])return prior[0];
  const dependencies=Array.isArray(input.dependsOnMissionIds)?[...new Set<string>(input.dependsOnMissionIds.filter((x:unknown):x is string=>typeof x==="string").map((x:string)=>clean(x,64)))].slice(0,20):[];
  if(dependencies.includes(parentId??""))throw fail("Une mission enfant ne peut pas dépendre de sa propre mission parente.",400);
  for(const dependencyId of dependencies){const dep=await db<any[]>("afe_agent_missions?id=eq."+enc(dependencyId)+"&workspace_id=eq."+enc(wid)+"&limit=1");if(!dep[0])throw fail("Une dépendance est absente ou appartient à un autre espace.",403);}
- const rows=await db<any[]>("afe_agent_missions",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({workspace_id:wid,agent_id:agentId,created_by:user.id,title,objective,input_context:input.context&&typeof input.context==="object"?input.context:{},priority:Math.max(1,Math.min(5,Number(input.priority)||3)),autonomy_level:Math.min(a.autonomy_level,Math.max(1,Math.min(3,Number(input.autonomyLevel)||1))),idempotency_key:key,parent_mission_id:parentId,orchestration_mode:parentId?"leaf":input.orchestrationMode==="coordinator"?"coordinator":"leaf"})});
+ const rows=await db<any[]>("afe_agent_missions",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({workspace_id:wid,agent_id:agentId,created_by:user.id,title,objective,input_context:input.context&&typeof input.context==="object"?input.context:{},priority:Math.max(1,Math.min(5,Number(input.priority)||3)),autonomy_level:Math.min(a.autonomy_level,Math.max(1,Math.min(3,Number(input.autonomyLevel)||1))),idempotency_key:key,parent_mission_id:parentId,orchestration_mode:parentId?"leaf":input.orchestrationMode==="coordinator"?"coordinator":"leaf",delegation_state:!parentId&&input.orchestrationMode==="coordinator"?"open":"closed"})});
  const m=rows[0];if(!m)throw new Error("Mission non persistée.");
  try{for(const dependencyId of dependencies)await db("rpc/afe_add_mission_dependency",{method:"POST",body:JSON.stringify({p_workspace_id:wid,p_mission_id:m.id,p_dependency_id:dependencyId,p_actor_id:user.id})});await db("afe_agent_events",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({workspace_id:wid,mission_id:m.id,agent_id:agentId,actor_type:"human",actor_id:user.id,event_type:parentId?"mission.child_queued":"mission.queued",payload:{title,parentMissionId:parentId,dependencies}})});}
  catch(error){await db("afe_agent_missions?id=eq."+enc(m.id)+"&workspace_id=eq."+enc(wid),{method:"PATCH",headers:{Prefer:"return=minimal"},body:JSON.stringify({status:"cancelled",failure_code:"MISSION_GRAPH_SETUP_FAILED",failure_message:"Configuration de la hiérarchie ou des dépendances incomplète.",updated_at:new Date().toISOString()})});throw error;}
@@ -141,6 +141,13 @@ if(p[4]==="deliberations"&&p[5]&&p[6]==="approval"&&p.length===7&&method==="POST
 if(p[4]==="missions"&&p.length===5){
  if(method==="POST"){const i=await body(req);send(res,202,{mission:await createMission(wid,user,i),execution:"queued_server_side"});return true;}
  if(method==="GET"){await requireRole(wid,user);const rows=await db<any[]>("afe_agent_missions?workspace_id=eq."+enc(wid)+"&order=created_at.desc&limit=100");send(res,200,{missions:rows});return true;}
+}
+if(p[4]==="missions"&&p[5]&&p[6]==="delegation"&&p[7]==="close"&&p.length===8&&method==="POST"){
+ await requireRole(wid,user,"editor");
+ const parentId=p[5];
+ const rows=await db<any>("rpc/afe_close_mission_delegation",{method:"POST",body:JSON.stringify({p_workspace_id:wid,p_mission_id:parentId,p_actor_id:user.id})});
+ if(!rows?.id)throw fail("La clôture de délégation n'a pas été confirmée.",409);
+ send(res,200,{mission:rows,delegationClosed:true,readyForCoordinator:true});return true;
 }
 if(p[4]==="missions"&&p[5]&&p[6]==="children"&&p.length===7){
  const parentId=p[5];
