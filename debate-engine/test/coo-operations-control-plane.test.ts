@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const migrationUrl = new URL("../supabase/migrations/20261107190000_afe_ci_coo_operations_control_plane.sql", import.meta.url);
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
+const indexesUrl = new URL("../supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql", import.meta.url);
 const serverUrl = new URL("../src/server.ts", import.meta.url);
 const vercelUrl = new URL("../vercel.json", import.meta.url);
 
@@ -70,4 +71,20 @@ test("COO dashboard exposes portfolio, departments, tasks, alerts and DG reports
   for (const label of ["Portefeuille des missions","Directions","Tâches & affectations","Alertes","Reporting DG","Paramètres COO"]) {
     assert.ok(source.includes(label), "Missing dashboard area: " + label);
   }
+});
+
+test("COO foreign keys have dedicated covering indexes", async () => {
+  const sql = await readFile(indexesUrl, "utf8");
+  for (const index of [
+    "afe_agents_department_workspace_idx",
+    "afe_agent_missions_department_workspace_idx",
+    "afe_agent_missions_operational_owner_idx",
+    "afe_operational_tasks_mission_workspace_idx",
+    "afe_operational_tasks_department_workspace_idx",
+    "afe_operational_tasks_assigned_agent_workspace_idx",
+    "afe_coo_alerts_mission_workspace_idx",
+    "afe_coo_alerts_task_workspace_idx",
+    "afe_coo_reports_generated_by_idx",
+    "afe_coo_settings_coo_user_idx"
+  ]) assert.ok(sql.includes(index), "Missing FK index " + index);
 });
