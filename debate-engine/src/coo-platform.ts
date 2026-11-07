@@ -41,18 +41,19 @@ function send(res: ServerResponse, status: number, data: unknown) {
 function fail(message: string, status = 400) { return Object.assign(new Error(message), { status }); }
 
 const DEPARTMENTS = [
-  { slug: "direction-generale", name: "Direction générale", kind: "executive", reportsTo: null, independent: false, humanOnly: false, mandate: "Définit la stratégie, les priorités, les délégations, les arbitrages de ressources et les décisions de gouvernance. Reçoit les rapports du COO et conserve l'autorité de validation humaine." },
-  { slug: "direction-operations", name: "Direction des Opérations (COO)", kind: "operational", reportsTo: "direction-generale", independent: false, humanOnly: false, mandate: "Pilote le portefeuille des missions, les directions opérationnelles, les capacités, les tâches, les délais, les alertes et le reporting. Ne modifie jamais les conclusions techniques et ne dirige pas l'arbitrage indépendant." },
+  { slug: "direction-generale", name: "Direction générale", kind: "executive", reportsTo: null, independent: false, humanOnly: true, mandate: "Autorité humaine de gouvernance. Définit la stratégie, les priorités, les délégations, les arbitrages de ressources et les décisions réservées. Reçoit les rapports du COO." },
+  { slug: "direction-operations", name: "Direction des Opérations (COO)", kind: "operational", reportsTo: "direction-generale", independent: false, humanOnly: false, mandate: "COO IA rattaché à la DG. Orchestre les directions opérationnelles, missions, ressources, tâches, délais, alertes et reporting. N'altère pas les conclusions techniques, l'audit indépendant, l'arbitrage ou la validation humaine." },
   { slug: "strategie-developpement", name: "Stratégie & Développement", kind: "operational", reportsTo: "direction-generale", independent: false, humanOnly: false, mandate: "Prépare les orientations, plans de développement, analyses stratégiques et objectifs transversaux soumis à la Direction générale." },
-  { slug: "finance-investissements", name: "Finance & Investissements", kind: "control", reportsTo: "direction-operations", independent: false, humanOnly: false, mandate: "Analyse les budgets, coûts, investissements, hypothèses financières et risques économiques. Toute décision financière engageante demeure soumise à validation humaine." },
-  { slug: "risques-controle", name: "Risques & Contrôle", kind: "control", reportsTo: "direction-operations", independent: false, humanOnly: false, mandate: "Identifie, évalue et suit les risques, contrôle les dispositifs de maîtrise et formule des constats étayés par des preuves." },
-  { slug: "gouvernance-conformite", name: "Gouvernance & Conformité", kind: "control", reportsTo: "direction-operations", independent: false, humanOnly: false, mandate: "Contrôle la conformité, les règles de gouvernance, les conflits d'intérêts et la qualité des raisonnements. Conserve son indépendance de jugement technique." },
+  { slug: "finance-investissements", name: "Finance & Investissements", kind: "control", reportsTo: "direction-operations", independent: false, humanOnly: false, mandate: "Analyse les budgets, coûts, investissements, hypothèses financières et risques économiques. Tout engagement financier reste soumis à validation humaine." },
+  { slug: "risques-controle", name: "Risques & Contrôle", kind: "control", reportsTo: "direction-generale", independent: false, humanOnly: false, mandate: "Identifie et évalue les risques, surveille les contrôles et KRI. Dispose d'un droit d'escalade directe à la DG et conserve son indépendance de jugement." },
+  { slug: "gouvernance-conformite", name: "Gouvernance & Conformité", kind: "control", reportsTo: "direction-generale", independent: false, humanOnly: false, mandate: "Contrôle les délégations, la conformité, les conflits d'intérêts et la séparation des fonctions. Dispose d'un droit d'escalade directe à la DG." },
   { slug: "evidence-intelligence", name: "Evidence Intelligence", kind: "support", reportsTo: "direction-operations", independent: false, humanOnly: false, mandate: "Collecte les sources autorisées, vérifie la provenance, conserve les empreintes et qualifie la relation entre preuves et constats." },
   { slug: "secretariat-general", name: "Secrétariat général des missions", kind: "operational", reportsTo: "direction-operations", independent: false, humanOnly: false, mandate: "Enregistre les mandats, prépare les dossiers, suit les jalons, les affectations, les échéances et la complétude documentaire." },
   { slug: "operations-missions", name: "Opérations de mission", kind: "operational", reportsTo: "direction-operations", independent: false, humanOnly: false, mandate: "Coordonne l'exécution quotidienne des missions autorisées, les tâches, les dépendances et les plans de rattrapage." },
-  { slug: "audit-qualite", name: "Audit qualité", kind: "control", reportsTo: "direction-operations", independent: false, humanOnly: false, mandate: "Vérifie la qualité des livrables, la traçabilité, la complétude des contrôles et la conformité aux procédures." },
+  { slug: "audit-qualite", name: "Audit qualité", kind: "control", reportsTo: "direction-operations", independent: false, humanOnly: false, mandate: "Vérifie la qualité des livrables, la traçabilité, la complétude des contrôles et la conformité aux procédures, sans se substituer à l'audit interne." },
   { slug: "documentation-reporting", name: "Documentation & Reporting", kind: "support", reportsTo: "direction-operations", independent: false, humanOnly: false, mandate: "Produit les dossiers, rapports, synthèses, exports et archives institutionnelles." },
-  { slug: "infrastructure-securite", name: "Infrastructure & Sécurité", kind: "support", reportsTo: "direction-operations", independent: false, humanOnly: false, mandate: "Assure la disponibilité, la sécurité, les habilitations, la journalisation et la protection des environnements." },
+  { slug: "infrastructure-securite", name: "Infrastructure & Sécurité", kind: "support", reportsTo: "direction-operations", independent: false, humanOnly: false, mandate: "Assure l'architecture, la disponibilité, la sécurité, les habilitations et la séparation des environnements." },
+  { slug: "audit-interne", name: "Audit interne indépendant", kind: "independent", reportsTo: null, independent: true, humanOnly: false, mandate: "Évalue de manière indépendante la gouvernance, les risques et les contrôles. Dispose d'un accès direct à la DG et ne relève pas du COO." },
   { slug: "arbitrage-independant", name: "Arbitrage indépendant", kind: "independent", reportsTo: null, independent: true, humanOnly: false, mandate: "Statue de manière indépendante sur les constats après contradiction complète. N'est pas placé sous l'autorité opérationnelle du COO." },
   { slug: "validation-humaine", name: "Autorité de validation humaine", kind: "human_authority", reportsTo: null, independent: true, humanOnly: true, mandate: "Approuve, rejette, approuve avec réserves ou demande une reprise. Cette fonction ne peut jamais être simulée par un agent IA." }
 ] as const;
@@ -100,12 +101,19 @@ async function ensureDepartments(workspaceId: string, actorId?: string) {
   const all = await db<any[]>("afe_org_departments?workspace_id=eq." + enc(workspaceId) + "&order=created_at.asc");
   const agents = await db<any[]>("afe_agents?workspace_id=eq." + enc(workspaceId) + "&select=id,slug,department_id");
   const mapping: Record<string, string> = {
-    "strategie": "strategie-developpement",
-    "finance-investissements": "finance-investissements",
-    "risques-controle": "risques-controle",
-    "gouvernance-conformite": "gouvernance-conformite",
-    "recherche-prospective": "evidence-intelligence",
-    "technologie-ingenierie": "infrastructure-securite"
+    "afe-ci-coo": "direction-operations",
+    "afe-ci-strategie": "strategie-developpement",
+    "afe-ci-finance-investissements": "finance-investissements",
+    "directeur-risques-controle": "risques-controle",
+    "directeur-gouvernance-conformite": "gouvernance-conformite",
+    "directeur-evidence-intelligence": "evidence-intelligence",
+    "directeur-secretariat-general": "secretariat-general",
+    "directeur-operations-missions": "operations-missions",
+    "directeur-audit-qualite": "audit-qualite",
+    "directeur-documentation-reporting": "documentation-reporting",
+    "directeur-technologie-innovation": "infrastructure-securite",
+    "directeur-audit-interne": "audit-interne",
+    "arbitre-independant-afe-ci": "arbitrage-independant"
   };
   for (const agent of agents) {
     const slug = mapping[agent.slug];
