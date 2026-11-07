@@ -111,3 +111,9 @@ test("blocked and paused missions generate a COO alert and dashboard indicator",
   assert.match(source, /mission-blocked:/);
   assert.match(source, /blockedMissions:/);
 });
+
+test("COO alert lifecycle automatically resolves cleared task and mission conditions", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /alert\.alert_type\?\.startsWith\("task_"/);
+  assert.match(source, /status: "resolved", resolved_by: null, resolved_at: nowIso\(\)/);
+});
