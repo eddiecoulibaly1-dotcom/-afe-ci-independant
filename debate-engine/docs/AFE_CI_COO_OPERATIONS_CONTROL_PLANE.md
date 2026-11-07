@@ -105,7 +105,7 @@ Vercel Cron is not active on Preview deployments. The presence of the schedule i
 
 The additive migration is:
 
-`supabase/migrations/20261107100000_afe_ci_coo_operations_control_plane.sql`
+`supabase/migrations/20261107190000_afe_ci_coo_operations_control_plane.sql`
 
 It introduces:
 - `afe_org_departments`
