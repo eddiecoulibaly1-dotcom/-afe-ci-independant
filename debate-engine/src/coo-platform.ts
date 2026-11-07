@@ -681,6 +681,8 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
         mission = priorMission[0];
       }
       if (!mission) throw new Error("Échec de création du chantier pour " + department.name);
+      const dispatchRecord = { missionId: mission.id, departmentSlug: department.slug, departmentName: department.name, directorAgent: director.name, taskCount: 0 };
+      createdMissions.push(dispatchRecord);
       const createdTasks: Array<{id:string;title:string;description:string}> = [];
       for (const task of stream.tasks) {
         if (!textOk(task.title, 220) || !textOk(task.description, 6000)) throw new Error("Tâche COO invalide dans " + department.name);
@@ -697,6 +699,7 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
         });
         if (!taskRows[0]?.id) throw new Error("La tâche n'a pas été persistée pour " + department.name);
         createdTasks.push({ id: taskRows[0].id, title: clean(task.title, 220), description: clean(task.description, 6000) });
+        dispatchRecord.taskCount = createdTasks.length;
       }
       await db("afe_agent_missions?id=eq." + enc(mission.id) + "&workspace_id=eq." + enc(workspaceId), {
         method: "PATCH", headers: { Prefer: "return=minimal" },
@@ -706,7 +709,6 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
         method: "POST", headers: { Prefer: "return=minimal" },
         body: JSON.stringify({ workspace_id: workspaceId, mission_id: mission.id, agent_id: coo.id, actor_type: "agent", actor_id: coo.id, event_type: "coo.delegation.dispatched", payload: { cooRunId: run.id, departmentSlug: department.slug, taskCount: stream.tasks.length } })
       });
-      createdMissions.push({ missionId: mission.id, departmentSlug: department.slug, departmentName: department.name, directorAgent: director.name, taskCount: stream.tasks.length });
     }
     const status = plan.decisionsRequired.length ? "approval_required" : "dispatched";
     const updated = await db<any[]>("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
