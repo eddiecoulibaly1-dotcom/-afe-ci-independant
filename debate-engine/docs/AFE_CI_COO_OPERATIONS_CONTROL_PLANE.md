@@ -114,7 +114,7 @@ It introduces:
 - `afe_coo_reports`
 - `afe_coo_settings`
 
-The foreign-key index companion migration is `supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql`.
+The foreign-key index companion migration is `supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql`; accountable department heads are added by `supabase/migrations/20261107210000_afe_ci_coo_department_heads.sql`.
 
 It extends:
 - `afe_agents.department_id`
