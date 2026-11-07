@@ -37,6 +37,26 @@ if(p[4]==="agents"&&p.length===5){
 }
 if(p[4]==="agents"&&p[5]){
  const id=p[5];if(method==="PATCH"){await requireRole(wid,user,"admin");const old=await agent(wid,id);if(!old)throw fail("Agent introuvable.",404);const i=await body(req);const patch:any={updated_at:new Date().toISOString()};for(const [k,col,max] of [["name","name",120],["specialty","specialty",160],["mandate","mandate",12000],["instructions","system_instructions",30000]] as const)if(i[k]!==undefined)patch[col]=clean(i[k],max);if(i.autonomyLevel!==undefined)patch.autonomy_level=Math.max(1,Math.min(3,Number(i.autonomyLevel)||1));if(i.status!==undefined){if(!["draft","active","paused","archived"].includes(i.status))throw fail("Statut invalide.");patch.status=i.status;}const rows=await db<any[]>("afe_agents?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid),{method:"PATCH",headers:{Prefer:"return=representation"},body:JSON.stringify(patch)});await audit(wid,user,"agent.updated",id,{fields:Object.keys(patch)});send(res,200,{agent:rows[0]});return true;}
+ 
+ if(method==="DELETE"){
+  await requireRole(wid,user,"admin");
+  if(process.env.VERCEL_ENV!=="preview"||process.env.AGENT_HARD_DELETE_ENABLED!=="true")throw fail("La suppression définitive est désactivée. Utilisez l’archivage; l’activation exige une migration de sécurité validée en Preview.",403);
+  const old=await agent(wid,id);if(!old)throw fail("Agent introuvable.",404);
+  if(old.status!=="archived")throw fail("Archivez d’abord l’agent avant toute suppression définitive.",409);
+  const i=await body(req);
+  if(i.confirmName!==old.name||i.confirmPermanent!==true)throw fail("Confirmation invalide : saisissez exactement le nom de l’agent et confirmez la suppression définitive.",400);
+  try{
+   await audit(wid,user,"agent.deleted",id,{name:old.name,slug:old.slug,previousStatus:old.status});
+   const deleted=await db<any[]>("afe_agents?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&status=eq.archived",{method:"DELETE",headers:{Prefer:"return=representation"}});
+   if(!deleted.length)throw fail("L’agent a changé d’état ou n’existe plus. Rechargez la liste.",409);
+   send(res,200,{ok:true,deletedAgentId:id,historyPreserved:true});
+  }catch(error){
+   const message=error instanceof Error?error.message:String(error);
+   if(/23503|foreign key|violates.*constraint/i.test(message))throw fail("Suppression bloquée : cet agent possède encore des missions, événements, messages, mémoires, exécutions ou contributions liés. Son historique est protégé; conservez-le archivé.",409);
+   throw error;
+  }
+  return true;
+ }
  if(method==="GET"){await requireRole(wid,user);const a=await agent(wid,id);if(!a)throw fail("Agent introuvable.",404);const grants=await db<any[]>("afe_agent_tool_grants?agent_id=eq."+enc(id)+"&workspace_id=eq."+enc(wid));send(res,200,{agent:a,grants});return true;}
 }
 if(p[4]==="deliberations"&&p.length===5){
