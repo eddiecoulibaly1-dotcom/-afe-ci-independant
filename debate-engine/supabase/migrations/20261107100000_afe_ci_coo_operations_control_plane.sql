@@ -83,14 +83,15 @@ CREATE TABLE IF NOT EXISTS public.afe_operational_tasks (
   FOREIGN KEY (department_id, workspace_id)
     REFERENCES public.afe_org_departments(id, workspace_id) ON DELETE RESTRICT,
   FOREIGN KEY (assigned_agent_id, workspace_id)
-    REFERENCES public.afe_agents(id, workspace_id) ON DELETE SET NULL (assigned_agent_id)
+    REFERENCES public.afe_agents(id, workspace_id) ON DELETE SET NULL (assigned_agent_id),
+  UNIQUE (id, workspace_id)
 );
 
 CREATE TABLE IF NOT EXISTS public.afe_coo_alerts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL REFERENCES public.debate_workspaces(id) ON DELETE CASCADE,
   mission_id uuid,
-  task_id uuid REFERENCES public.afe_operational_tasks(id) ON DELETE SET NULL,
+  task_id uuid,
   alert_type text NOT NULL CHECK (length(alert_type) BETWEEN 2 AND 80),
   severity text NOT NULL CHECK (severity IN ('info','warning','critical')),
   status text NOT NULL DEFAULT 'open' CHECK (status IN ('open','acknowledged','resolved')),
@@ -105,6 +106,8 @@ CREATE TABLE IF NOT EXISTS public.afe_coo_alerts (
   updated_at timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (mission_id, workspace_id)
     REFERENCES public.afe_agent_missions(id, workspace_id) ON DELETE CASCADE,
+  FOREIGN KEY (task_id, workspace_id)
+    REFERENCES public.afe_operational_tasks(id, workspace_id) ON DELETE SET NULL (task_id),
   UNIQUE (workspace_id, dedupe_key)
 );
 
