@@ -96,7 +96,7 @@ All seeded agents start as `draft`; default autonomy is L2 but activation is an 
 - Added department performance indicators, mission/task progress tracking, overdue/blocked/failed/approval alerts and alert acknowledgement/resolution.
 - Added daily executive report snapshots and in-app notification to the workspace owner (Direction générale by default).
 - Added an hourly Vercel Cron schedule that checks the workspace's configured daily report hour. Requires `CRON_SECRET` or `COO_REPORT_WORKER_SECRET`; Vercel Cron is not active in Preview.
-- Added migration `20261107190000_afe_ci_coo_operations_control_plane.sql`, API/UI source and static contract tests.
+- Added migrations `20261107190000_afe_ci_coo_operations_control_plane.sql` and `20261107200000_afe_ci_coo_foreign_key_indexes.sql`, API/UI source and static contract tests.
 
 ### Not yet verified
 
