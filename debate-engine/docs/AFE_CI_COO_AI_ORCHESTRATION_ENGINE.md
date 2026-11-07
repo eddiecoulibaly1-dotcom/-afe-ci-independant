@@ -19,8 +19,10 @@ Le COO est un orchestrateur opérationnel. Il ne se substitue ni à la DG, ni à
 4. Le modèle COO produit un plan JSON contraint : synthèse, chantiers, directions, objectifs, priorités, échéances relatives, tâches, hypothèses et décisions réservées.
 5. Le serveur valide de nouveau chaque direction, responsable, titre, objectif, échéance et limite de volume. Le modèle ne peut pas créer de direction ni choisir un agent hors du catalogue autorisé.
 6. Si le plan demande une décision réservée à l'humain, le run passe à `approval_required` et aucune mission n'est distribuée.
-7. Sinon, le serveur crée une mission par direction et les tâches correspondantes, affectées au directeur IA de cette direction. Les missions sont insérées dans la file durable existante.
-8. Le run, les événements et l'audit enregistrent l'identité COO, l'initiateur humain, les délégations et les résultats.
+7. Le serveur prévalide l'intégralité du plan avant la première écriture : direction, directeur, objectifs et toutes les tâches. Un plan invalide ne provoque donc aucune délégation partielle.
+8. Sinon, le serveur crée une mission par direction et les tâches correspondantes, affectées au directeur IA de cette direction. Les identifiants de tâches sont ajoutés au contexte de mission puis la mission rejoint la file durable existante.
+9. L'agent exécutant doit retourner un résultat structuré pour chaque tâche. Le worker met à jour les tâches terminées, en cours ou bloquées. Une mission dont toutes les tâches ne sont pas terminées est mise en pause et génère un événement de suivi ; elle n'est pas déclarée terminée artificiellement.
+10. Le run, les événements et l'audit enregistrent l'identité COO, l'initiateur humain, les délégations et les résultats.
 
 ## 3. Niveau d'autonomie
 
