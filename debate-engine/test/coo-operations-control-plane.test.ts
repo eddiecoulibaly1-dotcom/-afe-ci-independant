@@ -117,3 +117,56 @@ test("COO alert lifecycle automatically resolves cleared task and mission condit
   assert.match(source, /alert\.alert_type\?\.startsWith\("task_"/);
   assert.match(source, /status: "resolved", resolved_by: null, resolved_at: nowIso\(\)/);
 });
+
+
+const cooGrantsUrl = new URL("../supabase/migrations/20261107212500_afe_ci_coo_scoped_operational_grants.sql", import.meta.url);
+
+test("COO level-2 grants are workspace-scoped, reversible and limited to operational capabilities", async () => {
+  const sql = await readFile(cooGrantsUrl, "utf8");
+  for (const capability of ["coo.organization.read","coo.workload.read","coo.missions.create","coo.tasks.create"]) {
+    assert.ok(sql.includes(capability), "Missing COO capability " + capability);
+  }
+  assert.match(sql, /settings\.coo_autonomy_level = 2/);
+  assert.match(sql, /settings\.coo_kill_switch = false/);
+  assert.match(sql, /settings\.coo_enabled = true/);
+  assert.match(sql, /workspace_scoped/);
+  assert.match(sql, /reversible_only/);
+  assert.match(sql, /ON CONFLICT \(agent_id, tool_key\) DO UPDATE/);
+  assert.doesNotMatch(sql, /service_role|SUPABASE_SECRET_KEY|SUPABASE_SERVICE_ROLE_KEY/);
+});
+
+test("COO orchestration requires explicit grants and checks the grant scope server-side", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /async function requireCooCapability/);
+  assert.match(source, /grant\.permission !== permission/);
+  assert.match(source, /grant\.approval_required !== false/);
+  assert.match(source, /grant\.limits\?\.workspace_scoped !== true/);
+  assert.match(source, /grant\.limits\?\.reversible_only !== true/);
+  for (const capability of ["coo.organization.read","coo.workload.read","coo.missions.create","coo.tasks.create"]) {
+    assert.ok(source.includes('"' + capability + '"'), "Missing enforced capability " + capability);
+  }
+});
+
+test("COO plans include live workload and respect deterministic capacity ceilings", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /afe_agent_missions\?workspace_id=.*status=in\.\(queued,planning,running,waiting_approval,paused\)/);
+  assert.match(source, /afe_operational_tasks\?workspace_id=.*status=not\.in\.\(done,cancelled\)/);
+  assert.match(source, /x\.workload\.activeMissions < 2/);
+  assert.match(source, /x\.workload\.openTasks < 10/);
+  assert.match(source, /maxTasksPerRun/);
+});
+
+test("sensitive COO workstreams are held for human approval before any dispatch", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /const sensitiveAction = \/\(\?:payer/);
+  assert.match(source, /Approbation humaine obligatoire/);
+  assert.match(source, /if \(Array\.isArray\(plan\.decisionsRequired\).*length > 0\)/);
+});
+
+test("partial COO dispatch failures remain visible with their created missions and audit event", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /const partial = createdMissions\.length > 0/);
+  assert.match(source, /status: partial \? "partial" : "failed"/);
+  assert.match(source, /missions_created: createdMissions\.length/);
+  assert.match(source, /coo\.orchestration\.partial_failure/);
+});
