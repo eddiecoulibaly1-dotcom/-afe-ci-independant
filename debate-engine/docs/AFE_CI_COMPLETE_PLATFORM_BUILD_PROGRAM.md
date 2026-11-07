@@ -204,3 +204,34 @@ Le schéma et les fonctions de validation du graphe sont en place, mais l'API de
 - CI GitHub du commit 0ed9257cee9f85dfc178e598b3bfd3cd0067b989 : npm ci réussi, TypeScript strict réussi, tests unitaires/intégration réussis; run 42388455238 conclu success.
 - Un échec de CI intermédiaire a détecté des séquences de nouvelle ligne échappées dans le test du coordinateur; le fichier de test a été corrigé et la CI du commit suivant est verte.
 - Limites encore ouvertes : atomicité transactionnelle de la création mission+dépendances+événement, synthèse parent persistée, messages/handoffs/revue indépendante formalisés, retries ciblés et tests réels de crash/reprise/concurrence multi-workers. P10 reste ouvert.
+
+
+## 12. Référentiel directeur produit — AFE-CI Intelligence Organization (adopté le 2026-11-07)
+
+Le document `AFE_CI_INTELLIGENCE_ORGANIZATION_ARCHITECTURE.md` devient la référence prioritaire pour toute évolution produit, UX et technique. L'ADR `ADR-ORG-001-intelligence-organization.md` enregistre la décision. En cas de divergence avec une description antérieure du débat comme expérience principale, le nouveau référentiel prévaut; les fonctions historiques sont conservées comme capacités transversales sous réserve de compatibilité.
+
+### Décisions structurantes désormais obligatoires
+- Produit principal : organisation intelligente multi-agents, pas moteur de débats comme point d'entrée.
+- Parcours principal : Président/utilisateur → Directeur général IA → directions → agents spécialistes → revue indépendante → synthèse DG → décision humaine.
+- Huit directions fonctionnelles initiales : RES Recherche & Evidence, STR Stratégie, FIN Finance, COM Commercial, OPS Opérations, RSK Risques, AUD Audit & Qualité, TEC Technologie. Le DG est une fonction exécutive distincte; le Président est un rôle humain.
+- Chaque direction a un bureau numérique; chaque agent a une fiche et un espace de travail logique. Les bureaux sont des vues/read models sur les objets métier persistants, pas des runtimes séparés.
+- Les équipes sont composées dynamiquement selon les compétences et la mission sans changer le rattachement permanent des agents.
+- Contradiction Lab devient une capacité transversale : challenge intégré, revue adversariale ou débat formel.
+- Les domaines Organisation, Mission, Communication, Artifact, Review, Governance et Runtime sont séparés sémantiquement.
+- Les données organisationnelles restent dans le périmètre workspace et réutilisent les mécanismes d'authentification, d'autorisation et d'audit existants.
+
+### Phase organisationnelle en cours
+- ORG Phase 1 — référentiel, ADR, catalogue typé, hiérarchie de bureaux et premier routage par capacités.
+- ORG Phase 2 — audit des tables/routes existantes, read models API, organigramme et bureaux UI.
+- ORG Phase 3 — intake DG, plan de mission et composition dynamique des équipes.
+- ORG Phase 4 — communication interne, handoff et artifacts.
+- ORG Phase 5 — revue indépendante, Contradiction Lab, gouvernance et mémoire.
+- ORG Phase 6 — performance, coûts, sécurité, reprise et E2E.
+
+Aucune phase n'est considérée terminée par la seule présence d'un document ou d'un fichier. Chaque phase exige les tests, preuves et contrôles de sécurité définis dans le référentiel.
+
+### Première tranche de code
+Le module `src/organization-model.ts` contient le catalogue initial des directions, les bureaux exécutifs/de direction et un premier matcher déterministe de compétences. Il constitue un contrat de domaine initial, pas encore un annuaire persistant, un moteur IA de routage ni une interface utilisateur. Le test `test/organization-model.test.ts` couvre l'unicité du catalogue, la hiérarchie Président/DG/directions, l'existence des bureaux, le matching de capacités et l'indépendance de la fonction Audit.
+
+### Protection
+Ces changements sont limités à la branche de construction et à des artefacts de code/documentation. Aucun schéma ni donnée Supabase n'a été modifié par cette tranche. Aucun merge ni déploiement Production n'est autorisé.
