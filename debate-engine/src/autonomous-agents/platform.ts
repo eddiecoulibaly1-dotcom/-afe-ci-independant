@@ -46,9 +46,10 @@ if(p[4]==="agents"&&p[5]){
   const i=await body(req);
   if(i.confirmName!==old.name||i.confirmPermanent!==true)throw fail("Confirmation invalide : saisissez exactement le nom de l’agent et confirmez la suppression définitive.",400);
   try{
-   await audit(wid,user,"agent.deleted",id,{name:old.name,slug:old.slug,previousStatus:old.status});
+   await audit(wid,user,"agent.delete_attempted",id,{name:old.name,slug:old.slug,previousStatus:old.status});
    const deleted=await db<any[]>("afe_agents?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&status=eq.archived",{method:"DELETE",headers:{Prefer:"return=representation"}});
    if(!deleted.length)throw fail("L’agent a changé d’état ou n’existe plus. Rechargez la liste.",409);
+   await audit(wid,user,"agent.deleted",id,{name:old.name,slug:old.slug,previousStatus:old.status});
    send(res,200,{ok:true,deletedAgentId:id,historyPreserved:true});
   }catch(error){
    const message=error instanceof Error?error.message:String(error);
