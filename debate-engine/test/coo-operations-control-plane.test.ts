@@ -203,7 +203,9 @@ test("agent worker preserves partial mission results when COO tasks are blocked"
   const source = await readFile(workerUrl, "utf8");
   assert.match(source, /execution_state:"partial"/);
   assert.match(source, /blocked_task_count:blockedCount/);
-  assert.match(source, /status:"paused"/);\n  assert.match(source, /blocked_reason:reason\.slice\(0,3000\)/);\n  assert.match(source, /event_type:"coo\.tasks\.incomplete"/);
+  assert.match(source, /status:"paused"/);
+  assert.match(source, /blocked_reason:reason\.slice\(0,3000\)/);
+  assert.match(source, /event_type:"coo\.tasks\.incomplete"/);
   assert.match(source, /error:error instanceof Error\?error\.message/);
 });
 
