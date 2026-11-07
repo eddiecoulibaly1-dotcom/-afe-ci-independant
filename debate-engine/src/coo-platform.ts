@@ -536,6 +536,9 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
   const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID();
   const prior = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
   if (prior[0]) return { run: prior[0], replayed: true };
+  const dayStart = new Date(Date.now() - 86400000).toISOString();
+  const recentRuns = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&created_at=gte." + enc(dayStart) + "&select=id&limit=10");
+  if (recentRuns.length >= 10) throw fail("Plafond de sécurité atteint : maximum 10 orchestrations COO par 24 heures dans cet espace.", 429);
   const runRows = await db<any[]>("afe_coo_runs", {
     method: "POST", headers: { Prefer: "return=representation" },
     body: JSON.stringify({ workspace_id: workspaceId, coo_agent_id: coo.id, initiated_by: user.id, instruction, idempotency_key: idempotencyKey, status: "planning" })
@@ -787,7 +790,7 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
           });
           if (i.cooAgentId) await db("afe_agents?id=eq." + enc(i.cooAgentId) + "&workspace_id=eq." + enc(workspaceId), {
             method: "PATCH", headers: { Prefer: "return=minimal" },
-            body: JSON.stringify({ autonomy_level: 2, department_id: cooDept[0]?.id ?? null, updated_at: nowIso() })
+            body: JSON.stringify({ autonomy_level: Number(i.cooAutonomyLevel ?? s.coo_autonomy_level ?? 1), department_id: cooDept[0]?.id ?? null, updated_at: nowIso() })
           });
         }
         if (i.cooAutonomyLevel === 2 && s.coo_agent_id) await db("afe_agents?id=eq." + enc(s.coo_agent_id) + "&workspace_id=eq." + enc(workspaceId), {
@@ -874,7 +877,7 @@ async function renderDepartments(){
   const protectedDept=x.is_independent||x.human_only||x.slug==="direction-generale";
   const ownerOnly=x.slug==="direction-operations";
   const editable=!protectedDept&&(!ownerOnly||role==="owner");
-  const directors=(x.slug==="direction-generale"?"Direction générale · propriétaire de l’espace":x.slug==="direction-operations"?(st.settings.coo_user_id?userName(st.settings.coo_user_id):"COO non désigné"):[x.director_user_id?userName(x.director_user_id):null,x.director_agent_id?agentName(x.director_agent_id):null].filter(Boolean).join(" · ")||"Non désigné");
+  const directors=(x.slug==="direction-generale"?"Direction générale · propriétaire de l’espace":x.slug==="direction-operations"?(st.settings.coo_agent_id?agentName(st.settings.coo_agent_id):"COO IA non désigné"):[x.director_user_id?userName(x.director_user_id):null,x.director_agent_id?agentName(x.director_agent_id):null].filter(Boolean).join(" · ")||"Non désigné");
   const userOptions=members.map(q=>'<option value="'+esc(q.user_id)+'" '+(x.director_user_id===q.user_id?"selected":"")+'>'+esc(q.profile?.display_name||q.profile?.full_name||q.profile?.email||q.user_id)+'</option>').join("");
   const agentOptions=agents.filter(q=>!q.department_id||q.department_id===x.id).map(q=>'<option value="'+esc(q.id)+'" '+(x.director_agent_id===q.id?"selected":"")+'>'+esc(q.name)+'</option>').join("");
   return '<div class="row"><div style="flex:1"><strong>'+esc(x.name)+'</strong><span class="small">'+esc(x.department_kind)+' · rattachement : '+esc(x.reports_to_slug||"indépendant / Direction générale")+' · '+(x.is_independent?"fonction indépendante":"fonction opérationnelle")+'</span><p class="small">Responsable : '+esc(directors)+'</p>'+(editable?'<textarea class="field" rows="2" data-mandate="'+esc(x.id)+'">'+esc(x.mandate)+'</textarea>'+(ownerOnly?'':'<div class="form"><div><label>Responsable humain</label><select class="field" data-director-user="'+esc(x.id)+'"><option value="">Non désigné</option>'+userOptions+'</select></div><div><label>Agent directeur</label><select class="field" data-director-agent="'+esc(x.id)+'"><option value="">Non désigné</option>'+agentOptions+'</select></div></div>'):'<p class="small">'+esc(x.mandate)+'</p>')+'</div><div class="actions"><span class="tag">'+(x.active?"Active":"Inactive")+'</span>'+(editable?'<button class="btn" data-save-dept="'+esc(x.id)+'">Enregistrer</button>'+(ownerOnly?'':'<button class="btn" data-toggle-dept="'+esc(x.id)+'">'+(x.active?"Désactiver":"Activer")+'</button>') :ownerOnly&&role!=="owner"?'<span class="small">Gérée par la Direction générale</span>':'<span class="small">Protégée</span>')+'</div></div>';
