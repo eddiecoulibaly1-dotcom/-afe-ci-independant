@@ -105,3 +105,9 @@ test("operational departments can have accountable human heads while executive a
   assert.match(source, /Le responsable du COO se désigne dans les paramètres de gouvernance/);
   assert.match(source, /old\.slug === "direction-generale"/);
 });
+
+test("blocked and paused missions generate a COO alert and dashboard indicator", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /mission-blocked:/);
+  assert.match(source, /blockedMissions:/);
+});
