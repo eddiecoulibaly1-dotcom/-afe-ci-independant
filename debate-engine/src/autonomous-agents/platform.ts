@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthUser } from "../auth.js";
 import { AGENT_DEPARTMENT_TEMPLATES } from "./types.js";
 import { runAgentWorkerForWorkspace } from "./worker.js";
+import { canAddChildToCoordinator, summarizeDelegation } from "./delegation.js";
 
 type Role="owner"|"admin"|"editor"|"viewer";
 const rank:Record<Role,number>={owner:4,admin:3,editor:2,viewer:1};
@@ -17,8 +18,49 @@ async function access(wid:string,uid:string){const w=await db<any[]>("debate_wor
 async function requireRole(wid:string,user:AuthUser,min:Role="viewer"){const a=await access(wid,user.id);if(!a||rank[a.role]<rank[min])throw fail("Accès refusé à cet espace.",403);return a;}
 async function audit(wid:string,user:AuthUser,type:string,id:string,payload:Record<string,unknown>={}){await db("afe_agent_events",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({workspace_id:wid,actor_type:"human",actor_id:user.id,event_type:type,payload:{entity_id:id,...payload}})});}
 async function agent(wid:string,id:string){const rows=await db<any[]>("afe_agents?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&limit=1");return rows[0]??null;}
+async function transitionAgent(wid:string,user:AuthUser,id:string,action:"activate"|"pause"|"archive"|"restore"){const result=await db<{agent:any;event_id:number}>("rpc/afe_transition_agent_lifecycle",{method:"POST",body:JSON.stringify({p_workspace_id:wid,p_agent_id:id,p_actor_id:user.id,p_action:action})});if(!result?.agent||!result.event_id)throw new Error("La transition de l’agent n’a pas été confirmée par la base de données.");return result;}
 async function seedAgents(wid:string,user:AuthUser){await requireRole(wid,user,"admin");const existing=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&select=slug");const slugs=new Set(existing.map(x=>x.slug));const missing=AGENT_DEPARTMENT_TEMPLATES.filter(t=>!slugs.has(t.slug));if(missing.length){const rows=missing.map(t=>({workspace_id:wid,slug:t.slug,name:t.name,specialty:t.specialty,mandate:t.mandate,autonomy_level:t.defaultAutonomy,status:"draft",created_by:user.id}));await db("afe_agents",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(rows)});}const all=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&order=created_at.asc");return all;}
-async function createMission(wid:string,user:AuthUser,input:any){await requireRole(wid,user,"editor");const agentId=clean(input.agentId,64),title=clean(input.title,240),objective=clean(input.objective,20000);if(!agentId||title.length<3||objective.length<10)throw fail("Agent, titre et objectif (10 caractères minimum) sont requis.");const a=await agent(wid,agentId);if(!a||a.status!=="active")throw fail("Agent introuvable ou non actif.",404);const key=clean(input.idempotencyKey,160)||randomUUID();const prior=await db<any[]>("afe_agent_missions?workspace_id=eq."+enc(wid)+"&idempotency_key=eq."+enc(key)+"&limit=1");if(prior[0])return prior[0];const rows=await db<any[]>("afe_agent_missions",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({workspace_id:wid,agent_id:agentId,created_by:user.id,title,objective,input_context:input.context&&typeof input.context==="object"?input.context:{},priority:Math.max(1,Math.min(5,Number(input.priority)||3)),autonomy_level:Math.min(a.autonomy_level,Math.max(1,Math.min(3,Number(input.autonomyLevel)||1))),idempotency_key:key})});const m=rows[0];if(!m)throw new Error("La mission n'a pas été persistée.");await db("afe_agent_events",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({workspace_id:wid,mission_id:m.id,agent_id:agentId,actor_type:"human",actor_id:user.id,event_type:"mission.queued",payload:{title}})});return m;}
+async function createMission(wid:string,user:AuthUser,input:any){
+ await requireRole(wid,user,"editor");
+ const agentId=clean(input.agentId,64),title=clean(input.title,240),objective=clean(input.objective,20000);
+ if(!agentId||title.length<3||objective.length<10)throw fail("Agent, titre et objectif (10 caractères minimum) sont requis.");
+ const a=await agent(wid,agentId);if(!a||a.status!=="active")throw fail("Agent introuvable ou non actif.",404);
+ const parentId=clean(input.parentMissionId,64)||null;
+ const key=clean(input.idempotencyKey,160)||randomUUID();
+ const dependencies=Array.isArray(input.dependsOnMissionIds)?[...new Set<string>(input.dependsOnMissionIds.filter((x:unknown):x is string=>typeof x==="string").map((x:string)=>clean(x,64)))].slice(0,20):[];
+ if(dependencies.includes(parentId??""))throw fail("Une mission enfant ne peut pas dépendre de sa propre mission parente.",400);
+ let parent:any=null;
+ if(parentId){
+  const parents=await db<any[]>("afe_agent_missions?id=eq."+enc(parentId)+"&workspace_id=eq."+enc(wid)+"&limit=1");
+  parent=parents[0];
+  if(!parent)throw fail("Mission parente introuvable dans cet espace.",404);
+  if(!canAddChildToCoordinator({orchestrationMode:parent.orchestration_mode,delegationState:parent.delegation_state,status:parent.status}))
+   throw fail("La mission parente n’accepte plus de sous-missions : vérifie son type, son statut et sa fenêtre de délégation.",409);
+ }
+ const dependencyIds=dependencies;
+ try{
+  const created=await db<any>("rpc/afe_create_agent_mission",{
+   method:"POST",
+   body:JSON.stringify({
+    p_workspace_id:wid,p_agent_id:agentId,p_created_by:user.id,p_title:title,p_objective:objective,
+    p_input_context:input.context&&typeof input.context==="object"?input.context:{},
+    p_priority:Math.max(1,Math.min(5,Number(input.priority)||3)),
+    p_autonomy_level:Math.min(a.autonomy_level,Math.max(1,Math.min(3,Number(input.autonomyLevel)||1))),
+    p_idempotency_key:key,p_parent_mission_id:parentId,
+    p_orchestration_mode:!parentId&&input.orchestrationMode==="coordinator"?"coordinator":"leaf",
+    p_dependency_ids:dependencyIds
+   })
+  });
+  const mission=Array.isArray(created)?created[0]:created;
+  if(!mission?.id)throw new Error("La transaction de création n’a retourné aucune mission.");
+  return mission;
+ }catch(error){
+  const message=error instanceof Error?error.message:"Création de mission impossible.";
+  if(/parent coordinator delegation is not open/i.test(message))throw fail("La délégation de la mission parente est fermée.",409);
+  if(/dependency|workspace|active agent/i.test(message))throw fail(message,409);
+  throw error;
+ }
+}
 export async function handleAutonomousAgentsRequest(req:IncomingMessage,res:ServerResponse,path:string,user:AuthUser):Promise<boolean>{try{
 const url=new URL(req.url??"/","http://localhost"),p=path.split("/").filter(Boolean),method=req.method??"GET";
 if(p.length<4||p[0]!=="team"||p[1]!=="api"||p[2]!=="workspaces")return false;
@@ -32,11 +74,32 @@ if(p[4]==="agent-worker"&&p.length===5&&method==="POST"){
  return true;
 }
 if(p[4]==="agents"&&p.length===5){
- if(method==="GET"){await requireRole(wid,user);const rows=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&order=created_at.asc");send(res,200,{agents:rows,templates:AGENT_DEPARTMENT_TEMPLATES});return true;}
+ if(method==="GET"){await requireRole(wid,user);const rows=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&order=created_at.asc");send(res,200,{agents:rows,templates:AGENT_DEPARTMENT_TEMPLATES,hardDeleteEnabled:process.env.VERCEL_ENV==="preview"&&process.env.AGENT_HARD_DELETE_ENABLED==="true"});return true;}
  if(method==="POST"){await requireRole(wid,user,"admin");const i=await body(req);if(i.action==="seed"){send(res,200,{agents:await seedAgents(wid,user)});return true;}const slug=clean(i.slug,64).toLowerCase();if(!/^[a-z0-9][a-z0-9-]{1,62}$/.test(slug))throw fail("Identifiant d'agent invalide.");const rows=await db<any[]>("afe_agents",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({workspace_id:wid,slug,name:clean(i.name,120),specialty:clean(i.specialty,160),mandate:clean(i.mandate,12000),system_instructions:clean(i.instructions,30000),autonomy_level:Math.max(1,Math.min(3,Number(i.autonomyLevel)||1)),status:"draft",created_by:user.id})});send(res,201,{agent:rows[0]});return true;}
 }
 if(p[4]==="agents"&&p[5]){
- const id=p[5];if(method==="PATCH"){await requireRole(wid,user,"admin");const old=await agent(wid,id);if(!old)throw fail("Agent introuvable.",404);const i=await body(req);const patch:any={updated_at:new Date().toISOString()};for(const [k,col,max] of [["name","name",120],["specialty","specialty",160],["mandate","mandate",12000],["instructions","system_instructions",30000]] as const)if(i[k]!==undefined)patch[col]=clean(i[k],max);if(i.autonomyLevel!==undefined)patch.autonomy_level=Math.max(1,Math.min(3,Number(i.autonomyLevel)||1));if(i.status!==undefined){if(!["draft","active","paused","archived"].includes(i.status))throw fail("Statut invalide.");patch.status=i.status;}const rows=await db<any[]>("afe_agents?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid),{method:"PATCH",headers:{Prefer:"return=representation"},body:JSON.stringify(patch)});await audit(wid,user,"agent.updated",id,{fields:Object.keys(patch)});send(res,200,{agent:rows[0]});return true;}
+ const id=p[5];if(method==="PATCH"){await requireRole(wid,user,"admin");const old=await agent(wid,id);if(!old)throw fail("Agent introuvable.",404);const i=await body(req);if(i.status!==undefined){const actionByStatus:Record<string,"activate"|"pause"|"archive"|"restore">={active:"activate",paused:"pause",archived:"archive",draft:"restore"};const action=typeof i.status==="string"?actionByStatus[i.status]:undefined;if(!action)throw fail("Statut invalide.");const hasOtherChanges=["name","specialty","mandate","instructions","autonomyLevel"].some(k=>i[k]!==undefined);if(hasOtherChanges)throw fail("Séparez la transition de statut de la modification des informations de l’agent.",400);const result=await transitionAgent(wid,user,id,action);send(res,200,{agent:result.agent,eventId:result.event_id});return true;}const patch:any={updated_at:new Date().toISOString()};for(const [k,col,max] of [["name","name",120],["specialty","specialty",160],["mandate","mandate",12000],["instructions","system_instructions",30000]] as const)if(i[k]!==undefined)patch[col]=clean(i[k],max);if(i.autonomyLevel!==undefined)patch.autonomy_level=Math.max(1,Math.min(3,Number(i.autonomyLevel)||1));const rows=await db<any[]>("afe_agents?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid),{method:"PATCH",headers:{Prefer:"return=representation"},body:JSON.stringify(patch)});await audit(wid,user,"agent.updated",id,{fields:Object.keys(patch).filter(k=>k!=="updated_at")});send(res,200,{agent:rows[0]});return true;}
+ 
+ if(method==="DELETE"){
+  await requireRole(wid,user,"admin");
+  if(process.env.VERCEL_ENV!=="preview"||process.env.AGENT_HARD_DELETE_ENABLED!=="true")throw fail("La suppression définitive est désactivée. Utilisez l’archivage; l’activation exige une migration de sécurité validée en Preview.",403);
+  const old=await agent(wid,id);if(!old)throw fail("Agent introuvable.",404);
+  if(old.status!=="archived")throw fail("Archivez d’abord l’agent avant toute suppression définitive.",409);
+  const i=await body(req);
+  if(i.confirmName!==old.name||i.confirmPermanent!==true)throw fail("Confirmation invalide : saisissez exactement le nom de l’agent et confirmez la suppression définitive.",400);
+  try{
+   await audit(wid,user,"agent.delete_attempted",id,{name:old.name,slug:old.slug,previousStatus:old.status});
+   const deleted=await db<any[]>("afe_agents?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&status=eq.archived",{method:"DELETE",headers:{Prefer:"return=representation"}});
+   if(!deleted.length)throw fail("L’agent a changé d’état ou n’existe plus. Rechargez la liste.",409);
+   await audit(wid,user,"agent.deleted",id,{name:old.name,slug:old.slug,previousStatus:old.status});
+   send(res,200,{ok:true,deletedAgentId:id,historyPreserved:true});
+  }catch(error){
+   const message=error instanceof Error?error.message:String(error);
+   if(/23503|foreign key|violates.*constraint/i.test(message))throw fail("Suppression bloquée : cet agent possède encore des missions, événements, messages, mémoires, exécutions ou contributions liés. Son historique est protégé; conservez-le archivé.",409);
+   throw error;
+  }
+  return true;
+ }
  if(method==="GET"){await requireRole(wid,user);const a=await agent(wid,id);if(!a)throw fail("Agent introuvable.",404);const grants=await db<any[]>("afe_agent_tool_grants?agent_id=eq."+enc(id)+"&workspace_id=eq."+enc(wid));send(res,200,{agent:a,grants});return true;}
 }
 if(p[4]==="deliberations"&&p.length===5){
@@ -103,9 +166,21 @@ if(p[4]==="missions"&&p.length===5){
  if(method==="POST"){const i=await body(req);send(res,202,{mission:await createMission(wid,user,i),execution:"queued_server_side"});return true;}
  if(method==="GET"){await requireRole(wid,user);const rows=await db<any[]>("afe_agent_missions?workspace_id=eq."+enc(wid)+"&order=created_at.desc&limit=100");send(res,200,{missions:rows});return true;}
 }
+if(p[4]==="missions"&&p[5]&&p[6]==="delegation"&&p[7]==="close"&&p.length===8&&method==="POST"){
+ await requireRole(wid,user,"editor");
+ const parentId=p[5];
+ const rows=await db<any>("rpc/afe_close_mission_delegation",{method:"POST",body:JSON.stringify({p_workspace_id:wid,p_mission_id:parentId,p_actor_id:user.id})});
+ if(!rows?.id)throw fail("La clôture de délégation n'a pas été confirmée.",409);
+ send(res,200,{mission:rows,delegationClosed:true,readyForCoordinator:true});return true;
+}
+if(p[4]==="missions"&&p[5]&&p[6]==="children"&&p.length===7){
+ const parentId=p[5];
+ if(method==="POST"){await requireRole(wid,user,"editor");const parentRows=await db<any[]>("afe_agent_missions?id=eq."+enc(parentId)+"&workspace_id=eq."+enc(wid)+"&limit=1");const parent=parentRows[0];if(!parent)throw fail("Mission parente introuvable.",404);if(parent.orchestration_mode!=="coordinator")throw fail("Cette mission n’est pas coordinatrice.",409);const input=await body(req);input.parentMissionId=parentId;const child=await createMission(wid,user,input);send(res,201,{mission:child,parentMissionId:parentId,execution:"queued_after_dependencies"});return true;}
+ if(method==="GET"){await requireRole(wid,user);const [children,dependencies]=await Promise.all([db<any[]>("afe_agent_missions?workspace_id=eq."+enc(wid)+"&parent_mission_id=eq."+enc(parentId)+"&order=created_at.asc"),db<any[]>("afe_agent_mission_dependencies?workspace_id=eq."+enc(wid)+"&select=id,mission_id,depends_on_mission_id,created_at")]);send(res,200,{children,delegationState:parentId?((await db<any[]>("afe_agent_missions?id=eq."+enc(parentId)+"&workspace_id=eq."+enc(wid)+"&select=delegation_state&limit=1"))[0]?.delegation_state??"closed"):"closed",delegationSummary:summarizeDelegation(children),dependencies:dependencies.filter(d=>children.some(c=>c.id===d.mission_id))});return true;}
+}
 if(p[4]==="missions"&&p[5]){
  const id=p[5];await requireRole(wid,user);const rows=await db<any[]>("afe_agent_missions?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&limit=1");const m=rows[0];if(!m)throw fail("Mission introuvable.",404);
- if(method==="GET"){const [steps,events,approvals]=await Promise.all([db<any[]>("afe_agent_mission_steps?mission_id=eq."+enc(id)+"&order=sequence_no.asc"),db<any[]>("afe_agent_events?mission_id=eq."+enc(id)+"&order=created_at.asc"),db<any[]>("afe_agent_approvals?mission_id=eq."+enc(id)+"&order=created_at.desc")]);send(res,200,{mission:m,steps,events,approvals});return true;}
+ if(method==="GET"){const [steps,events,approvals,children,dependencies]=await Promise.all([db<any[]>("afe_agent_mission_steps?mission_id=eq."+enc(id)+"&order=sequence_no.asc"),db<any[]>("afe_agent_events?mission_id=eq."+enc(id)+"&order=created_at.asc"),db<any[]>("afe_agent_approvals?mission_id=eq."+enc(id)+"&order=created_at.desc"),db<any[]>("afe_agent_missions?workspace_id=eq."+enc(wid)+"&parent_mission_id=eq."+enc(id)+"&order=created_at.asc"),db<any[]>("afe_agent_mission_dependencies?workspace_id=eq."+enc(wid)+"&select=id,mission_id,depends_on_mission_id,created_at")]);send(res,200,{mission:m,steps,events,approvals,children,dependencies:dependencies.filter(d=>d.mission_id===id||children.some(child=>child.id===d.mission_id))});return true;}
  if(method==="POST"){await requireRole(wid,user,"admin");const i=await body(req);if(i.action==="cancel"||i.action==="pause"){if(!["queued","planning","running","paused"].includes(m.status))throw fail("Cette mission est déjà terminée.",409);await db("afe_agent_missions?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid),{method:"PATCH",body:JSON.stringify({status:i.action==="cancel"?"cancelled":"paused",updated_at:new Date().toISOString()})});await audit(wid,user,"mission."+i.action,id);send(res,200,{ok:true,status:i.action==="cancel"?"cancelled":"paused"});return true;}}
 }
 if(p[4]==="memory"&&p.length===5){
