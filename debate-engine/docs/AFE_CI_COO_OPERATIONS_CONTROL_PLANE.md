@@ -163,10 +163,11 @@ The workspace owner remains the Direction générale recipient for executive rep
 | Table security | <strong>Verified</strong>: five new tables have RLS enabled; no direct grants to `anon` or `authenticated`; server `service_role` grants verified |
 | Foreign-key performance | <strong>Verified</strong>: no remaining unindexed-FK findings on COO tables or modified agent/mission relations after the companion index migration |
 | TypeScript strict typecheck | <strong>Passed</strong> in GitHub Actions |
-| Unit and integration test suite | <strong>Passed</strong> in GitHub Actions (127 tests in the recorded run) |
+| Unit and integration test suite | <strong>Passed</strong> in GitHub Actions (131 tests in the recorded run) |
 | Authenticated API runtime and cross-workspace negative tests | Pending |
 | End-to-end mission/task creation, assignment, alert lifecycle and notifications | Pending |
 | Daily report worker invocation and idempotency in Preview | Pending |
+| Vercel Preview build | <strong>Ready</strong> for commit `7b1b92fb27ff17e581083b2ba523ed717c3d22b7`; project access is SSO-protected |
 | Browser acceptance of the SSO-protected Preview | Pending |
 | Production migration/deployment | Not performed; requires separate explicit approval |
 
