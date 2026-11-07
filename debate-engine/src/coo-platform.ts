@@ -74,18 +74,21 @@ async function requireAccess(workspaceId: string, user: AuthUser, min: Role = "v
 async function settings(workspaceId: string, ownerId?: string) {
   const found = await db<any[]>("afe_coo_settings?workspace_id=eq." + enc(workspaceId) + "&limit=1");
   if (found[0]) return found[0];
-  const rows = await db<any[]>("afe_coo_settings", {
-    method: "POST", headers: { Prefer: "return=representation" },
+  const rows = await db<any[]>("afe_coo_settings?on_conflict=workspace_id", {
+    method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
     body: JSON.stringify({ workspace_id: workspaceId, dg_user_id: ownerId ?? null, daily_report_enabled: true, report_hour_utc: 8 })
   });
-  return rows[0];
+  if (rows[0]) return rows[0];
+  const retry = await db<any[]>("afe_coo_settings?workspace_id=eq." + enc(workspaceId) + "&limit=1");
+  if (!retry[0]) throw new Error("Impossible d'initialiser les paramètres COO.");
+  return retry[0];
 }
 async function ensureDepartments(workspaceId: string, actorId?: string) {
   const current = await db<any[]>("afe_org_departments?workspace_id=eq." + enc(workspaceId) + "&order=created_at.asc");
   const slugs = new Set(current.map(x => x.slug));
   const missing = DEPARTMENTS.filter(x => !slugs.has(x.slug));
   if (missing.length) {
-    await db("afe_org_departments", {
+    await db("afe_org_departments?on_conflict=workspace_id%2Cslug", {
       method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
       body: JSON.stringify(missing.map(d => ({
         workspace_id: workspaceId, slug: d.slug, name: d.name, mandate: d.mandate,
@@ -155,8 +158,8 @@ async function validateMember(workspaceId: string, userId: string) {
 async function upsertAlert(workspaceId: string, alert: { key: string; type: string; severity: string; title: string; description: string; missionId?: string; taskId?: string }) {
   const found = await db<any[]>("afe_coo_alerts?workspace_id=eq." + enc(workspaceId) + "&dedupe_key=eq." + enc(alert.key) + "&limit=1");
   if (!found[0]) {
-    await db("afe_coo_alerts", {
-      method: "POST", headers: { Prefer: "return=minimal" },
+    await db("afe_coo_alerts?on_conflict=workspace_id%2Cdedupe_key", {
+      method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
       body: JSON.stringify({
         workspace_id: workspaceId, dedupe_key: alert.key, alert_type: alert.type,
         severity: alert.severity, title: alert.title, description: alert.description,
@@ -267,8 +270,8 @@ async function createMission(workspaceId: string, user: AuthUser, input: any) {
   const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID();
   const prior = await db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
   if (prior[0]) return prior[0];
-  const rows = await db<any[]>("afe_agent_missions", {
-    method: "POST", headers: { Prefer: "return=representation" },
+  const rows = await db<any[]>("afe_agent_missions?on_conflict=workspace_id%2Cidempotency_key", {
+    method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
     body: JSON.stringify({
       workspace_id: workspaceId, agent_id: agentId, department_id: departmentId,
       operational_owner_user_id: input.operationalOwnerUserId || null,
@@ -279,7 +282,11 @@ async function createMission(workspaceId: string, user: AuthUser, input: any) {
       due_at: input.dueAt || null, progress_percent: 0, idempotency_key: idempotencyKey
     })
   });
-  const mission = rows[0];
+  let mission = rows[0];
+  if (!mission) {
+    const retry = await db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
+    mission = retry[0];
+  }
   if (!mission) throw new Error("La mission n'a pas été persistée.");
   await db("afe_agent_events", {
     method: "POST", headers: { Prefer: "return=minimal" },
