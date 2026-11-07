@@ -12,7 +12,7 @@
     },
     {
       "path": "/internal/coo-report-worker",
-      "schedule": "0 * * * *"
+      "schedule": "0 8 * * *"
     }
   ]
 }
