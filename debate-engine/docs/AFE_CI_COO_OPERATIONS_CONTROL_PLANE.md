@@ -158,7 +158,7 @@ The workspace owner remains the Direction générale recipient for executive rep
 
 | Gate | Result |
 |---|---|
-| Additive schema migration | <strong>Applied</strong> to isolated Supabase project `afe-ci-test` on 2026-11-07 |
+| Additive schema migrations | <strong>Applied</strong> to isolated Supabase project `afe-ci-test` on 2026-11-07 (control plane, FK indexes and accountable department heads) |
 | Table security | <strong>Verified</strong>: five new tables have RLS enabled; no direct grants to `anon` or `authenticated`; server `service_role` grants verified |
 | Foreign-key performance | <strong>Verified</strong>: no remaining unindexed-FK findings on COO tables or modified agent/mission relations after the companion index migration |
 | TypeScript strict typecheck | <strong>Passed</strong> in GitHub Actions |
