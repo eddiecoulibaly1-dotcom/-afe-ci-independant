@@ -36,7 +36,7 @@ test("mission records gain department, operational owner, due date and progress 
 test("COO API protects independent arbitration and human validation from operational assignment", async () => {
   const source = await readFile(platformUrl, "utf8");
   assert.match(source, /Le COO ne peut pas affecter ni diriger une tâche de l'Arbitrage indépendant ou de la Validation humaine/);
-  assert.match(source, /Le COO ne peut pas modifier le mandat de l'Arbitrage indépendant ou de la Validation humaine/);
+  assert.match(source, /Cette fonction est protégée de la gestion opérationnelle du COO/);
   assert.match(source, /is_independent/);
   assert.match(source, /human_only/);
 });
