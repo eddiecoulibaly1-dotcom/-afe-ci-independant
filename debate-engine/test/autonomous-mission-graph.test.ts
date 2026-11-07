@@ -30,11 +30,11 @@ test("aggregates child status without hiding failures or approvals",()=>{
  assert.equal(aggregateChildMissionStatus([n("a",null,0,"running"),n("b",null,0,"waiting_approval")]),"waiting_approval");
 });
 
-test("coordinator waits for all direct children to complete",()=>{
+test("coordinator waits until all direct children are terminal",()=>{
 
  const parent=n("parent");
  assert.equal(canStartCoordinator(parent,[]),true);
  assert.equal(canStartCoordinator(parent,[n("a","parent",1,"completed"),n("b","parent",1,"running")]),false);
- assert.equal(canStartCoordinator(parent,[n("a","parent",1,"completed"),n("b","parent",1,"completed")]),true);
+ assert.equal(canStartCoordinator(parent,[n("a","parent",1,"completed"),n("b","parent",1,"completed")]),true);\n assert.equal(canStartCoordinator(parent,[n("a","parent",1,"completed"),n("b","parent",1,"failed")]),true);\n assert.equal(canStartCoordinator(parent,[n("a","parent",1,"completed"),n("b","parent",1,"cancelled")]),true);
  assert.equal(canStartCoordinator(parent,[n("foreign","other",1,"completed")]),false);
 });
