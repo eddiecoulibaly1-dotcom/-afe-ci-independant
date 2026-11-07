@@ -86,7 +86,7 @@ begin
      where not a.cycle and a.depth<7
   )
   select coalesce(max(depth),0),bool_or(cycle)
-    into v_depth, new.parent_mission_id
+    into v_depth, v_cycle
     from ancestors;
 
   if coalesce(v_cycle,false) then
