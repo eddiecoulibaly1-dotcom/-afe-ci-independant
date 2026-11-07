@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const migrationUrl = new URL("../supabase/migrations/20261107190000_afe_ci_coo_operations_control_plane.sql", import.meta.url);
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
 const indexesUrl = new URL("../supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql", import.meta.url);
+const headsUrl = new URL("../supabase/migrations/20261107210000_afe_ci_coo_department_heads.sql", import.meta.url);
 const serverUrl = new URL("../src/server.ts", import.meta.url);
 const vercelUrl = new URL("../vercel.json", import.meta.url);
 
@@ -93,4 +94,14 @@ test("only the designated COO or workspace governance can operate and resolve al
   const source = await readFile(platformUrl, "utf8");
   assert.match(source, /if \(p\[6\] && method === "POST"\) \{ await canOperate\(workspaceId, user\); send\(res, 200, await actOnAlert/);
   assert.match(source, /rank\[member\.role\] < rank\.editor/);
+});
+
+test("operational departments can have accountable human heads while executive and independent lines stay protected", async () => {
+  const sql = await readFile(headsUrl, "utf8");
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS director_user_id/);
+  assert.match(sql, /afe_org_departments_director_user_idx/);
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /if \(uid\) await validateMember\(workspaceId, uid\)/);
+  assert.match(source, /Le responsable du COO se désigne dans les paramètres de gouvernance/);
+  assert.match(source, /old\.slug === "direction-generale"/);
 });
