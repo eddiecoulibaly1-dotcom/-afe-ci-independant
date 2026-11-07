@@ -9,6 +9,10 @@
     {
       "path": "/internal/agent-worker",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/internal/coo-report-worker",
+      "schedule": "0 * * * *"
     }
   ]
 }
