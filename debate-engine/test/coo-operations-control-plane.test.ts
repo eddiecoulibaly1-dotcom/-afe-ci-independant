@@ -164,7 +164,7 @@ test("sensitive COO workstreams are held for human approval before any dispatch"
   assert.match(source, /Approbation humaine obligatoire/);
   assert.match(source, /if \(sensitiveItems\.length > 0\)/);
   assert.match(source, /const status = "dispatched"/);
-  assert.match(source, /for\\s*\\(let i=0;i<5;i\\+\\+\\)/);
+  assert.match(source, /Routine DG decisions are recorded for follow-up/);
   assert.doesNotMatch(source, /const status = plan\.decisionsRequired\.length \? "approval_required"/);
 });
 
@@ -190,7 +190,7 @@ test("COO execution trigger is Preview-only, DG-owner-only and respects the kill
 
 test("COO portfolio offers bounded worker execution and exposes verified mission outputs", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /for \(let i=0;i<5;i\+\+\)/);
+  assert.match(source, /for\\s*\\(let i=0;i<5;i\\+\\+\\)/);
   assert.match(source, /if \(!r\.claimed\) break/);
   assert.match(source, /m\.result\?\.summary/);
   assert.match(source, /m\.result\.deliverables/);
