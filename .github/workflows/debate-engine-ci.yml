@@ -6,6 +6,7 @@ on:
       - main
       - feature/debate-engine-v2-1
       - audit/hardening-v2-finalization
+      - feature/autonomous-organization-v1
   pull_request:
     branches:
       - main
