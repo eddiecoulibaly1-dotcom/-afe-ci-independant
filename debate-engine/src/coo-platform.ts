@@ -483,7 +483,7 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
     if (resource === "alerts") {
       await requireAccess(workspaceId, user);
       if (method === "GET") { const data = await snapshot(workspaceId); await refreshAlerts(workspaceId, data.missions, data.tasks); send(res, 200, { alerts: (await snapshot(workspaceId)).alerts }); return true; }
-      if (p[6] && method === "POST") { send(res, 200, await actOnAlert(workspaceId, user, p[6], clean((await readBody(req)).action, 32))); return true; }
+      if (p[6] && method === "POST") { await canOperate(workspaceId, user); send(res, 200, await actOnAlert(workspaceId, user, p[6], clean((await readBody(req)).action, 32))); return true; }
     }
     if (resource === "reports") {
       await requireAccess(workspaceId, user);
