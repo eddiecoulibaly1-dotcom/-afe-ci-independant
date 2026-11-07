@@ -627,7 +627,7 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
     if (!Array.isArray(plan.workstreams) || plan.workstreams.length < 1 || plan.workstreams.length > maxWorkstreams) throw new Error("Le plan du COO dépasse les limites de délégation.");
     const plannedTaskCount = plan.workstreams.reduce((total, stream) => total + (Array.isArray(stream.tasks) ? stream.tasks.length : 0), 0);
     if (plannedTaskCount > maxTasksPerRun) throw new Error("Le plan dépasse le plafond de tâches autorisé par les capacités COO.");
-    const sensitiveAction = /(?:payer|paiement|transfert|virement|dépense|engager|signer|contrat|publier|déployer|mise en production|migration de production|modifier les accès|habilitations|supprimer|irréversible)/i;
+    const sensitiveAction = /\b(?:payer|autoriser un paiement|effectuer un paiement|initier un virement|transférer des fonds|engager une dépense|signer un contrat|conclure un contrat|publier un contenu|déployer en production|mettre en production|lancer une migration|modifier les accès|changer les habilitations|supprimer définitivement|effacer définitivement)\b/i;
     const sensitiveItems = plan.workstreams.flatMap(stream => [stream.missionTitle, stream.objective, ...stream.tasks.flatMap(task => [task.title, task.description])]).filter(value => sensitiveAction.test(value));
     if (sensitiveItems.length) {
       plan.decisionsRequired = [...new Set([...(plan.decisionsRequired ?? []), "Approbation humaine obligatoire : le plan contient une action potentiellement sensible ou irréversible."])];
