@@ -4,7 +4,7 @@
 **Version :** 1.1.0  
 **Date :** 7 novembre 2026  
 **Environnement de référence :** workspace de test AFE-CI GOUVERNANCE & CONFORMITÉ  
-**Statut :** Organisation de référence structurée et initialisée en test ; orchestration autonome du COO en cours de réalisation.  
+**Statut :** Organisation de référence structurée en test ; moteur COO IA niveau 2 implémenté et compilé en Preview ; recette authentifiée d'orchestration encore requise.  
 **Autorité :** Direction générale humaine.
 
 ## 1. Objet et modèle d'entreprise
@@ -170,7 +170,7 @@ Le COO ne reçoit pas de clé service-role ni de privilèges SQL arbitraires. Il
 - **Niveau 3 — Orchestration déléguée** : coordination de plusieurs directions dans des limites approuvées, avec supervision et escalade.
 - **Niveau 4 — Autonomie étendue** : uniquement après audits, preuves de fiabilité, budgets et délégations explicites.
 
-Le niveau initial des agents créés dans ce lot reste 1. Aucun relèvement automatique n'est autorisé.
+Le niveau initial des agents créés dans ce lot reste 1, à l'exception du COO IA dédié, explicitement élevé au niveau 2 dans l'environnement de test. Le niveau 3 reste verrouillé.
 
 ## 11. État de construction et critères de sortie
 
@@ -183,14 +183,22 @@ Le niveau initial des agents créés dans ce lot reste 1. Aucun relèvement auto
 - Paramètres de reporting DG initialisés à 08:00 UTC.
 - Référentiel des directions et mapping des agents alignés dans le code de la branche.
 
+### Réalisé dans le moteur COO IA
+- Désignation du COO IA par `coo_agent_id`, activation, niveau d'autonomie et arrêt d'urgence.
+- Orchestrateur IA qui transforme une instruction DG en plan JSON contraint et chantiers distribués.
+- Validation serveur des directions, responsables, objectifs, échéances et plafonds de délégation.
+- Création des missions et tâches dans la file durable existante.
+- Mise en attente sans distribution lorsqu'une décision réservée à l'humain est identifiée.
+- Registre `afe_coo_runs`, idempotence, événements et audit.
+- Plafond de 10 orchestrations par workspace sur 24 heures ; maximum 8 chantiers et 8 tâches par chantier.
+- Kill switch bloquant les nouvelles orchestrations.
+
 ### À réaliser avant de déclarer l'entreprise pleinement opérationnelle
-- Intégrer le champ de désignation COO IA dans les paramètres applicatifs.
-- Remplacer l'autorisation actuelle basée sur un utilisateur COO humain par une délégation d'outils contrôlée pour l'agent COO.
-- Construire le moteur de planification, de décomposition, d'affectation et de suivi des missions.
-- Définir les outils restreints, budgets, limites, approbations, kill switch et journal d'exécution.
-- Vérifier que chaque agent possède une configuration de modèle exécutable et des tests de mandat.
-- Tester les parcours réels de mission, blocage, escalade et rapport DG dans le Preview authentifié.
-- Valider l'isolation, les permissions et les tests avant toute promotion.
+- Exécuter une orchestration réelle depuis une session DG authentifiée dans le Preview.
+- Vérifier les missions et tâches créées, les reprises, les alertes et le reporting DG.
+- Vérifier les cas de plan en attente d'approbation, de kill switch et de directeur indisponible.
+- Valider l'isolation, les permissions et l'ensemble des tests.
+- Évaluer les résultats et la fiabilité avant toute demande d'élévation au niveau 3.
 
 ## 12. Protection des environnements
 
