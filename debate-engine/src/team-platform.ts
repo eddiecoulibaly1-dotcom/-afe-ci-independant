@@ -116,7 +116,7 @@ function speakReport(textValue,button){
  utterance.onend=()=>{if(button)button.textContent="🔊 Écouter la conclusion"};utterance.onerror=()=>{if(button)button.textContent="🔊 Écouter la conclusion"};
  window.speechSynthesis.cancel();window.speechSynthesis.speak(utterance);if(button)button.textContent="■ Arrêter la lecture";
 }
-function missionReportText(m){const result=m?.result??{};return ["AFE-CI — RAPPORT DE MISSION","Titre : "+(m?.title||"Mission sans titre"),"Statut : "+(m?.status||"non renseigné"),"Tentatives : "+(m?.attempt_count??"—"),"","OBJECTIF",m?.objective||"Non renseigné","","CONCLUSION ET RÉSULTATS",typeof result==="string"?result:JSON.stringify(result,null,2)].join("\\n");}
+function missionReportText(m){const result=m?.result??{};return ["AFE-CI — RAPPORT DE MISSION","Titre : "+(m?.title||"Mission sans titre"),"Statut : "+(m?.status||"non renseigné"),"Tentatives : "+(m?.attempt_count??"—"),"","OBJECTIF",m?.objective||"Non renseigné","","CONCLUSION ET RÉSULTATS",typeof result==="string"?result:JSON.stringify(result,null,2)].join("\n");}
 function missionReportHtml(m){
  const eh=x=>String(x??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
  const result=m?.result??{},resultText=typeof result==="string"?result:JSON.stringify(result,null,2);
