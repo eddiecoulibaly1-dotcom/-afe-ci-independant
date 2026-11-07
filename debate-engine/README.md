@@ -94,7 +94,7 @@ V0.7 turns the mobile-first Lab into an installable application shell while keep
 
 The authenticated `/coo` page provides the operational command surface for the Direction des Opérations: central dashboard, institutional departments, mission portfolio, task assignment, performance indicators, deduplicated alerts and reporting to the workspace owner representing the Direction générale.
 
-The implementation uses the existing workspace, agent, mission queue, Supabase persistence and notification system. Its schema is additive in `supabase/migrations/20261107190000_afe_ci_coo_operations_control_plane.sql`; the technical specification and validation gates are in `docs/AFE_CI_COO_OPERATIONS_CONTROL_PLANE.md`.
+The implementation uses the existing workspace, agent, mission queue, Supabase persistence and notification system. Its schema is additive in `supabase/migrations/20261107190000_afe_ci_coo_operations_control_plane.sql` and `supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql`; the technical specification and validation gates are in `docs/AFE_CI_COO_OPERATIONS_CONTROL_PLANE.md`.
 
 A Vercel Cron worker is configured hourly and checks each workspace's daily report hour (default 08:00 UTC). It requires `CRON_SECRET` or `COO_REPORT_WORKER_SECRET`. Vercel Cron is not active on Preview deployments. The migration, tests, Preview acceptance and any Production rollout remain separate approval gates; this increment does not apply the migration or deploy Production.
 
