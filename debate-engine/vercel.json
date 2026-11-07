@@ -4,5 +4,11 @@
     "src/server.ts": {
       "maxDuration": 300
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/internal/agent-worker",
+      "schedule": "* * * * *"
+    }
+  ]
 }
