@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const migrationUrl = new URL("../supabase/migrations/20261107220000_afe_ci_coo_ai_orchestration_engine.sql", import.meta.url);
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
+const indexesUrl = new URL("../supabase/migrations/20261107223000_afe_ci_coo_ai_foreign_key_indexes.sql", import.meta.url);
 
 test("COO AI schema binds a workspace-scoped agent and exposes bounded autonomy and emergency stop", async () => {
   const sql = await readFile(migrationUrl, "utf8");
@@ -42,4 +43,11 @@ test("COO orchestration endpoint is authenticated and settings cap autonomy at l
   assert.match(source, /Le niveau 3 reste verrouillé/);
   assert.match(source, /cooAgentId/);
   assert.match(source, /cooRun/);
+});
+
+test("COO AI foreign keys have covering indexes", async () => {
+  const sql = await readFile(indexesUrl, "utf8");
+  for (const index of ["afe_coo_runs_coo_agent_workspace_idx","afe_coo_runs_initiated_by_idx","afe_coo_settings_coo_agent_workspace_idx"]) {
+    assert.ok(sql.includes(index), "Missing index " + index);
+  }
 });
