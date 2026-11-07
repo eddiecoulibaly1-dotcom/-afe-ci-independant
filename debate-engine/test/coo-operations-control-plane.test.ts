@@ -164,7 +164,7 @@ test("sensitive COO workstreams are held for human approval before any dispatch"
   assert.match(source, /Approbation humaine obligatoire/);
   assert.match(source, /if \(sensitiveItems\.length > 0\)/);
   assert.match(source, /const status = "dispatched"/);
-  assert.match(source, /Routine DG decisions are recorded for follow-up/);
+  assert.match(source, /for\\s*\\(let i=0;i<5;i\\+\\+\\)/);
   assert.doesNotMatch(source, /const status = plan\.decisionsRequired\.length \? "approval_required"/);
 });
 
