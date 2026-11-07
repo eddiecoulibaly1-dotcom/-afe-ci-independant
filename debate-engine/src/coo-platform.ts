@@ -632,7 +632,8 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
     if (sensitiveItems.length) {
       plan.decisionsRequired = [...new Set([...(plan.decisionsRequired ?? []), "Approbation humaine obligatoire : le plan contient une action potentiellement sensible ou irréversible."])];
     }
-    if (Array.isArray(plan.decisionsRequired) && plan.decisionsRequired.length > 0) {
+    // Routine DG decisions are recorded for follow-up; only explicitly sensitive actions block dispatch.
+    if (sensitiveItems.length > 0) {
       const updated = await db<any[]>("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
         method: "PATCH", headers: { Prefer: "return=representation" },
         body: JSON.stringify({ status: "approval_required", plan, missions_created: 0, completed_at: nowIso() })
@@ -710,7 +711,7 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
         body: JSON.stringify({ workspace_id: workspaceId, mission_id: mission.id, agent_id: coo.id, actor_type: "agent", actor_id: coo.id, event_type: "coo.delegation.dispatched", payload: { cooRunId: run.id, departmentSlug: department.slug, taskCount: stream.tasks.length } })
       });
     }
-    const status = plan.decisionsRequired.length ? "approval_required" : "dispatched";
+    const status = "dispatched"; // Non-blocking DG decisions remain recorded in the plan; sensitive actions were gated above.
     const updated = await db<any[]>("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
       method: "PATCH", headers: { Prefer: "return=representation" },
       body: JSON.stringify({ status, plan: { ...plan, dispatched: createdMissions }, missions_created: createdMissions.length, completed_at: nowIso() })
