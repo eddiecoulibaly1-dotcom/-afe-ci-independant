@@ -97,7 +97,7 @@ The report generator snapshots:
 
 The report is stored in `afe_coo_reports` and an in-app notification is sent to the workspace owner, who represents the Direction générale by default. A daily report is scheduled at 08:00 UTC (Abidjan local time) for workspaces where `daily_report_enabled` is true (default true).
 
-The Vercel Cron configuration invokes `/internal/coo-report-worker` hourly. The worker generates a daily report only for workspaces whose configured UTC hour matches the current hour. The report key is idempotent for the daily period. The worker requires `CRON_SECRET` or `COO_REPORT_WORKER_SECRET`.
+The Vercel Cron configuration invokes `/internal/coo-report-worker` once daily at 08:00 UTC. The worker generates the daily report for every workspace with automatic reporting enabled. The report key is idempotent for the daily period. The worker requires `CRON_SECRET` or `COO_REPORT_WORKER_SECRET`.
 
 Vercel Cron is not active on Preview deployments. The presence of the schedule in this branch does not mean a report has been delivered or that Production is enabled.
 
