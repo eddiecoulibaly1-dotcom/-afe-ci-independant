@@ -598,6 +598,17 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
       await audit(workspaceId, user.id, "coo.orchestration.approval_required", "coo_run", run.id, { cooAgentId: coo.id, decisionsRequired: plan.decisionsRequired });
       return { run: updated[0] ?? { ...run, status: "approval_required", plan }, plan, dispatched: [] };
     }
+    const prevalidated = new Set<string>();
+    for (const stream of plan.workstreams) {
+      const department = departments.find(d => d.slug === stream.departmentSlug && d.active && !d.is_independent && !d.human_only);
+      if (!department || ["direction-generale","direction-operations","audit-interne","arbitrage-independant","validation-humaine"].includes(department.slug)) throw new Error("Direction non délégable dans le plan : " + stream.departmentSlug);
+      if (prevalidated.has(stream.departmentSlug)) throw new Error("Le plan contient plusieurs chantiers pour la même direction : " + stream.departmentSlug);
+      prevalidated.add(stream.departmentSlug);
+      const director = agentById.get(department.director_agent_id);
+      if (!director || director.status !== "active" || director.department_id !== department.id) throw new Error("Responsable IA indisponible pour " + department.name);
+      if (!textOk(stream.missionTitle, 220) || !textOk(stream.objective, 12000) || !Array.isArray(stream.tasks) || stream.tasks.length < 1 || stream.tasks.length > maxTasks) throw new Error("Chantier COO incomplet ou hors limites pour " + department.name);
+      for (const task of stream.tasks) if (!textOk(task.title, 220) || !textOk(task.description, 6000)) throw new Error("Tâche COO invalide dans " + department.name);
+    }
     const used = new Set<string>();
     const createdMissions = [];
     for (const stream of plan.workstreams) {
