@@ -212,19 +212,19 @@ async function refreshAlerts(workspaceId: string, missions: any[], tasks: any[])
   const existing = await db<any[]>("afe_coo_alerts?workspace_id=eq." + enc(workspaceId) + "&status=in.(open,acknowledged)&limit=500");
   for (const alert of existing) {
     let known = false, active = true;
-    if (alert.mission_id && missionById.has(alert.mission_id)) {
+    if (alert.alert_type?.startsWith("task_") && alert.task_id && taskById.has(alert.task_id)) {
+      known = true;
+      const t = taskById.get(alert.task_id)!;
+      if (alert.alert_type === "task_overdue") active = Boolean(t.due_at && new Date(t.due_at).getTime() < now && !["done", "cancelled"].includes(t.status));
+      else if (alert.alert_type === "task_blocked") active = t.status === "blocked";
+      else known = false;
+    } else if (alert.mission_id && missionById.has(alert.mission_id)) {
       known = true;
       const m = missionById.get(alert.mission_id)!;
       if (alert.alert_type === "mission_overdue") active = Boolean(m.due_at && new Date(m.due_at).getTime() < now && !["completed", "failed", "cancelled"].includes(m.status));
       else if (alert.alert_type === "mission_failed") active = m.status === "failed";
       else if (alert.alert_type === "mission_blocked") active = Boolean(m.blocked_reason) || m.status === "paused";
       else if (alert.alert_type === "approval_overdue") active = m.status === "waiting_approval" && now - new Date(m.updated_at ?? m.created_at).getTime() > 86400000;
-      else known = false;
-    } else if (alert.task_id && taskById.has(alert.task_id)) {
-      known = true;
-      const t = taskById.get(alert.task_id)!;
-      if (alert.alert_type === "task_overdue") active = Boolean(t.due_at && new Date(t.due_at).getTime() < now && !["done", "cancelled"].includes(t.status));
-      else if (alert.alert_type === "task_blocked") active = t.status === "blocked";
       else known = false;
     }
     if (known && !active) {
