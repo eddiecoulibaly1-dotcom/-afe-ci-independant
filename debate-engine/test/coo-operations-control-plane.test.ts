@@ -223,3 +223,16 @@ test("COO archived reports are human-readable and support one-click copy plus PD
   assert.match(source, /Qualité et limites des données/i);
   assert.match(source, /missionCount!==byDept/);
 });
+
+test("COO mission portfolio exposes one-click copy with complete mission results and Android fallback", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /id="copyCooPortfolio"/);
+  assert.match(source, /Copier tous les résultats du portefeuille/);
+  assert.match(source, /AFE-CI — PORTEFEUILLE DES MISSIONS/);
+  assert.match(source, /Compte rendu de l'agent/);
+  assert.match(source, /Livrables :/);
+  assert.match(source, /Blocage :/);
+  assert.match(source, /navigator\.clipboard\.writeText\(textValue\)/);
+  assert.match(source, /document\.execCommand\("copy"\)/);
+  assert.match(source, /lines\.join\("\\n"\)/);
+});
