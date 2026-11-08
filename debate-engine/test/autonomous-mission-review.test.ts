@@ -8,6 +8,8 @@ const valid = {
   submittingAgentId: "agent-executor",
   reviewerAgentId: "agent-reviewer",
   expectedTaskIds: ["task-1"],
+  objective: "Évaluer les risques opérationnels et proposer des recommandations vérifiables.",
+  acceptanceCriteria: ["Les risques sont classés", "Les recommandations sont priorisées"],
   result: {
     summary: "A complete operational summary with verifiable outcome.",
     analysis: "The work was assessed against the requested objective and its acceptance criteria.",
@@ -48,4 +50,28 @@ test("incomplete tasks require revision and cannot be closed", () => {
 
 test("cross-workspace data is not accepted as a review input without explicit workspace scope", () => {
   assert.throws(() => reviewMissionEvidence({ ...valid, workspaceId: "" }), /scope/);
+});
+
+test("qualitative review reports objective alignment, traceability and analytical depth", () => {
+  const report = reviewMissionEvidence(valid, new Date("2026-11-08T12:00:00.000Z"));
+  assert.equal(report.qualityChecks.length, 3);
+  assert.ok(report.qualityChecks.some(x => x.criterion === "objective_alignment"));
+  assert.ok(report.qualityChecks.some(x => x.criterion === "traceability"));
+  assert.ok(report.qualityChecks.some(x => x.criterion === "analytical_depth"));
+  assert.ok(report.qualityScore >= 0 && report.qualityScore <= 100);
+  assert.equal(report.closureEligible, false);
+});
+
+test("review requests revision when evidence has no traceability or analytical structure", () => {
+  const report = reviewMissionEvidence({
+    ...valid,
+    result: {
+      ...valid.result,
+      analysis: "Le travail est bon et les résultats sont satisfaisants selon notre appréciation.",
+      deliverables: ["Un document final qui présente simplement le travail effectué sans références concrètes."]
+    }
+  });
+  assert.equal(report.verdict, "revision_required");
+  assert.ok(report.findings.some(x => x.code === "QUALITY_TRACEABILITY"));
+  assert.ok(report.findings.some(x => x.code === "QUALITY_ANALYTICAL_DEPTH"));
 });
