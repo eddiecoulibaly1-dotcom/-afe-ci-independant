@@ -1113,12 +1113,27 @@ function message(t,error){$("message").textContent=t;$("message").className=erro
 function showLogin(){const card=$("cooLogin");if(card)card.hidden=false}
 function loginPrompt(text){message(text,true);showLogin();$("message").innerHTML='Authentification requise. Tu peux te connecter directement ci-dessous ou utiliser <a href="/team?return=%2Fcoo" style="font-weight:700">Équipe & Gouvernance ↗</a>';}
 async function loginFromCoo(){const button=$("cooLoginButton"),error=$("cooLoginError");error.textContent="";const email=$("cooLoginEmail").value.trim(),password=$("cooLoginPassword").value;if(!email||!password){error.textContent="Saisis ton adresse e-mail et ton mot de passe.";return}button.disabled=true;button.textContent="Connexion…";try{const response=await fetch("/auth/session",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({action:"signin",email,password})});const raw=await response.text();let data={};try{data=JSON.parse(raw||"{}")}catch{}if(!response.ok||!data.access_token||!data.user?.id)throw new Error(data.msg||data.message||data.error_description||data.error||"Connexion impossible. Vérifie tes identifiants.");localStorage.setItem("afe-v09-session",JSON.stringify(data));$("cooLoginPassword").value="";$("cooLogin").hidden=true;message("Connexion réussie. Chargement de ton espace de travail…");await loadWorkspaceList();}catch(e){error.textContent=e instanceof Error?e.message:"Erreur de connexion.";showLogin();}finally{button.disabled=false;button.textContent="Se connecter";}}
-async function api(path,options){const s=session();if(!s?.access_token){loginPrompt("Authentification requise.");throw Error("Connectez-vous depuis Équipe & Gouvernance.");}const r=await fetch(path,{...(options||{}),headers:{Authorization:"Bearer "+s.access_token,"Content-Type":"application/json",...((options&&options.headers)||{})}});const raw=await r.text();let d={};try{d=JSON.parse(raw||"{}")}catch{}if(r.status===401){localStorage.removeItem("afe-v09-session");loginPrompt("Session expirée.");}if(!r.ok)throw Error(d.error||"Erreur serveur "+r.status);return d}
+async function api(path,options){
+ const s=session();
+ if(!s?.access_token){loginPrompt("Authentification requise.");throw Error("Connectez-vous depuis Équipe & Gouvernance.");}
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+ let r;
+ try{
+  r=await fetch(path,{...(options||{}),signal:controller.signal,headers:{Authorization:"Bearer "+s.access_token,"Content-Type":"application/json",...((options&&options.headers)||{})}});
+ }catch(e){
+  if(e?.name==="AbortError")throw Error("Le serveur met trop de temps à répondre ("+path+"). Vérifie le Preview et réessaie.");
+  throw Error("Impossible de joindre le serveur ("+path+"). "+(e?.message||""));
+ }finally{clearTimeout(timer)}
+ const raw=await r.text();let d={};try{d=JSON.parse(raw||"{}")}catch{}
+ if(r.status===401){localStorage.removeItem("afe-v09-session");loginPrompt("Session expirée. Reconnecte-toi.");}
+ if(!r.ok)throw Error(d.error||d.message||("Erreur serveur "+r.status+" sur "+path));
+ return d;
+}
 const base=()=>"/team/api/workspaces/"+encodeURIComponent(wid)+"/coo/";
 const metric=(label,value)=>'<div class="metric"><b>'+esc(value??"—")+'</b><span class="small">'+esc(label)+'</span></div>';
 const date=v=>v?new Date(v).toLocaleString("fr-FR"):"—";
 const statusLabel=s=>({queued:"En attente",planning:"Planification",running:"En cours",waiting_approval:"Validation requise",paused:"Suspendue",completed:"Terminée",failed:"Échec",cancelled:"Annulée",todo:"À faire",in_progress:"En cours",blocked:"Bloquée",done:"Terminée",open:"Ouverte",acknowledged:"Prise en charge",resolved:"Résolue"}[s]||s||"—");
-async function loadWorkspaceList(){const data=await api("/team/api/workspaces");const spaces=arr(data);$("spaces").innerHTML=spaces.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+' · '+esc(x.role)+'</option>').join("")||'<option value="">Aucun espace</option>';if(!wid&&spaces.length)wid=spaces[0].id;if(wid)$("spaces").value=wid;if(!wid){message("Aucun espace disponible. Créez-en un depuis Équipe & Gouvernance.",true);return}await render();$("cooLogin").hidden=true}
+async function loadWorkspaceList(){message("Session reconnue. Récupération de tes espaces de travail…");const data=await api("/team/api/workspaces");const spaces=arr(data);$("spaces").innerHTML=spaces.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+' · '+esc(x.role)+'</option>').join("")||'<option value="">Aucun espace</option>';if(!wid&&spaces.length)wid=spaces[0].id;if(wid)$("spaces").value=wid;if(!wid){message("Aucun espace disponible. Créez-en un depuis Équipe & Gouvernance.",true);return}await render();$("cooLogin").hidden=true}
 async function loadCommon(){const [dash,agents,members]=await Promise.all([api(base()+"dashboard"),api("/team/api/workspaces/"+encodeURIComponent(wid)+"/agents"),api("/team/api/workspaces/"+encodeURIComponent(wid)+"/members")]);cache={...dash,agents:arr(agents.agents),members:arr(members)};return cache}
 function renderOverview(d){
  const x=d.dashboard.indicators,alerts=arr(d.dashboard.priorityAlerts),risks=arr(d.dashboard.missionsAtRisk);
