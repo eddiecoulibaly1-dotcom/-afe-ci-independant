@@ -12,7 +12,7 @@ const valid = {
   acceptanceCriteria: ["Les risques sont classés", "Les recommandations sont priorisées"],
   result: {
     summary: "A complete operational summary with verifiable outcome.",
-    analysis: "The work was assessed against the requested objective and its acceptance criteria.",
+    analysis: "The analysis identifies operational risks, facts, impacts and recommendations against the requested objective and acceptance criteria.",
     deliverables: ["A documented deliverable containing concrete results and traceable references."],
     task_results: [{
       taskId: "task-1", status: "done" as const, progressPercent: 100,
