@@ -25,7 +25,9 @@ test("COO procedure manual covers every primary tab and mission control dossier"
   for (const section of [
     "Vue centrale", "Portefeuille des missions", "Directions", "Tâches & affectations",
     "Alertes", "Reporting à la Direction générale", "Paramètres COO",
-    "Dossier de contrôle d’une mission", "Sécurité, confidentialité et conservation"
+    "Dossier de contrôle d’une mission", "Sécurité, confidentialité et conservation",
+    "Agents IA", "Délégations", "Approbations IA", "Notifications", "Membres",
+    "Débats", "Validations", "Documents", "Audit", "Assistant IA", "Paramètres du workspace"
   ]) assert.ok(manual.includes(section), "Manual is missing section: " + section);
   assert.ok(manual.length > 25000, "Manual should remain a detailed operating procedure, not a short help note");
 });
