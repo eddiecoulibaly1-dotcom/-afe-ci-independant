@@ -1055,54 +1055,6 @@ export const COO_HTML = String.raw`<!doctype html>
 <main class="wrap"><div id="message" class="notice">Chargement de l'espace de travail…</div><section id="cooLogin" class="card login-card"><h2>Connexion à AFE-CI</h2><p class="small">Connecte-toi avec ton adresse e-mail et ton mot de passe habituels. Le mot de passe est transmis uniquement au service Auth et n’est pas conservé par cette page.</p><label for="cooLoginEmail">Adresse e-mail</label><input id="cooLoginEmail" type="email" autocomplete="username" placeholder="vous@exemple.com"><label for="cooLoginPassword">Mot de passe</label><input id="cooLoginPassword" type="password" autocomplete="current-password" placeholder="Mot de passe"><button class="btn primary" id="cooLoginButton" type="button">Se connecter</button><div id="cooLoginError" class="login-error" role="alert"></div><p class="small">Après connexion, tu reviendras automatiquement au poste de commandement COO.</p></section><div class="bar"><label for="spaces" class="small">Espace de travail</label><select id="spaces" class="field"></select><span id="role" class="small"></span></div>
 <nav class="tabs" id="tabs"><button class="btn active" data-tab="overview">Vue centrale</button><button class="btn" data-tab="missions">Portefeuille des missions</button><button class="btn" data-tab="departments">Directions</button><button class="btn" data-tab="tasks">Tâches & affectations</button><button class="btn" data-tab="alerts">Alertes</button><button class="btn" data-tab="reports">Reporting DG</button><button class="btn" data-tab="settings">Paramètres COO</button></nav><section id="view"></section></main>
 <script>
-(function () {
-  var button = document.getElementById("cooLoginButton");
-  var email = document.getElementById("cooLoginEmail");
-  var password = document.getElementById("cooLoginPassword");
-  var error = document.getElementById("cooLoginError");
-  var message = document.getElementById("message");
-  if (!button || !email || !password || !error) return;
-  button.addEventListener("click", async function (event) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    error.textContent = "";
-    var address = email.value.trim();
-    var secret = password.value;
-    if (!address || !secret) {
-      error.textContent = "Saisis ton adresse e-mail et ton mot de passe.";
-      return;
-    }
-    button.disabled = true;
-    button.textContent = "Connexion en cours…";
-    if (message) message.textContent = "Connexion au service Auth en cours…";
-    try {
-      var response = await fetch("/auth/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify({ action: "signin", email: address, password: secret })
-      });
-      var raw = await response.text();
-      var data = {};
-      try { data = JSON.parse(raw || "{}"); } catch (_) {}
-      if (!response.ok) {
-        throw new Error(data.error || data.msg || data.message || "Échec de connexion (HTTP " + response.status + ").");
-      }
-      if (!data.access_token || !data.user || !data.user.id) {
-        throw new Error("Le service Auth a répondu sans session valide. Réessaie ou contacte l'administrateur.");
-      }
-      localStorage.setItem("afe-v09-session", JSON.stringify(data));
-      password.value = "";
-      if (message) message.textContent = "Connexion réussie. Ouverture de ton espace COO…";
-      window.location.reload();
-    } catch (failure) {
-      error.textContent = failure && failure.message ? failure.message : "La connexion a échoué.";
-      if (message) message.textContent = "La connexion n'a pas abouti. Consulte le message sous le bouton.";
-    } finally {
-      button.disabled = false;
-      button.textContent = "Se connecter";
-    }
-  }, true);
-}());
 </script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <script>
