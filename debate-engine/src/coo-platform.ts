@@ -4,6 +4,7 @@ import type { AuthUser } from "./auth.js";
 import { callModel } from "./providers.js";
 import { runAgentWorkerForWorkspace } from "./autonomous-agents/worker.js";
 import { buildCooDataQuality, resolveTaskDepartmentId } from "./coo-reporting.js";
+import { consolidateDepartmentWorkstreams } from "./coo-planning.js";
 
 type Role = "owner" | "admin" | "editor" | "viewer";
 const rank: Record<Role, number> = { owner: 4, admin: 3, editor: 2, viewer: 1 };
@@ -689,6 +690,16 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
         required: ["summary","priority","workstreams","decisionsRequired","assumptions"]
       }
     });
+    const consolidation = consolidateDepartmentWorkstreams(plan.workstreams);
+    if (consolidation.mergedDepartmentSlugs.length > 0) {
+      plan.workstreams = consolidation.workstreams;
+      plan.assumptions = [...(plan.assumptions ?? []), "Chantiers regroupés par direction pour garantir une seule mission par directeur : " + consolidation.mergedDepartmentSlugs.join(", ") + ". Les tâches et objectifs complémentaires ont été conservés."];
+      await audit(workspaceId, user.id, "coo.plan.consolidated", "coo_run", run.id, {
+        mergedDepartmentSlugs: consolidation.mergedDepartmentSlugs,
+        originalWorkstreamCount: consolidation.workstreams.length + consolidation.mergedDepartmentSlugs.length,
+        consolidatedWorkstreamCount: consolidation.workstreams.length
+      });
+    }
     if (!Array.isArray(plan.workstreams) || plan.workstreams.length < 1 || plan.workstreams.length > maxWorkstreams) throw new Error("Le plan du COO dépasse les limites de délégation.");
     const plannedTaskCount = plan.workstreams.reduce((total, stream) => total + (Array.isArray(stream.tasks) ? stream.tasks.length : 0), 0);
     if (plannedTaskCount > maxTasksPerRun) throw new Error("Le plan dépasse le plafond de tâches autorisé par les capacités COO.");
