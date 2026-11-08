@@ -11,6 +11,8 @@ export type MissionReviewInput = {
   submittingAgentId: string;
   reviewerAgentId: string;
   expectedTaskIds: readonly string[];
+  objective?: string;
+  acceptanceCriteria?: readonly string[];
   result: {
     summary?: string;
     analysis?: string;
@@ -34,6 +36,8 @@ export type MissionReviewReport = {
   findings: MissionReviewFinding[];
   reviewedAt: string;
   closureEligible: false;
+  qualityScore: number;
+  qualityChecks: { criterion: string; passed: boolean; detail: string }[];
 };
 
 /**
@@ -47,7 +51,21 @@ export function reviewMissionEvidence(input: MissionReviewInput, now = new Date(
     throw new Error("The reviewer must be distinct from the submitting agent.");
   }
   const findings: MissionReviewFinding[] = [];
+  const qualityChecks: MissionReviewReport["qualityChecks"] = [];
   const result = input.result ?? {};
+  const summary = typeof result.summary === "string" ? result.summary.trim() : "";
+  const analysis = typeof result.analysis === "string" ? result.analysis.trim() : "";
+  const deliverables = Array.isArray(result.deliverables) ? result.deliverables : [];
+  const combinedEvidence = [summary, analysis, ...deliverables].join(" ").toLocaleLowerCase();
+  const objectiveTerms = (input.objective ?? "").toLocaleLowerCase().match(/[\\p{L}\\p{N}]{4,}/gu) ?? [];
+  const meaningfulTerms = [...new Set(objectiveTerms)].filter(term => !["pour","avec","dans","cette","cela","être","avoir","leur","plus","moins","afin","faire"].includes(term));
+  const matchedTerms = meaningfulTerms.filter(term => combinedEvidence.includes(term));
+  const objectiveCoverage = meaningfulTerms.length === 0 ? null : matchedTerms.length / meaningfulTerms.length;
+  qualityChecks.push({criterion:"objective_alignment",passed:objectiveCoverage === null || objectiveCoverage >= 0.25,detail:objectiveCoverage === null ? "Aucun objectif textuel exploitable fourni." : `${matchedTerms.length}/${meaningfulTerms.length} termes significatifs de l’objectif retrouvés dans les preuves.`});
+  const hasEvidenceMarkers = /https?:\\/\\/|\\b(page|section|annexe|référence|source|tableau|fichier|livrable|mesure|indicateur|résultat|preuve)\\b/i.test(combinedEvidence);
+  qualityChecks.push({criterion:"traceability",passed:hasEvidenceMarkers,detail:hasEvidenceMarkers ? "Au moins un marqueur de traçabilité ou de résultat est présent." : "Aucune référence, source, mesure ou pièce traçable détectée."});
+  const hasAnalysisStructure = /\\b(fait|constat|analyse|risque|cause|impact|recommandation|hypothèse|limite|prochaine étape)\\b/i.test(analysis);
+  qualityChecks.push({criterion:"analytical_depth",passed:hasAnalysisStructure,detail:hasAnalysisStructure ? "L’analyse contient des marqueurs de raisonnement." : "L’analyse ne fait pas apparaître de structure de raisonnement identifiable."});
   if (typeof result.summary !== "string" || result.summary.trim().length < 20) {
     findings.push({ code: "SUMMARY_INSUFFICIENT", severity: "major", message: "The mission summary is missing or too short." });
   }
@@ -84,6 +102,10 @@ export function reviewMissionEvidence(input: MissionReviewInput, now = new Date(
       findings.push({ code: "UNEXPECTED_TASK_RESULT", severity: "major", message: "A task result does not belong to this mission.", taskId: task.taskId });
     }
   }
+  for (const check of qualityChecks) {
+    if (!check.passed) findings.push({ code: `QUALITY_${check.criterion.toUpperCase()}`, severity: "major", message: check.detail });
+  }
+  const qualityScore = Math.round((qualityChecks.filter(x => x.passed).length / Math.max(qualityChecks.length, 1)) * 100);
   const verdict: MissionReviewVerdict = findings.some(x => x.severity === "blocking")
     ? "rejected"
     : findings.length > 0 ? "revision_required" : "accepted";
@@ -95,6 +117,8 @@ export function reviewMissionEvidence(input: MissionReviewInput, now = new Date(
     verdict,
     findings,
     reviewedAt: now.toISOString(),
-    closureEligible: false
+    closureEligible: false,
+    qualityScore,
+    qualityChecks
   };
 }
