@@ -898,18 +898,20 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
             db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(missionId) + "&order=created_at.asc&limit=500"),
             db<any[]>("afe_agent_approvals?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(missionId) + "&order=created_at.desc&limit=100")
           ]);
-          const reviewEvents = events.filter(e => ["mission.evidence.reviewed", "mission.awaiting_coo_validation", "mission.deliverables.submitted", "coo.mission.revision_requested", "coo.mission.human_decision"].includes(e.event_type));
-          const latestReview = [...reviewEvents].reverse().find(e => e.event_type === "mission.evidence.reviewed")?.payload ?? null;
+          const reviewEvents = events.filter(e => ["mission.evidence.reviewed", "mission.evidence.review.invalidated", "mission.awaiting_coo_validation", "mission.deliverables.submitted", "coo.mission.revision_requested", "coo.mission.human_decision"].includes(e.event_type));
+          const latestReviewEvent = [...reviewEvents].reverse().find(e => ["mission.evidence.reviewed", "mission.evidence.review.invalidated"].includes(e.event_type));
+          const latestReview = latestReviewEvent?.payload ?? null;
           send(res, 200, { mission, tasks, events: reviewEvents, approvals, independentReview: latestReview, humanDecision: [...reviewEvents].reverse().find(e => e.event_type === "coo.mission.human_decision")?.payload ?? null, canValidate: access.role === "owner" }); return true;
         }
         const input = await readBody(req), action = clean(input.action, 40), note = clean(input.note, 3000);
-        const events = await db<any[]>("afe_agent_events?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(missionId) + "&event_type=eq.mission.evidence.reviewed&order=created_at.desc&limit=1");
+        const events = await db<any[]>("afe_agent_events?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(missionId) + "&event_type=in.(mission.evidence.reviewed,mission.evidence.review.invalidated)&order=created_at.desc&limit=1");
         const independentReview = events[0]?.payload ?? null;
         if (action === "request_revision") {
           if (note.length < 8) throw fail("Le motif de reprise doit contenir au moins 8 caractères.");
           const context = { ...(mission.input_context ?? {}), cooRevisionRequest: { note, requestedBy: user.id, requestedAt: nowIso() } };
           await db("afe_agent_missions?id=eq." + enc(missionId) + "&workspace_id=eq." + enc(workspaceId), { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ status: "queued", blocked_reason: note, input_context: context, updated_at: nowIso() }) });
           await db("afe_agent_events", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ workspace_id: workspaceId, mission_id: missionId, agent_id: mission.agent_id, actor_type: "human", actor_id: user.id, event_type: "coo.mission.revision_requested", payload: { note, previousReview: independentReview?.verdict ?? "not_available" } }) });
+          await db("afe_agent_events", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ workspace_id: workspaceId, mission_id: missionId, agent_id: mission.agent_id, actor_type: "human", actor_id: user.id, event_type: "mission.evidence.review.invalidated", payload: { verdict: "revision_required", reason: note, invalidatesPreviousReview: true } }) });
           await audit(workspaceId, user.id, "coo.mission.revision_requested", "mission", missionId, { note });
           send(res, 200, { ok: true, action, status: "queued" }); return true;
         }
