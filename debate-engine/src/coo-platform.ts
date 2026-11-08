@@ -1056,7 +1056,7 @@ export const COO_HTML = String.raw`<!doctype html>
 <nav class="tabs" id="tabs"><button class="btn active" data-tab="overview">Vue centrale</button><button class="btn" data-tab="missions">Portefeuille des missions</button><button class="btn" data-tab="departments">Directions</button><button class="btn" data-tab="tasks">Tâches & affectations</button><button class="btn" data-tab="alerts">Alertes</button><button class="btn" data-tab="reports">Reporting DG</button><button class="btn" data-tab="settings">Paramètres COO</button></nav><section id="view"></section></main>
 <script>
 </script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script><script defer src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <script>
 const $=id=>document.getElementById(id),arr=x=>Array.isArray(x)?x:[],esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function session(){try{return JSON.parse(localStorage.getItem("afe-v09-session")||"null")}catch{return null}}
