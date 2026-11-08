@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthUser } from "./auth.js";
 import { callModel } from "./providers.js";
 import { runAgentWorkerForWorkspace } from "./autonomous-agents/worker.js";
+import { buildCooDataQuality, resolveTaskDepartmentId } from "./coo-reporting.js";
 
 type Role = "owner" | "admin" | "editor" | "viewer";
 const rank: Record<Role, number> = { owner: 4, admin: 3, editor: 2, viewer: 1 };
@@ -218,7 +219,6 @@ async function refreshAlerts(workspaceId: string, missions: any[], tasks: any[])
       await upsertAlert(workspaceId, { key: "task-blocked:" + t.id, type: "task_blocked", severity: "warning", title: "Tâche bloquée : " + t.title, description: clean(t.blocked_reason, 1200) || "Un blocage doit être qualifié et escaladé.", taskId: t.id, missionId: t.mission_id ?? undefined });
     }
   }
-  const missionById = new Map(missions.map(m => [m.id, m]));
   const taskById = new Map(tasks.map(t => [t.id, t]));
   const existing = await db<any[]>("afe_coo_alerts?workspace_id=eq." + enc(workspaceId) + "&status=in.(open,acknowledged)&limit=500");
   for (const alert of existing) {
@@ -282,9 +282,10 @@ async function snapshot(workspaceId: string) {
       agent_name: agent?.name ?? "Agent inconnu",
       department_resolution: resolution.source };
   });
+  const decoratedMissionById = new Map(decoratedMissions.map(m => [m.id, m]));
   const decoratedTasks = tasks.map(t => {
-    const mission = t.mission_id ? missionById.get(t.mission_id) : null;
-    const effectiveDepartmentId = t.department_id ?? mission?.effective_department_id ?? agentById.get(t.assigned_agent_id)?.department_id ?? null;
+    const mission = t.mission_id ? decoratedMissionById.get(t.mission_id) : null;
+    const effectiveDepartmentId = resolveTaskDepartmentId(t, mission, t.assigned_agent_id ? agentById.get(t.assigned_agent_id) : null);
     return { ...t, effective_department_id: effectiveDepartmentId,
       department_name: deptById.get(effectiveDepartmentId)?.name ?? "Direction inconnue",
       assigned_agent_name: t.assigned_agent_id ? agentById.get(t.assigned_agent_id)?.name ?? "Agent inconnu" : null };
@@ -499,42 +500,17 @@ async function generateReport(workspaceId: string, reportType: "daily" | "weekly
   const tasks = fullData.tasks.filter(t => inPeriod(t.created_at) || (t.mission_id && periodMissionIds.has(t.mission_id)));
   const data = { ...fullData, missions, tasks };
   const dashboard = computeDashboard(data);
-  const tasksByMission = new Map<string, any[]>();
-  for (const task of tasks) if (task.mission_id) {
-    const current = tasksByMission.get(task.mission_id) ?? [];
-    current.push(task);
-    tasksByMission.set(task.mission_id, current);
-  }
-  const completedMissions = missions.filter(m => m.status === "completed");
-  const completedWithoutTasks = completedMissions.filter(m => !(tasksByMission.get(m.id)?.length));
-  const completedWithIncompleteTasks = completedMissions.filter(m => {
-    const linked = tasksByMission.get(m.id) ?? [];
-    return linked.length > 0 && linked.some(t => t.status !== "done");
-  });
-  const completedVerified = completedMissions.filter(m => {
-    const linked = tasksByMission.get(m.id) ?? [];
-    return linked.length > 0 && linked.every(t => t.status === "done");
-  });
-  const unassignedMissions = missions.filter(m => !m.effective_department_id);
-  const assignedMissionCount = dashboard.departmentPerformance.reduce((n, d) => n + d.missionCount, 0);
-  const dataQualityFindings: string[] = [];
-  if (completedWithoutTasks.length) dataQualityFindings.push(completedWithoutTasks.length + " mission(s) terminée(s) sans tâche opérationnelle associée : exécution non démontrée par le registre des tâches.");
-  if (completedWithIncompleteTasks.length) dataQualityFindings.push(completedWithIncompleteTasks.length + " mission(s) terminée(s) possèdent des tâches non terminées : clôture incohérente.");
-  if (unassignedMissions.length) dataQualityFindings.push(unassignedMissions.length + " mission(s) sans direction identifiable après rapprochement avec le responsable IA.");
-  if (assignedMissionCount + unassignedMissions.length !== missions.length) dataQualityFindings.push("La ventilation par direction et les missions non affectées ne réconcilient pas le total.");
+  const dataQuality = buildCooDataQuality(missions, tasks, dashboard.departmentPerformance);
+  const { completedVerifiedMissionCount, completedWithoutTasks, completedWithIncompleteTasks, assignedMissionCount, unassignedMissionCount, departmentMissionCount, findings: dataQualityFindings } = dataQuality;
   const reportContent = {
     title: reportType === "daily" ? "Rapport opérationnel quotidien" : reportType === "weekly" ? "Revue opérationnelle hebdomadaire" : "Rapport opérationnel",
     generatedAt: nowIso(), period: { start: periodStart, end: periodEnd }, indicators: {
       ...dashboard.indicators,
-      completedVerifiedMissions: completedVerified.length,
+      completedVerifiedMissions: completedVerifiedMissionCount,
       completedUnverifiedMissions: completedWithoutTasks.length + completedWithIncompleteTasks.length
     },
     departmentPerformance: dashboard.departmentPerformance, missionsAtRisk: dashboard.missionsAtRisk, priorityAlerts: dashboard.priorityAlerts,
-    dataQuality: { missionCount: missions.length, assignedMissionCount, unassignedMissionCount: unassignedMissions.length,
-      completedVerifiedMissionCount: completedVerified.length,
-      completedWithoutTasks: completedWithoutTasks.map(m => ({ id: m.id, title: m.title, department: m.department_name })),
-      completedWithIncompleteTasks: completedWithIncompleteTasks.map(m => ({ id: m.id, title: m.title, department: m.department_name })),
-      findings: dataQualityFindings },
+    dataQuality: { ...dataQuality },
     decisionsRequired: { humanApprovals: data.approvals, escalations: dashboard.priorityAlerts.filter(x => x.severity === "critical") },
     governanceNote: "Ce rapport décrit l'exécution opérationnelle. Une mission terminée sans tâches opérationnelles toutes achevées est signalée comme non vérifiée. Il ne modifie aucun constat technique, arbitrage indépendant ou décision soumise à validation humaine."
   };
