@@ -13,7 +13,7 @@ export type ReportingTask = {
   status: string;
   effective_department_id?: string | null;
 };
-export type DepartmentPerformance = { missionCount: number; taskCount?: number };
+export type DepartmentPerformance = { id?: string; missionCount: number; taskCount?: number };
 
 export function buildCooReportActivity(
   missions: Array<{ created_at?: string | null }>,
@@ -76,6 +76,10 @@ export function buildCooDataQuality(
   });
   const assignedMissionCount = missions.filter(m => Boolean(m.effective_department_id)).length;
   const unassignedMissions = missions.filter(m => !m.effective_department_id);
+  const knownDepartmentIds = new Set(departmentPerformance.map(d => d.id).filter((id): id is string => typeof id === "string" && id.length > 0));
+  const missionsWithUnknownDepartment = knownDepartmentIds.size
+    ? missions.filter(m => Boolean(m.effective_department_id) && !knownDepartmentIds.has(m.effective_department_id as string))
+    : [];
   const departmentMissionCount = departmentPerformance.reduce((n, d) => n + (Number.isFinite(d.missionCount) ? d.missionCount : 0), 0);
   const assignedTaskCount = tasks.filter(t => Boolean(t.effective_department_id)).length;
   const unassignedTaskCount = tasks.length - assignedTaskCount;
@@ -89,6 +93,7 @@ export function buildCooDataQuality(
   if (completedWithoutTasks.length) findings.push(completedWithoutTasks.length + " mission(s) terminée(s) sans tâche opérationnelle associée : exécution non démontrée par le registre des tâches.");
   if (completedWithIncompleteTasks.length) findings.push(completedWithIncompleteTasks.length + " mission(s) terminée(s) possèdent des tâches non terminées : clôture incohérente.");
   if (unassignedMissions.length) findings.push(unassignedMissions.length + " mission(s) sans direction identifiable après rapprochement avec le responsable IA.");
+  if (missionsWithUnknownDepartment.length) findings.push(missionsWithUnknownDepartment.length + " mission(s) référencent une direction absente du référentiel du workspace.");
   if (assignedMissionCount + unassignedMissions.length !== missions.length) findings.push("Le total des missions affectées et non affectées ne réconcilie pas le portefeuille.");
   if (departmentMissionCount !== assignedMissionCount) findings.push("La ventilation des missions par direction (" + departmentMissionCount + ") ne correspond pas au nombre de missions affectées (" + assignedMissionCount + ").");
   if (departmentTaskCount !== assignedTaskCount) findings.push("La ventilation des tâches par direction (" + departmentTaskCount + ") ne correspond pas au nombre de tâches affectées (" + assignedTaskCount + ").");
@@ -98,6 +103,7 @@ export function buildCooDataQuality(
     assignedMissionCount,
     departmentMissionCount,
     unassignedMissionCount: unassignedMissions.length,
+    unknownDepartmentMissionCount: missionsWithUnknownDepartment.length,
     taskCount: tasks.length,
     assignedTaskCount,
     unassignedTaskCount,
