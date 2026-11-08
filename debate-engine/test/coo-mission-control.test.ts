@@ -7,12 +7,12 @@ const coo = await readFile(new URL("../src/coo-platform.ts", import.meta.url), "
 
 test("mission evidence submission is recorded before independent review in both worker paths", () => {
   assert.equal((worker.match(/await recordMissionDeliverables\(claim,output\)/g) ?? []).length, 2);
-  assert.equal((worker.match(/const reviewReport=await recordMissionReview\(claim,mission,output\)/g) ?? []).length, 2);
+  assert.equal((worker.match(/const reviewReport=await recordMissionReview\(claim,mission,output,provider\)/g) ?? []).length, 2);
   const submit = worker.indexOf("await recordMissionDeliverables(claim,output)");
-  const review = worker.indexOf("const reviewReport=await recordMissionReview(claim,mission,output)", submit);
+  const review = worker.indexOf("const reviewReport=await recordMissionReview(claim,mission,output,provider)", submit);
   assert.ok(submit >= 0 && review > submit);
   const workspaceSubmit = worker.indexOf("await recordMissionDeliverables(claim,output)", submit + 1);
-  const workspaceReview = worker.indexOf("const reviewReport=await recordMissionReview(claim,mission,output)", review + 1);
+  const workspaceReview = worker.indexOf("const reviewReport=await recordMissionReview(claim,mission,output,provider)", review + 1);
   assert.ok(workspaceSubmit >= 0 && workspaceReview > workspaceSubmit);
 });
 
