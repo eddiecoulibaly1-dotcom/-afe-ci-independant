@@ -57,11 +57,18 @@ export function reviewMissionEvidence(input: MissionReviewInput, now = new Date(
   const analysis = typeof result.analysis === "string" ? result.analysis.trim() : "";
   const deliverables = Array.isArray(result.deliverables) ? result.deliverables : [];
   const combinedEvidence = [summary, analysis, ...deliverables].join(" ").toLocaleLowerCase();
-  const objectiveTerms = (input.objective ?? "").toLocaleLowerCase().match(/[\\p{L}\\p{N}]{4,}/gu) ?? [];
+  const objectiveTerms = (input.objective ?? "").toLocaleLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? [];
   const meaningfulTerms = [...new Set(objectiveTerms)].filter(term => !["pour","avec","dans","cette","cela","être","avoir","leur","plus","moins","afin","faire"].includes(term));
   const matchedTerms = meaningfulTerms.filter(term => combinedEvidence.includes(term));
+  const criteria = (input.acceptanceCriteria ?? []).map(x => x.trim()).filter(Boolean);
+  const matchedCriteria = criteria.filter(criterion => {
+    const terms = criterion.toLocaleLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? [];
+    const significant = terms.filter(term => !["pour","avec","dans","cette","cela","être","avoir","leur","plus","moins","afin","faire"].includes(term));
+    return significant.length > 0 && significant.filter(term => combinedEvidence.includes(term)).length / significant.length >= 0.5;
+  });
   const objectiveCoverage = meaningfulTerms.length === 0 ? null : matchedTerms.length / meaningfulTerms.length;
-  qualityChecks.push({criterion:"objective_alignment",passed:objectiveCoverage === null || objectiveCoverage >= 0.25,detail:objectiveCoverage === null ? "Aucun objectif textuel exploitable fourni." : `${matchedTerms.length}/${meaningfulTerms.length} termes significatifs de l’objectif retrouvés dans les preuves.`});
+  const criteriaCoverage = criteria.length === 0 ? null : matchedCriteria.length / criteria.length;
+  qualityChecks.push({criterion:"objective_alignment",passed:(objectiveCoverage === null || objectiveCoverage >= 0.25) && (criteriaCoverage === null || criteriaCoverage === 1),detail:`${matchedTerms.length}/${meaningfulTerms.length} termes de l’objectif et ${matchedCriteria.length}/${criteria.length} critères d’acceptation couverts.`});
   const hasEvidenceMarkers = /(https?:\/\/|\b(page|section|annexe|référence|source|tableau|fichier|livrable|mesure|indicateur|résultat|preuve)\b)/i.test(combinedEvidence);
   qualityChecks.push({criterion:"traceability",passed:hasEvidenceMarkers,detail:hasEvidenceMarkers ? "Au moins un marqueur de traçabilité ou de résultat est présent." : "Aucune référence, source, mesure ou pièce traçable détectée."});
   const hasAnalysisStructure = /\b(fait|constat|analyse|risque|cause|impact|recommandation|hypothèse|limite|prochaine étape)\b/i.test(analysis);
