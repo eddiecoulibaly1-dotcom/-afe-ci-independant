@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildCooDataQuality, resolveTaskDepartmentId } from "../src/coo-reporting.js";
+import { buildCooDataQuality, buildCooReportActivity, buildCooReportIdempotencyKey, resolveTaskDepartmentId } from "../src/coo-reporting.js";
 
 test("a task inherits the effective department resolved for its mission", () => {
   assert.equal(resolveTaskDepartmentId({}, { effective_department_id: "dept-inferred" }), "dept-inferred");
@@ -86,4 +86,44 @@ test("task reconciliation detects a task assigned to a different department than
 
 test("blank legacy task department falls back to the mission's effective department", () => {
   assert.equal(resolveTaskDepartmentId({ department_id: "" }, { effective_department_id: "d-effective" }), "d-effective");
+});
+
+
+test("report activity counts only records created inside the declared period", () => {
+  const activity = buildCooReportActivity(
+    [
+      { created_at: "2026-11-06T21:54:47.000Z" },
+      { created_at: "2026-11-06T21:54:48.000Z" },
+      { created_at: "2026-11-07T21:54:48.000Z" },
+      { created_at: "2026-11-07T21:54:49.000Z" },
+      { created_at: null }
+    ],
+    [
+      { created_at: "2026-11-06T22:00:00.000Z" },
+      { created_at: "2026-11-07T10:00:00.000Z" },
+      { created_at: "2026-11-08T00:00:00.000Z" }
+    ],
+    "2026-11-06T21:54:48.000Z",
+    "2026-11-07T21:54:48.000Z"
+  );
+  assert.deepEqual(activity, { missionsCreated: 2, tasksCreated: 2 });
+});
+
+test("report idempotency distinguishes different windows on the same calendar dates", () => {
+  const first = buildCooReportIdempotencyKey(
+    "ad_hoc",
+    "2026-11-06T08:00:00.000Z",
+    "2026-11-07T08:00:00.000Z"
+  );
+  const second = buildCooReportIdempotencyKey(
+    "ad_hoc",
+    "2026-11-06T12:00:00.000Z",
+    "2026-11-07T12:00:00.000Z"
+  );
+  assert.notEqual(first, second);
+  assert.equal(first, buildCooReportIdempotencyKey(
+    "ad_hoc",
+    "2026-11-06T08:00:00.000Z",
+    "2026-11-07T08:00:00.000Z"
+  ));
 });
