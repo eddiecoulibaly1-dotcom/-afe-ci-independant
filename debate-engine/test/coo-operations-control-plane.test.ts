@@ -344,3 +344,17 @@ test("COO correction requests invalidate the previous independent review until a
   assert.match(source, /event_type=in\.\(mission\.evidence\.reviewed,mission\.evidence\.review\.invalidated\)/);
   assert.match(source, /invalidatesPreviousReview: true/);
 });
+
+
+test("report department activity is distinct from active department configuration", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.ok(source.includes("departmentsWithActivity: deptPerformance.filter(d => d.active && (d.missionCount > 0 || d.taskCount > 0)).length"));
+  assert.ok(source.includes("Directions configurées actives : "));
+  assert.ok(source.includes("Directions ayant une activité : "));
+});
+
+test("legacy archived reports disclose missing period and verification data without inventing zero values", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.ok(source.includes("Activité sur la période : non disponible dans cette version du rapport archivé."));
+  assert.ok(source.includes("Vérification des missions terminées : non disponible dans cette version du rapport archivé."));
+});
