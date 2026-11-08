@@ -62,9 +62,9 @@ export function reviewMissionEvidence(input: MissionReviewInput, now = new Date(
   const matchedTerms = meaningfulTerms.filter(term => combinedEvidence.includes(term));
   const objectiveCoverage = meaningfulTerms.length === 0 ? null : matchedTerms.length / meaningfulTerms.length;
   qualityChecks.push({criterion:"objective_alignment",passed:objectiveCoverage === null || objectiveCoverage >= 0.25,detail:objectiveCoverage === null ? "Aucun objectif textuel exploitable fourni." : `${matchedTerms.length}/${meaningfulTerms.length} termes significatifs de l’objectif retrouvés dans les preuves.`});
-  const hasEvidenceMarkers = /https?:\\/\\/|\\b(page|section|annexe|référence|source|tableau|fichier|livrable|mesure|indicateur|résultat|preuve)\\b/i.test(combinedEvidence);
+  const hasEvidenceMarkers = /(https?:\/\/|\b(page|section|annexe|référence|source|tableau|fichier|livrable|mesure|indicateur|résultat|preuve)\b)/i.test(combinedEvidence);
   qualityChecks.push({criterion:"traceability",passed:hasEvidenceMarkers,detail:hasEvidenceMarkers ? "Au moins un marqueur de traçabilité ou de résultat est présent." : "Aucune référence, source, mesure ou pièce traçable détectée."});
-  const hasAnalysisStructure = /\\b(fait|constat|analyse|risque|cause|impact|recommandation|hypothèse|limite|prochaine étape)\\b/i.test(analysis);
+  const hasAnalysisStructure = /\b(fait|constat|analyse|risque|cause|impact|recommandation|hypothèse|limite|prochaine étape)\b/i.test(analysis);
   qualityChecks.push({criterion:"analytical_depth",passed:hasAnalysisStructure,detail:hasAnalysisStructure ? "L’analyse contient des marqueurs de raisonnement." : "L’analyse ne fait pas apparaître de structure de raisonnement identifiable."});
   if (typeof result.summary !== "string" || result.summary.trim().length < 20) {
     findings.push({ code: "SUMMARY_INSUFFICIENT", severity: "major", message: "The mission summary is missing or too short." });
