@@ -48,3 +48,8 @@ test("COO inline browser JavaScript parses before deployment", () => {
   assert.ok(applicationScript.includes('$("cooLoginButton").onclick=loginFromCoo'));
   assert.doesNotThrow(() => new Script(applicationScript), "COO browser script must be syntactically valid");
 });
+
+test("COO export libraries cannot block authentication script startup", () => {
+  assert.match(coo, /<script defer src="https:\/\/cdn\.jsdelivr\.net\/npm\/jspdf/);
+  assert.match(coo, /<script defer src="https:\/\/cdn\.jsdelivr\.net\/npm\/docx/);
+});
