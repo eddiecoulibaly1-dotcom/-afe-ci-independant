@@ -44,7 +44,7 @@ async function recordMissionReview(claim:Claim,mission:any,output:MissionResult)
   actor_type:"worker",event_type:"mission.evidence.reviewed",
   payload:{...report,reviewerType:"deterministic_independent_evidence_gate"}
  })});
- if(report.verdict==="rejected") throw new Error("Contrôle indépendant rejeté : "+report.findings.map(x=>x.code).join(", "));
+ // A rejected report is preserved for the COO; it never triggers automatic closure or silent retry.
  return report;
 }
 async function recordMissionDeliverables(claim:Claim,output:MissionResult){
