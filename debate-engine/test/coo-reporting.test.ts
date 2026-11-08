@@ -127,3 +127,34 @@ test("report idempotency distinguishes different windows on the same calendar da
     "2026-11-07T08:00:00.000Z"
   ));
 });
+
+
+test("reconciliation identifies missions assigned to department IDs absent from the active workspace catalog", () => {
+  const result = buildCooDataQuality(
+    [
+      { id: "known", status: "running", effective_department_id: "d1" },
+      { id: "orphan-a", status: "running", effective_department_id: "deleted-dept" },
+      { id: "orphan-b", status: "completed", effective_department_id: "deleted-dept" }
+    ],
+    [],
+    [{ id: "d1", missionCount: 1, taskCount: 0 }]
+  );
+  assert.equal(result.missionCount, 3);
+  assert.equal(result.assignedMissionCount, 3);
+  assert.equal(result.departmentMissionCount, 1);
+  assert.equal(result.unknownDepartmentMissionCount, 2);
+  assert.ok(result.findings.some(x => x.includes("direction absente du référentiel")));
+});
+
+test("report department activity is distinct from active department configuration", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.ok(source.includes("departmentsWithActivity: deptPerformance.filter(d => d.active && (d.missionCount > 0 || d.taskCount > 0)).length"));
+  assert.ok(source.includes("Directions configurées actives : "));
+  assert.ok(source.includes("Directions ayant une activité : "));
+});
+
+test("legacy archived reports disclose missing period and verification data without inventing zero values", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.ok(source.includes("Activité sur la période : non disponible dans cette version du rapport archivé."));
+  assert.ok(source.includes("Vérification des missions terminées : non disponible dans cette version du rapport archivé."));
+});
