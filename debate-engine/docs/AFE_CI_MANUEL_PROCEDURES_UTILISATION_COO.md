@@ -435,6 +435,8 @@ Cliquer sur **Consulter** à côté du rapport. Le détail contient notamment :
 
 Lire les limites de données et les anomalies avant de transmettre le rapport. Un rapport est un instantané des informations disponibles au moment de sa génération ; il ne remplace pas le suivi courant.
 
+Les indicateurs de portefeuille (missions actives, missions en retard, tâches ouvertes, alertes et validations) décrivent l’état complet du workspace au moment de la génération. Les compteurs « missions créées sur la période » et « tâches créées sur la période » isolent les nouvelles créations comprises entre les deux bornes. Un rapport archivé est conservé comme preuve et n’est pas réécrit lors d’une nouvelle consultation.
+
 ### 10.4 Copier ou télécharger
 
 Dans le détail d’un rapport :
