@@ -47,7 +47,7 @@ test("independent evidence review is recorded before task synchronization in bot
   assert.match(source, /const INDEPENDENT_REVIEWER_ID = "system:independent-evidence-gate"/);
   assert.match(source, /event_type:"mission\.evidence\.reviewed"/);
   assert.match(source, /semanticReviewerType:"independent_ai_semantic_reviewer"/);
-  assert.equal((source.match(/await recordMissionReview\(claim,mission,output\)/g) ?? []).length, 2);
+  assert.equal((source.match(/await recordMissionReview\(claim,mission,output,provider\)/g) ?? []).length, 2);
   assert.match(source, /AI review is advisory evidence/);
   const reviewCall = source.indexOf("await recordMissionReview(claim,mission,output,provider)");
   const taskSync = source.indexOf("const taskSync=await syncCooTaskResults", reviewCall);
