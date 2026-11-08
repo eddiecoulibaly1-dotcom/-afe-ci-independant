@@ -36,3 +36,9 @@ test("COO login click handler is isolated before dashboard scripts and reports A
   assert.match(coo, /error\.textContent = failure && failure\.message/);
   assert.match(coo, /localStorage\.setItem\("afe-v09-session", JSON\.stringify\(data\)\)/);
 });
+
+test("COO workspace loading has a bounded timeout and a visible progress message", () => {
+  assert.match(coo, /new AbortController\(\),timer=setTimeout\(\(\)=>controller\.abort\(\),12000\)/);
+  assert.match(coo, /Le serveur met trop de temps à répondre/);
+  assert.match(coo, /Session reconnue\. Récupération de tes espaces de travail/);
+});
