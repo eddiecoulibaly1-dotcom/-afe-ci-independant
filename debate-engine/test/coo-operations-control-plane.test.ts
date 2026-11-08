@@ -268,7 +268,7 @@ test("COO report scopes mission and task indicators to the declared reporting pe
 
 test("COO reporting resolves legacy agent ownership only through an exact department slug", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /agentSlug\.split\(\/\[-_\]\/\)\.includes\(d\.slug\)/);
+  assert.match(source, /agentTokens\.slice\(index, index \+ departmentTokens\.length\)\.join\("-"\) === d\.slug/);
   assert.match(source, /inferred_from_agent_slug/);
   assert.match(source, /mission\?\.effective_department_id/);
   assert.match(source, /department_resolution: resolution\.source/);
