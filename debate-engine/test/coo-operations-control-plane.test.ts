@@ -248,7 +248,7 @@ test("COO reporting reconciles legacy missions through their assigned agent depa
 
 test("COO reports reconcile mission totals and flag completed missions without task evidence", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /const tasksByMission = new Map<string, number>\(\)/);
+  assert.match(source, /const tasksByMission = new Map<string, any[]>\(\)/);
   assert.match(source, /completedWithoutTasks = data\.missions\.filter\(m => m\.status === "completed" && !tasksByMission\.has\(m\.id\)\)/);
   assert.match(source, /unassignedMissionCount: unassignedMissions\.length/);
   assert.match(source, /dataQualityFindings/);
