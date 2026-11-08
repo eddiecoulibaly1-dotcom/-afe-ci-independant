@@ -30,4 +30,6 @@ test("COO procedure manual covers every primary tab and mission control dossier"
     "Débats", "Validations", "Documents", "Audit", "Assistant IA", "Paramètres du workspace"
   ]) assert.ok(manual.includes(section), "Manual is missing section: " + section);
   assert.ok(manual.length > 25000, "Manual should remain a detailed operating procedure, not a short help note");
+  assert.ok(manual.includes("Les indicateurs de portefeuille"), "Manual must explain portfolio snapshot metrics");
+  assert.ok(coo.includes("Les indicateurs de portefeuille"), "Embedded manual must match the reporting procedure");
 });
