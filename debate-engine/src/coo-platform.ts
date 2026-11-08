@@ -690,13 +690,14 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
         required: ["summary","priority","workstreams","decisionsRequired","assumptions"]
       }
     });
+    const originalWorkstreamCount = plan.workstreams.length;
     const consolidation = consolidateDepartmentWorkstreams(plan.workstreams);
     if (consolidation.mergedDepartmentSlugs.length > 0) {
       plan.workstreams = consolidation.workstreams;
       plan.assumptions = [...(plan.assumptions ?? []), "Chantiers regroupés par direction pour garantir une seule mission par directeur : " + consolidation.mergedDepartmentSlugs.join(", ") + ". Les tâches et objectifs complémentaires ont été conservés."];
       await audit(workspaceId, user.id, "coo.plan.consolidated", "coo_run", run.id, {
         mergedDepartmentSlugs: consolidation.mergedDepartmentSlugs,
-        originalWorkstreamCount: consolidation.workstreams.length + consolidation.mergedDepartmentSlugs.length,
+        originalWorkstreamCount,
         consolidatedWorkstreamCount: consolidation.workstreams.length
       });
     }
