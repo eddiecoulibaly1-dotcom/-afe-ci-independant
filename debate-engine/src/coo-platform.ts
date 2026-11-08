@@ -257,16 +257,23 @@ async function snapshot(workspaceId: string) {
   ]);
   const deptById = new Map(departments.map(d => [d.id, d]));
   const agentById = new Map(agents.map(a => [a.id, a]));
-  const decoratedTasks = tasks.map(t => ({
-    ...t,
-    department_name: deptById.get(t.department_id)?.name ?? "Direction inconnue",
-    assigned_agent_name: t.assigned_agent_id ? agentById.get(t.assigned_agent_id)?.name ?? "Agent inconnu" : null
-  }));
-  const decoratedMissions = missions.map(m => ({
-    ...m,
-    department_name: deptById.get(m.department_id)?.name ?? "Non affectée",
-    agent_name: agentById.get(m.agent_id)?.name ?? "Agent inconnu"
-  }));
+  const missionById = new Map(missions.map(m => [m.id, m]));
+  // Resolve legacy null department IDs for reporting without mutating source records.
+  const decoratedMissions = missions.map(m => {
+    const agent = agentById.get(m.agent_id);
+    const effectiveDepartmentId = m.department_id ?? agent?.department_id ?? null;
+    return { ...m, effective_department_id: effectiveDepartmentId,
+      department_name: deptById.get(effectiveDepartmentId)?.name ?? "Non affectée",
+      agent_name: agent?.name ?? "Agent inconnu",
+      department_resolution: m.department_id ? "explicit" : effectiveDepartmentId ? "inferred_from_agent" : "unassigned" };
+  });
+  const decoratedTasks = tasks.map(t => {
+    const mission = t.mission_id ? missionById.get(t.mission_id) : null;
+    const effectiveDepartmentId = t.department_id ?? mission?.department_id ?? agentById.get(t.assigned_agent_id)?.department_id ?? null;
+    return { ...t, effective_department_id: effectiveDepartmentId,
+      department_name: deptById.get(effectiveDepartmentId)?.name ?? "Direction inconnue",
+      assigned_agent_name: t.assigned_agent_id ? agentById.get(t.assigned_agent_id)?.name ?? "Agent inconnu" : null };
+  });
   return { departments, missions: decoratedMissions, tasks: decoratedTasks, agents, alerts, approvals };
 }
 function computeDashboard(data: Awaited<ReturnType<typeof snapshot>>) {
@@ -278,8 +285,8 @@ function computeDashboard(data: Awaited<ReturnType<typeof snapshot>>) {
   const completedMissions = data.missions.filter(m => m.status === "completed").length;
   const failedMissions = data.missions.filter(m => m.status === "failed").length;
   const deptPerformance = data.departments.map(d => {
-    const ms = data.missions.filter(m => m.department_id === d.id);
-    const ts = data.tasks.filter(t => t.department_id === d.id);
+    const ms = data.missions.filter(m => m.effective_department_id === d.id);
+    const ts = data.tasks.filter(t => t.effective_department_id === d.id);
     const done = ts.filter(t => t.status === "done").length;
     const closed = ms.filter(m => ["completed", "failed", "cancelled"].includes(m.status));
     return {
@@ -297,6 +304,7 @@ function computeDashboard(data: Awaited<ReturnType<typeof snapshot>>) {
     indicators: {
       totalMissions: data.missions.length, activeMissions: activeMissions.length, completedMissions,
       failedMissions, overdueMissions: overdueMissions.length,
+      unassignedMissions: data.missions.filter(m => !m.effective_department_id).length,
       blockedMissions: data.missions.filter(m => Boolean(m.blocked_reason) || m.status === "paused").length,
       totalTasks: data.tasks.length, openTasks: openTasks.length,
       blockedTasks: data.tasks.filter(t => t.status === "blocked").length,
@@ -463,16 +471,22 @@ async function generateReport(workspaceId: string, reportType: "daily" | "weekly
   await refreshAlerts(workspaceId, initial.missions, initial.tasks);
   const data = await snapshot(workspaceId);
   const dashboard = computeDashboard(data);
+  const tasksByMission = new Map<string, number>();
+  for (const task of data.tasks) if (task.mission_id) tasksByMission.set(task.mission_id, (tasksByMission.get(task.mission_id) ?? 0) + 1);
+  const completedWithoutTasks = data.missions.filter(m => m.status === "completed" && !tasksByMission.has(m.id));
+  const unassignedMissions = data.missions.filter(m => !m.effective_department_id);
+  const assignedMissionCount = dashboard.departmentPerformance.reduce((n, d) => n + d.missionCount, 0);
+  const dataQualityFindings: string[] = [];
+  if (completedWithoutTasks.length) dataQualityFindings.push(completedWithoutTasks.length + " mission(s) terminée(s) sans tâche opérationnelle associée : exécution non démontrée par le registre des tâches.");
+  if (unassignedMissions.length) dataQualityFindings.push(unassignedMissions.length + " mission(s) sans direction identifiable après rapprochement avec le responsable IA.");
+  if (assignedMissionCount + unassignedMissions.length !== data.missions.length) dataQualityFindings.push("La ventilation par direction et les missions non affectées ne réconcilient pas le total.");
   const reportContent = {
     title: reportType === "daily" ? "Rapport opérationnel quotidien" : reportType === "weekly" ? "Revue opérationnelle hebdomadaire" : "Rapport opérationnel",
     generatedAt: nowIso(), period: { start: periodStart, end: periodEnd }, indicators: dashboard.indicators,
-    departmentPerformance: dashboard.departmentPerformance,
-    missionsAtRisk: dashboard.missionsAtRisk,
-    priorityAlerts: dashboard.priorityAlerts,
-    decisionsRequired: {
-      humanApprovals: data.approvals,
-      escalations: dashboard.priorityAlerts.filter(x => x.severity === "critical")
-    },
+    departmentPerformance: dashboard.departmentPerformance, missionsAtRisk: dashboard.missionsAtRisk, priorityAlerts: dashboard.priorityAlerts,
+    dataQuality: { missionCount: data.missions.length, assignedMissionCount, unassignedMissionCount: unassignedMissions.length,
+      completedWithoutTasks: completedWithoutTasks.map(m => ({ id: m.id, title: m.title, department: m.department_name })), findings: dataQualityFindings },
+    decisionsRequired: { humanApprovals: data.approvals, escalations: dashboard.priorityAlerts.filter(x => x.severity === "critical") },
     governanceNote: "Ce rapport décrit l'exécution opérationnelle. Il ne modifie aucun constat technique, arbitrage indépendant ou décision soumise à validation humaine."
   };
   const key = reportType + ":" + periodStart.slice(0, 10) + ":" + periodEnd.slice(0, 10);
