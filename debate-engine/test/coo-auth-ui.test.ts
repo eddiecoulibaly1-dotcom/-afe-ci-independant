@@ -26,15 +26,12 @@ test("COO displays authentication errors and reveals sign-in again after an expi
   assert.match(coo, /if\(r\.status===401\)\{localStorage\.removeItem\("afe-v09-session"\);loginPrompt\("Session expirée\."\);\}/);
 });
 
-test("COO login click handler is isolated before dashboard scripts and reports Auth failures", () => {
-  const handler = coo.indexOf('button.addEventListener("click", async function (event)');
-  const dashboard = coo.indexOf('<script src="https://cdn.jsdelivr.net/npm/jspdf');
-  assert.ok(handler >= 0, "isolated click handler must exist");
-  assert.ok(dashboard > handler, "isolated handler must run before dashboard scripts");
-  assert.match(coo, /event\.stopImmediatePropagation\(\)/);
-  assert.match(coo, /fetch\("\/auth\/session"/);
-  assert.match(coo, /error\.textContent = failure && failure\.message/);
-  assert.match(coo, /localStorage\.setItem\("afe-v09-session", JSON\.stringify\(data\)\)/);
+test("COO uses one login click handler without a competing capture listener", () => {
+  assert.match(coo, /\$\("cooLoginButton"\)\.onclick=loginFromCoo/);
+  assert.doesNotMatch(coo, /stopImmediatePropagation\(\)/);
+  assert.doesNotMatch(coo, /button\.addEventListener\("click", async function \(event\)/);
+  assert.match(coo, /async function loginFromCoo\(\)/);
+  assert.match(coo, /await loadWorkspaceList\(\)/);
 });
 
 test("COO workspace loading has a bounded timeout and a visible progress message", () => {
