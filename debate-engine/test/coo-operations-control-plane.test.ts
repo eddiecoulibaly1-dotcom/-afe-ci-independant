@@ -255,3 +255,38 @@ test("COO reports reconcile mission totals and flag completed missions without t
   assert.match(source, /quality\.completedWithoutTasks/);
   assert.match(source, /quality\.unassignedMissionCount/);
 });
+
+
+test("COO report scopes mission and task indicators to the declared reporting period", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /const startMs = Date\.parse\(periodStart\), endMs = Date\.parse\(periodEnd\)/);
+  assert.match(source, /if \(!Number\.isFinite\(startMs\).*startMs > endMs\)/);
+  assert.match(source, /const missions = fullData\.missions\.filter\(m => inPeriod\(m\.created_at\)\)/);
+  assert.match(source, /const tasks = fullData\.tasks\.filter\(t => inPeriod\(t\.created_at\) \|\| \(t\.mission_id && periodMissionIds\.has\(t\.mission_id\)\)\)/);
+  assert.match(source, /report_content: reportContent, period_start: periodStart, period_end: periodEnd/);
+});
+
+test("COO reporting resolves legacy agent ownership only through an exact department slug", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /agentSlug\.split\(\/\[-_\]\/\)\.includes\(d\.slug\)/);
+  assert.match(source, /inferred_from_agent_slug/);
+  assert.match(source, /mission\?\.effective_department_id/);
+  assert.match(source, /department_resolution: resolution\.source/);
+});
+
+test("COO report reconciliation distinguishes verified, unverified and incomplete completed missions", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /completedWithoutTasks = completedMissions\.filter/);
+  assert.match(source, /completedWithIncompleteTasks = completedMissions\.filter/);
+  assert.match(source, /completedVerified = completedMissions\.filter/);
+  assert.match(source, /completedVerifiedMissions: completedVerified\.length/);
+  assert.match(source, /completedUnverifiedMissions: completedWithoutTasks\.length \+ completedWithIncompleteTasks\.length/);
+  assert.match(source, /completedWithIncompleteTasks: completedWithIncompleteTasks\.map/);
+  assert.match(source, /Le total des missions ne se réconcilie pas avec les missions ventilées/);
+});
+
+test("COO report regeneration refreshes an existing idempotent period report", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /Rebuild an existing period report with the corrected reconciliation logic/);
+  assert.match(source, /method: "PATCH", headers: \{ Prefer: "return=representation" \}/);
+});
