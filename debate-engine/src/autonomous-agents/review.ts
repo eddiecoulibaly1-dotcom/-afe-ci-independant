@@ -69,7 +69,8 @@ export function reviewMissionEvidence(input: MissionReviewInput, now = new Date(
   const objectiveCoverage = meaningfulTerms.length === 0 ? null : matchedTerms.length / meaningfulTerms.length;
   const criteriaCoverage = criteria.length === 0 ? null : matchedCriteria.length / criteria.length;
   qualityChecks.push({criterion:"objective_alignment",passed:(objectiveCoverage === null || objectiveCoverage >= 0.25) && (criteriaCoverage === null || criteriaCoverage === 1),detail:`${matchedTerms.length}/${meaningfulTerms.length} termes de l’objectif et ${matchedCriteria.length}/${criteria.length} critères d’acceptation couverts.`});
-  const hasEvidenceMarkers = ["http://", "https://", "page", "section", "annexe", "référence", "source", "tableau", "fichier", "livrable", "mesure", "indicateur", "résultat", "preuve"].some(marker => combinedEvidence.includes(marker));
+  const explicitlyMissingTraceability = /sans\\s+(?:aucune?\\s+)?(?:références?|sources?|annexes?|pages?|tableaux?)/iu.test(combinedEvidence);
+  const hasEvidenceMarkers = !explicitlyMissingTraceability && ["http://", "https://", "référence", "source", "annexe", "page ", "tableau ", "fichier "].some(marker => combinedEvidence.includes(marker));
   qualityChecks.push({criterion:"traceability",passed:hasEvidenceMarkers,detail:hasEvidenceMarkers ? "Au moins un marqueur de traçabilité ou de résultat est présent." : "Aucune référence, source, mesure ou pièce traçable détectée."});
   const hasAnalysisStructure = /\b(faits?|constats?|analyses?|risques?|causes?|impacts?|recommandations?|hypothèses?|limites?|prochaines? étapes?)\b/i.test(analysis);
   qualityChecks.push({criterion:"analytical_depth",passed:hasAnalysisStructure,detail:hasAnalysisStructure ? "L’analyse contient des marqueurs de raisonnement." : "L’analyse ne fait pas apparaître de structure de raisonnement identifiable."});
