@@ -46,3 +46,13 @@ test("worker leaves completed deliverables pending COO validation instead of clo
   assert.ok(worker.includes("validation indépendante et décision COO requises avant clôture"));
   assert.equal(worker.includes("finish_afe_agent_mission"), false);
 });
+
+test("COO review endpoint requires admin role, distinct requester and explicit decision", async () => {
+  const platform = await readFile(new URL("../src/autonomous-agents/platform.ts", import.meta.url), "utf8");
+  assert.match(platform, /p\[6\]==="review"/);
+  assert.match(platform, /requireRole\(wid,user,"admin"\)/);
+  assert.match(platform, /mission\.created_by===user\.id/);
+  assert.match(platform, /closureEligible:decision==="accept"/);
+  assert.match(platform, /mission\.coo_review\./);
+  assert.match(platform, /status:"queued"/);
+});
