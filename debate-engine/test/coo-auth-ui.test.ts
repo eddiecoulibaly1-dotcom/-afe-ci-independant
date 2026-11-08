@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { Script } from "node:vm";
 
 const coo = await readFile(new URL("../src/coo-platform.ts", import.meta.url), "utf8");
 
@@ -38,4 +39,12 @@ test("COO workspace loading has a bounded timeout and a visible progress message
   assert.match(coo, /new AbortController\(\),timer=setTimeout\(\(\)=>controller\.abort\(\),12000\)/);
   assert.match(coo, /Le serveur met trop de temps à répondre/);
   assert.match(coo, /Session reconnue\. Récupération de tes espaces de travail/);
+});
+
+test("COO inline browser JavaScript parses before deployment", () => {
+  const scripts = [...coo.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)];
+  assert.ok(scripts.length >= 1, "COO must contain an inline application script");
+  const applicationScript = scripts[scripts.length - 1][1];
+  assert.ok(applicationScript.includes('$("cooLoginButton").onclick=loginFromCoo'));
+  assert.doesNotThrow(() => new Script(applicationScript), "COO browser script must be syntactically valid");
 });
