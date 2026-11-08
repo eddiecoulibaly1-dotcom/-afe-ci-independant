@@ -219,6 +219,7 @@ async function refreshAlerts(workspaceId: string, missions: any[], tasks: any[])
       await upsertAlert(workspaceId, { key: "task-blocked:" + t.id, type: "task_blocked", severity: "warning", title: "Tâche bloquée : " + t.title, description: clean(t.blocked_reason, 1200) || "Un blocage doit être qualifié et escaladé.", taskId: t.id, missionId: t.mission_id ?? undefined });
     }
   }
+  const missionById = new Map(missions.map(m => [m.id, m]));
   const taskById = new Map(tasks.map(t => [t.id, t]));
   const existing = await db<any[]>("afe_coo_alerts?workspace_id=eq." + enc(workspaceId) + "&status=in.(open,acknowledged)&limit=500");
   for (const alert of existing) {
@@ -550,7 +551,7 @@ async function generateReport(workspaceId: string, reportType: "daily" | "weekly
     });
     report = { ...report, status: "sent" };
   }
-  return { report, created, reconciliation: { periodMissionCount: missions.length, assignedMissionCount, unassignedMissionCount: unassignedMissions.length, completedVerifiedMissionCount: completedVerified.length, completedUnverifiedMissionCount: completedWithoutTasks.length + completedWithIncompleteTasks.length } };
+  return { report, created, reconciliation: { periodMissionCount: missions.length, assignedMissionCount: dataQuality.assignedMissionCount, unassignedMissionCount: dataQuality.unassignedMissionCount, completedVerifiedMissionCount: completedVerifiedMissionCount, completedUnverifiedMissionCount: completedWithoutTasks.length + completedWithIncompleteTasks.length, taskCount: dataQuality.taskCount, assignedTaskCount: dataQuality.assignedTaskCount, unassignedTaskCount: dataQuality.unassignedTaskCount } };
 }
 async function listReports(workspaceId: string) {
   return db<any[]>("afe_coo_reports?workspace_id=eq." + enc(workspaceId) + "&order=created_at.desc&limit=100");
