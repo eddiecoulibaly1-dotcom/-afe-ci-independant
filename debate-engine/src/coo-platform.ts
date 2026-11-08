@@ -268,7 +268,7 @@ async function snapshot(workspaceId: string) {
     const agentTokens = agentSlug.split(/[-_]/);
     const matched = departments.find(d => {
       const departmentTokens = d.slug.split("-");
-      return departmentTokens.length > 0 && agentTokens.some((_, index) =>
+      return departmentTokens.length > 0 && agentTokens.some((_token: string, index: number) =>
         agentTokens.slice(index, index + departmentTokens.length).join("-") === d.slug);
     });
     return matched ? { id: matched.id, source: "inferred_from_agent_slug" } : { id: null, source: "unassigned" };
