@@ -21,13 +21,16 @@ test("a completed operational task must provide a concrete task-level deliverabl
   assert.match(source, /Chaque tâche terminée doit fournir un livrable concret : /);
 });
 
-test("worker records deliverable evidence in workspace-scoped audit events before mission completion", async () => {
+test("worker records deliverable evidence before task synchronization and COO review", async () => {
   const source = await readFile(workerUrl, "utf8");
   assert.match(source, /async function recordMissionDeliverables/);
   assert.match(source, /event_type:"mission\.deliverables\.submitted"/);
   assert.match(source, /taskDeliverables:/);
   assert.equal((source.match(/recordMissionDeliverables\(claim,output\)/g) ?? []).length, 2);
-  assert.ok(source.indexOf("await recordMissionDeliverables(claim,output)") < source.indexOf('rpc/finish_afe_agent_mission'));
+  assert.equal(source.includes("finish_afe_agent_mission"), false);
+  const submitted = source.indexOf("await recordMissionDeliverables(claim,output)");
+  assert.ok(submitted >= 0 && submitted < source.indexOf("syncCooTaskResults(claim,mission,output)"));
+  assert.match(source, /mission\.awaiting_coo_validation/);
 });
 
 test("incomplete or blocked COO tasks cannot be silently marked as completed", async () => {
@@ -38,7 +41,7 @@ test("incomplete or blocked COO tasks cannot be silently marked as completed", a
   assert.match(source, /result\.status!=="done"/);
 });
 
-test("independent evidence review is recorded before task synchronization and mission completion in both worker paths", async () => {
+test("independent evidence review is recorded before task synchronization in both worker paths", async () => {
   const source = await readFile(workerUrl, "utf8");
   assert.match(source, /import \{ reviewMissionEvidence \} from "\.\/review\.js"/);
   assert.match(source, /const INDEPENDENT_REVIEWER_ID = "system:independent-evidence-gate"/);
@@ -48,6 +51,7 @@ test("independent evidence review is recorded before task synchronization and mi
   assert.match(source, /if\(report\.verdict==="rejected"\) throw new Error/);
   const reviewCall = source.indexOf("await recordMissionReview(claim,mission,output)");
   const taskSync = source.indexOf("const taskSync=await syncCooTaskResults", reviewCall);
-  const missionFinish = source.indexOf("rpc/finish_afe_agent_mission", reviewCall);
-  assert.ok(reviewCall >= 0 && taskSync > reviewCall && missionFinish > taskSync);
+  assert.ok(reviewCall >= 0 && taskSync > reviewCall);
+  assert.equal(source.includes("finish_afe_agent_mission"), false);
+  assert.match(source, /status:"paused",result:pendingResult/);
 });
