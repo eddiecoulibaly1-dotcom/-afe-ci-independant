@@ -58,7 +58,7 @@ async function recordMissionReview(claim:Claim,mission:any,output:MissionResult,
  await db("afe_agent_events",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify({
   workspace_id:claim.workspace_id,mission_id:claim.mission_id,agent_id:claim.agent_id,
   actor_type:"worker",event_type:"mission.evidence.reviewed",
-  payload:{...combined,reviewerType:"independent_ai_semantic_reviewer",deterministicGate:report}
+  payload:{...combined,reviewerType:"deterministic_independent_evidence_gate",semanticReviewerType:"independent_ai_semantic_reviewer",deterministicGate:report}
  })});
  // AI review is advisory evidence; the COO remains the only authority for closure.
  return combined;
