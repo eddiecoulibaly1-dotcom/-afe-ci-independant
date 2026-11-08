@@ -265,8 +265,12 @@ async function snapshot(workspaceId: string) {
     // Legacy/test agents sometimes predate department_id. Infer only from an exact
     // department-slug token in the agent slug; never guess from a display name.
     const agentSlug = typeof agent?.slug === "string" ? agent.slug.toLowerCase() : "";
-    const matched = departments.find(d => agentSlug.split(/[-_]/).includes(d.slug) ||
-      d.slug.split("-").every((part: string) => agentSlug.split(/[-_]/).includes(part)));
+    const agentTokens = agentSlug.split(/[-_]/);
+    const matched = departments.find(d => {
+      const departmentTokens = d.slug.split("-");
+      return departmentTokens.length > 0 && agentTokens.some((_, index) =>
+        agentTokens.slice(index, index + departmentTokens.length).join("-") === d.slug);
+    });
     return matched ? { id: matched.id, source: "inferred_from_agent_slug" } : { id: null, source: "unassigned" };
   };
   const decoratedMissions = missions.map(m => {
