@@ -57,3 +57,33 @@ test("reconciliation detects department performance totals that do not match ass
   );
   assert.ok(result.findings.some(x => x.includes("ventilation des missions par direction")));
 });
+
+test("task totals reconcile between assigned, unassigned and department buckets", () => {
+  const result = buildCooDataQuality(
+    [{ id: "m1", status: "running", effective_department_id: "d1" }],
+    [
+      { id: "t1", mission_id: "m1", status: "done", effective_department_id: "d1" },
+      { id: "t2", mission_id: null, status: "todo", effective_department_id: null }
+    ],
+    [{ missionCount: 1, taskCount: 1 }]
+  );
+  assert.equal(result.taskCount, 2);
+  assert.equal(result.assignedTaskCount, 1);
+  assert.equal(result.unassignedTaskCount, 1);
+  assert.equal(result.departmentTaskCount, 1);
+  assert.equal(result.findings.length, 0);
+});
+
+test("task reconciliation detects a task assigned to a different department than its mission", () => {
+  const result = buildCooDataQuality(
+    [{ id: "m1", status: "running", effective_department_id: "d1" }],
+    [{ id: "t1", mission_id: "m1", status: "in_progress", effective_department_id: "d2" }],
+    [{ missionCount: 1, taskCount: 1 }]
+  );
+  assert.equal(result.taskDepartmentMismatchCount, 1);
+  assert.ok(result.findings.some(x => x.includes("direction différente de celle de leur mission")));
+});
+
+test("blank legacy task department falls back to the mission's effective department", () => {
+  assert.equal(resolveTaskDepartmentId({ department_id: "" }, { effective_department_id: "d-effective" }), "d-effective");
+});
