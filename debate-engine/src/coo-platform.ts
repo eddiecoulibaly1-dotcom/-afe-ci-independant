@@ -1169,7 +1169,7 @@ function reportText(report){
  if(arr(quality.completedWithoutTasks).length)findings.push(arr(quality.completedWithoutTasks).length+" mission(s) terminée(s) sans tâche opérationnelle associée : exécution non démontrée.");
  if(arr(quality.completedWithIncompleteTasks).length)findings.push(arr(quality.completedWithIncompleteTasks).length+" mission(s) terminée(s) avec des tâches non achevées : clôture incohérente.");
  if(Number(quality.unassignedMissionCount||0)>0)findings.push(Number(quality.unassignedMissionCount)+" mission(s) sans direction identifiable après rapprochement avec le responsable IA.");
- arr(quality.findings).filter((x:string)=>!findings.includes(x)).forEach((x:string)=>findings.push(x));
+ arr(quality.findings).filter((x)=>!findings.includes(x)).forEach((x)=>findings.push(x));
  if(Number(i.completedMissions||0)>0&&Number(i.totalTasks||0)===0)findings.push("Des missions sont déclarées terminées alors qu'aucune tâche n'est recensée. Leur exécution ne peut pas être confirmée par les données de tâches.");
  if(missionCount!==departmentMissionCount+Number(quality.unassignedMissionCount||0))findings.push("Le total des missions ("+missionCount+") ne se réconcilie pas avec les missions ventilées ("+departmentMissionCount+") et non affectées ("+Number(quality.unassignedMissionCount||0)+").");
  if(depts.some(d=>d.taskCompletionRate==null||d.missionClosureRate==null))findings.push("Certaines directions n'ont pas de volume d'activité permettant de calculer un taux de performance. Une valeur non calculable ne doit pas être interprétée comme 0 %.");
@@ -1183,7 +1183,7 @@ function reportHtml(report){
  const quality=c.dataQuality||{};
  if(arr(quality.completedWithoutTasks).length)warnings.push(arr(quality.completedWithoutTasks).length+" mission(s) terminée(s) sans tâche associée : exécution non démontrée.");
  if(Number(quality.unassignedMissionCount||0)>0)warnings.push(Number(quality.unassignedMissionCount)+" mission(s) sans direction identifiable.");
- arr(quality.findings).filter((x:string)=>!warnings.includes(x)).forEach((x:string)=>warnings.push(x));
+ arr(quality.findings).filter((x)=>!warnings.includes(x)).forEach((x)=>warnings.push(x));
  if(Number(i.completedMissions||0)>0&&Number(i.totalTasks||0)===0)warnings.push("Des missions sont déclarées terminées alors qu'aucune tâche n'est recensée : leur exécution n'est pas démontrée par le suivi des tâches.");
  if(missionCount!==byDept+Number(quality.unassignedMissionCount||0))warnings.push("Ventilation incomplète : "+missionCount+" mission(s) au total contre "+byDept+" affectée(s) et "+Number(quality.unassignedMissionCount||0)+" non affectée(s).");
  if(depts.some(d=>d.taskCompletionRate==null||d.missionClosureRate==null))warnings.push("Certaines directions ne disposent pas d'un volume suffisant pour calculer leurs taux. « Non calculable » ne signifie pas 0 %.");
