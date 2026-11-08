@@ -1,17 +1,50 @@
 export type ReportingMission = {
   id: string;
   status: string;
+  created_at?: string | null;
   effective_department_id?: string | null;
   title?: string;
   department_name?: string;
 };
 export type ReportingTask = {
   id: string;
+  created_at?: string | null;
   mission_id?: string | null;
   status: string;
   effective_department_id?: string | null;
 };
 export type DepartmentPerformance = { missionCount: number; taskCount?: number };
+
+export function buildCooReportActivity(
+  missions: Array<{ created_at?: string | null }>,
+  tasks: Array<{ created_at?: string | null }>,
+  periodStart: string,
+  periodEnd: string
+) {
+  const startMs = Date.parse(periodStart);
+  const endMs = Date.parse(periodEnd);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs > endMs) {
+    throw new Error("Invalid reporting period");
+  }
+  const inPeriod = (value?: string | null) => {
+    if (typeof value !== "string") return false;
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) && timestamp >= startMs && timestamp <= endMs;
+  };
+  return {
+    missionsCreated: missions.filter(m => inPeriod(m.created_at)).length,
+    tasksCreated: tasks.filter(t => inPeriod(t.created_at)).length
+  };
+}
+
+export function buildCooReportIdempotencyKey(reportType: string, periodStart: string, periodEnd: string) {
+  const startMs = Date.parse(periodStart);
+  const endMs = Date.parse(periodEnd);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs > endMs) {
+    throw new Error("Invalid reporting period");
+  }
+  return reportType + ":v2:" + startMs + ":" + endMs;
+}
 export function resolveTaskDepartmentId(
   task: { department_id?: string | null },
   mission?: { effective_department_id?: string | null } | null,
