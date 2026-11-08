@@ -28,3 +28,21 @@ test("agent UI uses workspace-scoped API contracts for creation and activation",
   assert.ok(agents.includes('p[4]==="agent-dashboard"'));
   assert.ok(agents.includes('p[4]==="dashboard"') === false);
 });
+
+test("COO mission dossier exposes submitted evidence, independent findings and human review decisions", () => {
+  assert.ok(source.includes("Contrôle qualité & décision COO"));
+  assert.ok(source.includes("mission.evidence.reviewed"));
+  assert.ok(source.includes("mission.deliverables.submitted"));
+  assert.ok(source.includes("cooAccept"));
+  assert.ok(source.includes("cooReturn"));
+  assert.ok(source.includes("cooReject"));
+  assert.ok(source.includes("/review"));
+  assert.ok(source.includes("closureEligible"));
+});
+test("worker leaves completed deliverables pending COO validation instead of closing the mission", async () => {
+  const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", import.meta.url), "utf8");
+  assert.ok(worker.includes("mission.awaiting_coo_validation"));
+  assert.ok(worker.includes('status:"paused",result:pendingResult'));
+  assert.ok(worker.includes("validation indépendante et décision COO requises avant clôture"));
+  assert.equal(worker.includes("finish_afe_agent_mission"), false);
+});
