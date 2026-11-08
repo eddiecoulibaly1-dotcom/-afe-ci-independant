@@ -54,5 +54,5 @@ test("COO review endpoint requires admin role, distinct requester and explicit d
   assert.match(platform, /mission\.created_by===user\.id/);
   assert.match(platform, /closureEligible:decision==="accept"/);
   assert.match(platform, /mission\.coo_review\./);
-  assert.match(platform, /status:"queued"/);
+  assert.match(platform, /patch\.status="queued"/);
 });
