@@ -943,6 +943,8 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
           if (independentReview?.verdict !== "accepted") throw fail("Clôture refusée : le contrôle indépendant n'a pas rendu un verdict accepted.", 409);
           const result = mission.result ?? {};
           const taskResults = Array.isArray(result.task_results) ? result.task_results : [];
+          const operationalTasks = await db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(missionId) + "&select=id,status");
+          if (operationalTasks.some((task: any) => task.status !== "done")) throw fail("Clôture refusée : une ou plusieurs tâches opérationnelles ne sont pas au statut terminé.", 409);
           const expected = Array.isArray(mission.input_context?.cooTasks) ? mission.input_context.cooTasks : [];
           const expectedIds = new Set(expected.map((t: any) => String(t.id)));
           const completed = taskResults.filter((t: any) => t.status === "done" && Number(t.progressPercent) === 100 && clean(t.deliverable, 4000).length >= 20);
