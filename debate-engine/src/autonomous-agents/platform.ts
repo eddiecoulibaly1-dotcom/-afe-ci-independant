@@ -100,7 +100,7 @@ if(p[4]==="deliberations"&&p[5]&&p[6]==="approval"&&p.length===7&&method==="POST
  send(res,200,{report:updated[0],decision:input.decision,approvedBy:approved?user.id:null});return true;
 }
 if(p[4]==="missions"&&p[5]&&p[6]==="review"&&p.length===7&&method==="POST"){
- const accessRow=await requireRole(wid,user,"admin"),id=p[5],input=await body(req);
+ await requireRole(wid,user,"admin");const id=p[5],input=await body(req);
  const decision=clean(input.decision,32),note=clean(input.note,4000);
  if(!["accept","return","reject"].includes(decision))throw fail("Décision de revue invalide.",400);
  const rows=await db<any[]>("afe_agent_missions?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&limit=1"),mission=rows[0];
