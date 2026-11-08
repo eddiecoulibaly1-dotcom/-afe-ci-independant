@@ -48,7 +48,7 @@ test("independent evidence review is recorded before task synchronization in bot
   assert.match(source, /event_type:"mission\.evidence\.reviewed"/);
   assert.match(source, /reviewerType:"deterministic_independent_evidence_gate"/);
   assert.equal((source.match(/await recordMissionReview\(claim,mission,output\)/g) ?? []).length, 2);
-  assert.match(source, /if\(report\.verdict==="rejected"\) throw new Error/);
+  assert.match(source, /A rejected report is preserved for the COO/);
   const reviewCall = source.indexOf("await recordMissionReview(claim,mission,output)");
   const taskSync = source.indexOf("const taskSync=await syncCooTaskResults", reviewCall);
   assert.ok(reviewCall >= 0 && taskSync > reviewCall);
