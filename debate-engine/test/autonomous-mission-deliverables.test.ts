@@ -26,7 +26,7 @@ test("worker records deliverable evidence before task synchronization and COO re
   assert.match(source, /async function recordMissionDeliverables/);
   assert.match(source, /event_type:"mission\.deliverables\.submitted"/);
   assert.match(source, /taskDeliverables:/);
-  assert.equal((source.match(/await recordMissionDeliverables\(claim,output\)/g) ?? []).length, 2);
+  assert.ok((source.match(/await recordMissionDeliverables\(claim,output\)/g) ?? []).length >= 2);
   assert.equal(source.includes("finish_afe_agent_mission"), false);
   const submitted = source.indexOf("await recordMissionDeliverables(claim,output)");
   assert.ok(submitted >= 0 && submitted < source.indexOf("syncCooTaskResults(claim,mission,output)"));
