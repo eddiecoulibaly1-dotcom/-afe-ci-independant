@@ -311,6 +311,8 @@ test("COO mission review dossier is workspace-scoped and exposes submissions, re
   assert.match(source, /Revue indépendante/);
   assert.match(source, /Historique de contrôle et validations/);
   assert.match(source, /data-review-mission/);
+  assert.match(source, /Livrables soumis — validation COO requise/);
+  assert.match(source, /coo_review\?\.status === "pending"/);
 });
 
 test("COO closure requires an accepted independent review and every operational task completed", async () => {
