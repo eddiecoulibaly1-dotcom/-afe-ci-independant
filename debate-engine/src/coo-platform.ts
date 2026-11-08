@@ -501,7 +501,7 @@ async function generateReport(workspaceId: string, reportType: "daily" | "weekly
   const data = { ...fullData, missions, tasks };
   const dashboard = computeDashboard(data);
   const dataQuality = buildCooDataQuality(missions, tasks, dashboard.departmentPerformance);
-  const { completedVerifiedMissionCount, completedWithoutTasks, completedWithIncompleteTasks, assignedMissionCount, unassignedMissionCount, departmentMissionCount, findings: dataQualityFindings } = dataQuality;
+  const { completedVerifiedMissionCount, completedWithoutTasks, completedWithIncompleteTasks } = dataQuality;
   const reportContent = {
     title: reportType === "daily" ? "Rapport opérationnel quotidien" : reportType === "weekly" ? "Revue opérationnelle hebdomadaire" : "Rapport opérationnel",
     generatedAt: nowIso(), period: { start: periodStart, end: periodEnd }, indicators: {
@@ -1055,7 +1055,6 @@ function reportText(report){
  if(arr(quality.completedWithoutTasks).length)findings.push(arr(quality.completedWithoutTasks).length+" mission(s) terminée(s) sans tâche opérationnelle associée : exécution non démontrée.");
  if(arr(quality.completedWithIncompleteTasks).length)findings.push(arr(quality.completedWithIncompleteTasks).length+" mission(s) terminée(s) avec des tâches non achevées : clôture incohérente.");
  if(Number(quality.unassignedMissionCount||0)>0)findings.push(Number(quality.unassignedMissionCount)+" mission(s) sans direction identifiable après rapprochement avec le responsable IA.");
- if(missionCount!==departmentMissionCount+Number(quality.unassignedMissionCount||0))findings.push("Le total des missions ne se réconcilie pas avec les missions affectées et non affectées.");
  arr(quality.findings).filter((x:string)=>!findings.includes(x)).forEach((x:string)=>findings.push(x));
  if(Number(i.completedMissions||0)>0&&Number(i.totalTasks||0)===0)findings.push("Des missions sont déclarées terminées alors qu'aucune tâche n'est recensée. Leur exécution ne peut pas être confirmée par les données de tâches.");
  if(missionCount!==departmentMissionCount+Number(quality.unassignedMissionCount||0))findings.push("Le total des missions ("+missionCount+") ne se réconcilie pas avec les missions ventilées ("+departmentMissionCount+") et non affectées ("+Number(quality.unassignedMissionCount||0)+").");
@@ -1070,7 +1069,6 @@ function reportHtml(report){
  const quality=c.dataQuality||{};
  if(arr(quality.completedWithoutTasks).length)warnings.push(arr(quality.completedWithoutTasks).length+" mission(s) terminée(s) sans tâche associée : exécution non démontrée.");
  if(Number(quality.unassignedMissionCount||0)>0)warnings.push(Number(quality.unassignedMissionCount)+" mission(s) sans direction identifiable.");
- if(missionCount!==byDept+Number(quality.unassignedMissionCount||0))warnings.push("Réconciliation incomplète entre missions totales, affectées et non affectées.");
  arr(quality.findings).filter((x:string)=>!warnings.includes(x)).forEach((x:string)=>warnings.push(x));
  if(Number(i.completedMissions||0)>0&&Number(i.totalTasks||0)===0)warnings.push("Des missions sont déclarées terminées alors qu'aucune tâche n'est recensée : leur exécution n'est pas démontrée par le suivi des tâches.");
  if(missionCount!==byDept+Number(quality.unassignedMissionCount||0))warnings.push("Ventilation incomplète : "+missionCount+" mission(s) au total contre "+byDept+" affectée(s) et "+Number(quality.unassignedMissionCount||0)+" non affectée(s).");
