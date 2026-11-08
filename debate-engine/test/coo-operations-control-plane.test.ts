@@ -332,3 +332,12 @@ test("COO correction request is auditable and returns the mission to the durable
   assert.match(source, /event_type: "coo\.mission\.revision_requested"/);
   assert.match(source, /Demander une correction et relancer/);
 });
+
+
+test("COO correction requests invalidate the previous independent review until a fresh report is submitted", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /mission\.evidence\.review\.invalidated/);
+  assert.match(source, /latestReviewEvent = \[\.\.\.reviewEvents\]\.reverse\(\)\.find/);
+  assert.match(source, /event_type=in\.\(mission\.evidence\.reviewed,mission\.evidence\.review\.invalidated\)/);
+  assert.match(source, /invalidatesPreviousReview: true/);
+});
