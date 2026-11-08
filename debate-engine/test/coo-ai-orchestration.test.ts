@@ -54,7 +54,7 @@ test("COO AI foreign keys have covering indexes", async () => {
   }
 });
 
-test("COO missions carry task identifiers and workers reconcile task results before mission completion", async () => {
+test("COO missions carry task identifiers and workers reconcile task results and wait for COO validation before closure", async () => {
   const platform = await readFile(platformUrl, "utf8");
   const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", import.meta.url), "utf8");
   assert.match(platform, /cooTasks: createdTasks/);
