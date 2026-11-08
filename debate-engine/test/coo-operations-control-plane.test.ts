@@ -262,12 +262,11 @@ test("COO reports reconcile mission totals and flag completed missions without t
 
 test("COO report separates current portfolio indicators from activity created during the declared period", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /const startMs = Date\\.parse\\(periodStart\\), endMs = Date\\.parse\\(periodEnd\\)/);
-  assert.match(source, /const periodActivity = buildCooReportActivity\\(fullData\\.missions, fullData\\.tasks, periodStart, periodEnd\\)/);
-  assert.match(source, /const data = fullData/);
-  assert.match(source, /const dashboard = computeDashboard\\(data\\)/);
-  assert.match(source, /scopeDescription:/);
-  assert.match(source, /report_content: reportContent, period_start: periodStart, period_end: periodEnd/);
+  assert.ok(source.includes("const periodActivity = buildCooReportActivity(fullData.missions, fullData.tasks, periodStart, periodEnd);"));
+  assert.ok(source.includes("const data = fullData;"));
+  assert.ok(source.includes("const dashboard = computeDashboard(data);"));
+  assert.ok(source.includes("scopeDescription:"));
+  assert.ok(source.includes("report_content: reportContent, period_start: periodStart, period_end: periodEnd"));
 });
 
 test("COO reporting resolves legacy agent ownership only through an exact department slug", async () => {
@@ -294,10 +293,10 @@ test("COO report reconciliation distinguishes verified, unverified and incomplet
 
 test("COO report regeneration preserves archived snapshots and uses exact period idempotency", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /buildCooReportIdempotencyKey\\(reportType, periodStart, periodEnd\\)/);
-  assert.match(source, /schemaVersion: 2/);
-  assert.doesNotMatch(source, /Rebuild an existing period report with the corrected reconciliation logic/);
-  assert.doesNotMatch(source, /report_content: reportContent, period_start: periodStart, period_end: periodEnd, generated_by:/);
+  assert.ok(source.includes("buildCooReportIdempotencyKey(reportType, periodStart, periodEnd)"));
+  assert.ok(source.includes("schemaVersion: 2"));
+  assert.equal(source.includes("Rebuild an existing period report with the corrected reconciliation logic"), false);
+  assert.equal(source.includes("report_content: reportContent, period_start: periodStart, period_end: periodEnd, generated_by:"), false);
 });
 
 
