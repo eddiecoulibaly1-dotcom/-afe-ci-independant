@@ -250,7 +250,7 @@ test("COO reporting reconciles legacy missions through their assigned agent depa
 test("COO reports reconcile mission totals and flag completed missions without task evidence", async () => {
   const source = await readFile(platformUrl, "utf8");
   const reporting = await readFile(reportingUrl, "utf8");
-  assert.match(source, /buildCooDataQuality\(missions, tasks, dashboard\.departmentPerformance\)/);
+  assert.match(source, /buildCooDataQuality\(fullData\.missions, fullData\.tasks, dashboard\.departmentPerformance\)/);
   assert.match(source, /dataQuality: \{ \.\.\.dataQuality \}/);
   assert.match(reporting, /const tasksByMission = new Map<string, ReportingTask\[\]>\(\)/);
   assert.match(reporting, /completedWithoutTasks = completed\.filter/);
@@ -260,12 +260,13 @@ test("COO reports reconcile mission totals and flag completed missions without t
 });
 
 
-test("COO report scopes mission and task indicators to the declared reporting period", async () => {
+test("COO report separates current portfolio indicators from activity created during the declared period", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /const startMs = Date\.parse\(periodStart\), endMs = Date\.parse\(periodEnd\)/);
-  assert.match(source, /if \(!Number\.isFinite\(startMs\).*startMs > endMs\)/);
-  assert.match(source, /const missions = fullData\.missions\.filter\(m => inPeriod\(m\.created_at\)\)/);
-  assert.match(source, /const tasks = fullData\.tasks\.filter\(t => inPeriod\(t\.created_at\) \|\| \(t\.mission_id && periodMissionIds\.has\(t\.mission_id\)\)\)/);
+  assert.match(source, /const startMs = Date\\.parse\\(periodStart\\), endMs = Date\\.parse\\(periodEnd\\)/);
+  assert.match(source, /const periodActivity = buildCooReportActivity\\(fullData\\.missions, fullData\\.tasks, periodStart, periodEnd\\)/);
+  assert.match(source, /const data = fullData/);
+  assert.match(source, /const dashboard = computeDashboard\\(data\\)/);
+  assert.match(source, /scopeDescription:/);
   assert.match(source, /report_content: reportContent, period_start: periodStart, period_end: periodEnd/);
 });
 
@@ -291,10 +292,12 @@ test("COO report reconciliation distinguishes verified, unverified and incomplet
   assert.match(reporting, /ne correspond pas au nombre de missions affectées/);
 });
 
-test("COO report regeneration refreshes an existing idempotent period report", async () => {
+test("COO report regeneration preserves archived snapshots and uses exact period idempotency", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /Rebuild an existing period report with the corrected reconciliation logic/);
-  assert.match(source, /method: "PATCH", headers: \{ Prefer: "return=representation" \}/);
+  assert.match(source, /buildCooReportIdempotencyKey\\(reportType, periodStart, periodEnd\\)/);
+  assert.match(source, /schemaVersion: 2/);
+  assert.doesNotMatch(source, /Rebuild an existing period report with the corrected reconciliation logic/);
+  assert.doesNotMatch(source, /report_content: reportContent, period_start: periodStart, period_end: periodEnd, generated_by:/);
 });
 
 
