@@ -266,7 +266,7 @@ test("COO report separates current portfolio indicators from activity created du
   assert.ok(source.includes("const data = fullData;"));
   assert.ok(source.includes("const dashboard = computeDashboard(data);"));
   assert.ok(source.includes("scopeDescription:"));
-  assert.ok(source.includes("report_content: reportContent, period_start: periodStart, period_end: periodEnd"));
+  assert.ok(source.includes("period_start: periodStart, period_end: periodEnd, idempotency_key: key, report_content: reportContent"));
 });
 
 test("COO reporting resolves legacy agent ownership only through an exact department slug", async () => {
