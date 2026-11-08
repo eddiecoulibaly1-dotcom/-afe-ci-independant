@@ -1170,7 +1170,8 @@ function reportText(report){
 }
 function reportHtml(report){
  const c=report.report_content||{},i=c.indicators||{},depts=arr(c.departmentPerformance),text=reportText(report);
- const activity=c.periodActivity||{};\n const metricCards=[["Missions",i.totalMissions],["Terminées",i.completedMissions],["Actives",i.activeMissions],["Tâches",i.totalTasks],["Tâches ouvertes",i.openTasks],["Alertes",i.openAlerts],["Alertes critiques",i.criticalAlerts],["Validations humaines",i.pendingHumanApprovals],["Missions créées sur la période",activity.missionsCreated],["Tâches créées sur la période",activity.tasksCreated]];
+ const activity=c.periodActivity||{};
+ const metricCards=[["Missions",i.totalMissions],["Terminées",i.completedMissions],["Actives",i.activeMissions],["Tâches",i.totalTasks],["Tâches ouvertes",i.openTasks],["Alertes",i.openAlerts],["Alertes critiques",i.criticalAlerts],["Validations humaines",i.pendingHumanApprovals],["Missions créées sur la période",activity.missionsCreated],["Tâches créées sur la période",activity.tasksCreated]];
  const missionCount=Number(i.totalMissions||0),byDept=depts.reduce((n,d)=>n+Number(d.missionCount||0),0),warnings=[];
  const quality=c.dataQuality||{};
  if(arr(quality.completedWithoutTasks).length)warnings.push(arr(quality.completedWithoutTasks).length+" mission(s) terminée(s) sans tâche associée : exécution non démontrée.");
