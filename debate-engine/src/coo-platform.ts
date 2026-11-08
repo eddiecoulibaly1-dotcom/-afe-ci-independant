@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthUser } from "./auth.js";
 import { callModel } from "./providers.js";
 import { runAgentWorkerForWorkspace } from "./autonomous-agents/worker.js";
-import { buildCooDataQuality, resolveTaskDepartmentId } from "./coo-reporting.js";
+import { buildCooDataQuality, buildCooReportActivity, buildCooReportIdempotencyKey, resolveTaskDepartmentId } from "./coo-reporting.js";
 import { consolidateDepartmentWorkstreams } from "./coo-planning.js";
 
 type Role = "owner" | "admin" | "editor" | "viewer";
@@ -492,21 +492,17 @@ async function generateReport(workspaceId: string, reportType: "daily" | "weekly
   const initial = await snapshot(workspaceId);
   await refreshAlerts(workspaceId, initial.missions, initial.tasks);
   const fullData = await snapshot(workspaceId);
-  // A report must describe its declared period, not the entire lifetime of the workspace.
-  const inPeriod = (value: unknown) => {
-    const timestamp = typeof value === "string" ? Date.parse(value) : Number.NaN;
-    return Number.isFinite(timestamp) && timestamp >= startMs && timestamp <= endMs;
-  };
-  const missions = fullData.missions.filter(m => inPeriod(m.created_at));
-  const periodMissionIds = new Set(missions.map(m => m.id));
-  const tasks = fullData.tasks.filter(t => inPeriod(t.created_at) || (t.mission_id && periodMissionIds.has(t.mission_id)));
-  const data = { ...fullData, missions, tasks };
+  // Report the complete current portfolio, then disclose the creation flow for the selected period separately.
+  const periodActivity = buildCooReportActivity(fullData.missions, fullData.tasks, periodStart, periodEnd);
+  const data = fullData;
   const dashboard = computeDashboard(data);
-  const dataQuality = buildCooDataQuality(missions, tasks, dashboard.departmentPerformance);
+  const dataQuality = buildCooDataQuality(fullData.missions, fullData.tasks, dashboard.departmentPerformance);
   const { completedVerifiedMissionCount, completedWithoutTasks, completedWithIncompleteTasks } = dataQuality;
   const reportContent = {
+    schemaVersion: 2,
+    scopeDescription: "Les indicateurs décrivent le portefeuille au moment de la génération. Les volumes de création décrivent l'activité comprise dans la période.",
     title: reportType === "daily" ? "Rapport opérationnel quotidien" : reportType === "weekly" ? "Revue opérationnelle hebdomadaire" : "Rapport opérationnel",
-    generatedAt: nowIso(), period: { start: periodStart, end: periodEnd }, indicators: {
+    generatedAt: nowIso(), period: { start: periodStart, end: periodEnd }, periodActivity, indicators: {
       ...dashboard.indicators,
       completedVerifiedMissions: completedVerifiedMissionCount,
       completedUnverifiedMissions: completedWithoutTasks.length + completedWithIncompleteTasks.length
@@ -516,7 +512,7 @@ async function generateReport(workspaceId: string, reportType: "daily" | "weekly
     decisionsRequired: { humanApprovals: data.approvals, escalations: dashboard.priorityAlerts.filter(x => x.severity === "critical") },
     governanceNote: "Ce rapport décrit l'exécution opérationnelle. Une mission terminée sans tâches opérationnelles toutes achevées est signalée comme non vérifiée. Il ne modifie aucun constat technique, arbitrage indépendant ou décision soumise à validation humaine."
   };
-  const key = reportType + ":" + periodStart.slice(0, 10) + ":" + periodEnd.slice(0, 10);
+  const key = buildCooReportIdempotencyKey(reportType, periodStart, periodEnd);
   const existing = await db<any[]>("afe_coo_reports?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(key) + "&limit=1");
   let report: any = existing[0] ?? null;
   let created = false;
@@ -533,13 +529,6 @@ async function generateReport(workspaceId: string, reportType: "daily" | "weekly
       if (duplicate[0]) report = duplicate[0];
       else throw e;
     }
-  } else {
-    // Rebuild an existing period report with the corrected reconciliation logic.
-    const rows = await db<any[]>("afe_coo_reports?id=eq." + enc(report.id) + "&workspace_id=eq." + enc(workspaceId), {
-      method: "PATCH", headers: { Prefer: "return=representation" },
-      body: JSON.stringify({ report_content: reportContent, period_start: periodStart, period_end: periodEnd, generated_by: actorId ?? report.generated_by })
-    });
-    report = rows[0] ?? { ...report, report_content: reportContent };
   }
   const ws = await db<any[]>("debate_workspaces?id=eq." + enc(workspaceId) + "&limit=1");
   const s = await settings(workspaceId, ws[0]?.owner_id);
@@ -552,7 +541,7 @@ async function generateReport(workspaceId: string, reportType: "daily" | "weekly
     });
     report = { ...report, status: "sent" };
   }
-  return { report, created, reconciliation: { periodMissionCount: missions.length, assignedMissionCount: dataQuality.assignedMissionCount, unassignedMissionCount: dataQuality.unassignedMissionCount, completedVerifiedMissionCount: completedVerifiedMissionCount, completedUnverifiedMissionCount: completedWithoutTasks.length + completedWithIncompleteTasks.length, taskCount: dataQuality.taskCount, assignedTaskCount: dataQuality.assignedTaskCount, unassignedTaskCount: dataQuality.unassignedTaskCount } };
+  return { report, created, reconciliation: { portfolioMissionCount: dataQuality.missionCount, periodMissionCount: periodActivity.missionsCreated, assignedMissionCount: dataQuality.assignedMissionCount, unassignedMissionCount: dataQuality.unassignedMissionCount, completedVerifiedMissionCount: completedVerifiedMissionCount, completedUnverifiedMissionCount: completedWithoutTasks.length + completedWithIncompleteTasks.length, taskCount: dataQuality.taskCount, assignedTaskCount: dataQuality.assignedTaskCount, unassignedTaskCount: dataQuality.unassignedTaskCount, periodActivity } };
 }
 async function listReports(workspaceId: string) {
   return db<any[]>("afe_coo_reports?workspace_id=eq." + enc(workspaceId) + "&order=created_at.desc&limit=100");
@@ -1160,6 +1149,8 @@ async function renderAlerts(){const d=await api(base()+"alerts");$("view").inner
 function reportText(report){
  const c=report.report_content||{},i=c.indicators||{},fmt=v=>v==null?"Non renseigné":String(v),pct=v=>v==null?"Non calculable":v+" %";
  const lines=[c.title||report.report_type||"Rapport opérationnel","Période : "+date(c.period?.start||report.period_start)+" → "+date(c.period?.end||report.period_end),"Généré le : "+date(c.generatedAt||report.created_at),"","1. SYNTHÈSE EXÉCUTIVE","Missions : "+fmt(i.totalMissions)+" au total, dont "+fmt(i.activeMissions)+" actives, "+fmt(i.completedMissions)+" terminées, "+fmt(i.failedMissions)+" en échec.","Tâches : "+fmt(i.totalTasks)+" au total, "+fmt(i.openTasks)+" ouvertes, "+fmt(i.blockedTasks)+" bloquées, "+fmt(i.overdueTasks)+" en retard.","Directions actives : "+fmt(i.activeDepartments)+". Alertes ouvertes : "+fmt(i.openAlerts)+", dont "+fmt(i.criticalAlerts)+" critiques.","Validations humaines en attente : "+fmt(i.pendingHumanApprovals),"","2. PERFORMANCE PAR DIRECTION"];
+ const activity=c.periodActivity||{};
+ lines.splice(9,0,"Activité sur la période : "+fmt(activity.missionsCreated)+" mission(s) créée(s), "+fmt(activity.tasksCreated)+" tâche(s) créée(s).",c.scopeDescription||"");
  const depts=arr(c.departmentPerformance);if(!depts.length)lines.push("Aucune donnée de performance par direction n'est disponible.");else depts.forEach(d=>lines.push("- "+d.name+": "+fmt(d.missionCount)+" mission(s), "+fmt(d.completedMissions)+" terminée(s), "+fmt(d.runningMissions)+" en cours; "+fmt(d.taskCount)+" tâche(s), "+fmt(d.openTasks)+" ouverte(s), "+fmt(d.blockedTasks)+" bloquée(s); taux de clôture des missions : "+pct(d.missionClosureRate)+", taux d'achèvement des tâches : "+pct(d.taskCompletionRate)+"."));
  lines.push("","3. MISSIONS À RISQUE");const risks=arr(c.missionsAtRisk);if(!risks.length)lines.push("Aucune mission à risque recensée dans les données du rapport.");else risks.forEach(m=>lines.push("- "+m.title+" — "+statusLabel(m.status)+"; direction : "+(m.department_name||"non renseignée")+"; échéance : "+date(m.due_at)));
  lines.push("","4. ALERTES PRIORITAIRES");const alerts=arr(c.priorityAlerts);if(!alerts.length)lines.push("Aucune alerte prioritaire recensée.");else alerts.forEach(a=>lines.push("- ["+String(a.severity||"information").toUpperCase()+"] "+a.title+" : "+(a.description||"")));
@@ -1179,7 +1170,7 @@ function reportText(report){
 }
 function reportHtml(report){
  const c=report.report_content||{},i=c.indicators||{},depts=arr(c.departmentPerformance),text=reportText(report);
- const metricCards=[["Missions",i.totalMissions],["Terminées",i.completedMissions],["Actives",i.activeMissions],["Tâches",i.totalTasks],["Tâches ouvertes",i.openTasks],["Alertes",i.openAlerts],["Alertes critiques",i.criticalAlerts],["Validations humaines",i.pendingHumanApprovals]];
+ const activity=c.periodActivity||{};\n const metricCards=[["Missions",i.totalMissions],["Terminées",i.completedMissions],["Actives",i.activeMissions],["Tâches",i.totalTasks],["Tâches ouvertes",i.openTasks],["Alertes",i.openAlerts],["Alertes critiques",i.criticalAlerts],["Validations humaines",i.pendingHumanApprovals],["Missions créées sur la période",activity.missionsCreated],["Tâches créées sur la période",activity.tasksCreated]];
  const missionCount=Number(i.totalMissions||0),byDept=depts.reduce((n,d)=>n+Number(d.missionCount||0),0),warnings=[];
  const quality=c.dataQuality||{};
  if(arr(quality.completedWithoutTasks).length)warnings.push(arr(quality.completedWithoutTasks).length+" mission(s) terminée(s) sans tâche associée : exécution non démontrée.");
