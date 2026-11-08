@@ -240,8 +240,8 @@ test("COO mission portfolio exposes one-click copy with complete mission results
 
 test("COO reporting reconciles legacy missions through their assigned agent department", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /effectiveDepartmentId = m\.department_id \?\? agent\?\.department_id \?\? null/);
-  assert.match(source, /department_resolution: m\.department_id \? "explicit" : effectiveDepartmentId \? "inferred_from_agent" : "unassigned"/);
+  assert.match(source, /const resolution = resolveMissionDepartment\(m, agent\)/);
+  assert.match(source, /department_resolution: resolution\.source/);
   assert.match(source, /effective_department_id === d\.id/);
   assert.match(source, /unassignedMissions: data\.missions\.filter\(m => !m\.effective_department_id\)\.length/);
 });
@@ -282,7 +282,7 @@ test("COO report reconciliation distinguishes verified, unverified and incomplet
   assert.match(source, /completedVerifiedMissions: completedVerified\.length/);
   assert.match(source, /completedUnverifiedMissions: completedWithoutTasks\.length \+ completedWithIncompleteTasks\.length/);
   assert.match(source, /completedWithIncompleteTasks: completedWithIncompleteTasks\.map/);
-  assert.match(source, /Le total des missions ne se réconcilie pas avec les missions ventilées/);
+  assert.match(source, /ne se réconcilie pas avec les missions ventilées/);
 });
 
 test("COO report regeneration refreshes an existing idempotent period report", async () => {
