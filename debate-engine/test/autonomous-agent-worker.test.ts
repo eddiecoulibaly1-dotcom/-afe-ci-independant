@@ -15,7 +15,9 @@ test("mission claims are serialized with SKIP LOCKED and expiring leases",()=>{
 
 test("mission completion is fenced by the current lease token",()=>{
  assert.match(migration,/WHERE id=p_mission_id AND status='running' AND lease_token=p_lease_token/);
- assert.match(worker,/p_lease_token:claim\.lease_token/);
+ assert.match(worker,/lease_token=eq/);
+ assert.equal(worker.includes("finish_afe_agent_mission"),false);
+ assert.match(worker,/status:"paused",result:pendingResult/);
 });
 
 test("worker is server authenticated and never trusts browser session identity",()=>{
