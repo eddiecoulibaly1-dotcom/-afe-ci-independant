@@ -885,6 +885,32 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
         send(res, 200, { department: updated[0] }); return true;
       }
     }
+    if (resource === "missions" && p[7] === "control" && p[6]) {
+      const access = await requireAccess(workspaceId, user);
+      const missionId = p[6];
+      const rows = await db<any[]>("afe_agent_missions?id=eq." + enc(missionId) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
+      if (!rows[0]) throw fail("Mission introuvable dans cet espace.", 404);
+      if (method === "GET") {
+        const [events, approvals] = await Promise.all([
+          db<any[]>("afe_agent_events?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(missionId) + "&select=id,event_type,payload,created_at,actor_type,actor_id,agent_id&order=created_at.desc&limit=150"),
+          db<any[]>("afe_agent_approvals?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(missionId) + "&select=id,action_key,risk_level,status,created_at,decided_at,decision_note,decided_by&order=created_at.desc&limit=100")
+        ]);
+        send(res, 200, { mission: rows[0], events, approvals, accessRole: access.role });
+        return true;
+      }
+      if (method === "POST" && p[8] === "revisions") {
+        await canOperate(workspaceId, user);
+        const input = await readBody(req);
+        const note = clean(input.note, 5000);
+        if (note.length < 20) throw fail("La demande de correction doit préciser les éléments à reprendre (20 caractères minimum).");
+        const latestReview = await db<any[]>("afe_agent_events?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(missionId) + "&event_type=eq.mission.evidence.reviewed&select=id&order=created_at.desc&limit=1");
+        const event = { workspace_id: workspaceId, mission_id: missionId, agent_id: rows[0].agent_id, actor_type: "human", actor_id: user.id, event_type: "mission.revision.requested", payload: { note, basedOnReviewEventId: latestReview[0]?.id ?? null, requestedBy: user.id } };
+        const created = await db<any[]>("afe_agent_events", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(event) });
+        await audit(workspaceId, user.id, "coo.mission.revision_requested", "mission", missionId, { eventId: created[0]?.id ?? null });
+        send(res, 201, { event: created[0] ?? event });
+        return true;
+      }
+    }
     if (resource === "missions") {
       if (method === "GET") { await requireAccess(workspaceId, user); await ensureDepartments(workspaceId, user.id); const data = await snapshot(workspaceId); send(res, 200, { missions: data.missions }); return true; }
       if (method === "POST") { await canOperate(workspaceId, user); const mission = await createMission(workspaceId, user, await readBody(req)); send(res, 201, { mission }); return true; }
