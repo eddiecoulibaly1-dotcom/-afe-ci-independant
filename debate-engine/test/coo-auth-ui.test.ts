@@ -25,3 +25,14 @@ test("COO displays authentication errors and reveals sign-in again after an expi
   assert.match(coo, /error\.textContent=e instanceof Error\?e\.message:"Erreur de connexion\."/);
   assert.match(coo, /if\(r\.status===401\)\{localStorage\.removeItem\("afe-v09-session"\);loginPrompt\("Session expirée\."\);\}/);
 });
+
+test("COO login click handler is isolated before dashboard scripts and reports Auth failures", () => {
+  const handler = coo.indexOf('button.addEventListener("click", async function (event)');
+  const dashboard = coo.indexOf('<script src="https://cdn.jsdelivr.net/npm/jspdf');
+  assert.ok(handler >= 0, "isolated click handler must exist");
+  assert.ok(dashboard > handler, "isolated handler must run before dashboard scripts");
+  assert.match(coo, /event\.stopImmediatePropagation\(\)/);
+  assert.match(coo, /fetch\("\/auth\/session"/);
+  assert.match(coo, /error\.textContent = failure && failure\.message/);
+  assert.match(coo, /localStorage\.setItem\("afe-v09-session", JSON\.stringify\(data\)\)/);
+});
