@@ -37,3 +37,17 @@ test("incomplete or blocked COO tasks cannot be silently marked as completed", a
   assert.match(source, /coo\.tasks\.incomplete/);
   assert.match(source, /result\.status!=="done"/);
 });
+
+test("independent evidence review is recorded before task synchronization and mission completion in both worker paths", async () => {
+  const source = await readFile(workerUrl, "utf8");
+  assert.match(source, /import \{ reviewMissionEvidence \} from "\.\/review\.js"/);
+  assert.match(source, /const INDEPENDENT_REVIEWER_ID = "system:independent-evidence-gate"/);
+  assert.match(source, /event_type:"mission\.evidence\.reviewed"/);
+  assert.match(source, /reviewerType:"deterministic_independent_evidence_gate"/);
+  assert.equal((source.match(/await recordMissionReview\(claim,mission,output\)/g) ?? []).length, 2);
+  assert.match(source, /if\(report\.verdict==="rejected"\) throw new Error/);
+  const reviewCall = source.indexOf("await recordMissionReview(claim,mission,output)");
+  const taskSync = source.indexOf("const taskSync=await syncCooTaskResults", reviewCall);
+  const missionFinish = source.indexOf("rpc/finish_afe_agent_mission", reviewCall);
+  assert.ok(reviewCall >= 0 && taskSync > reviewCall && missionFinish > taskSync);
+});
