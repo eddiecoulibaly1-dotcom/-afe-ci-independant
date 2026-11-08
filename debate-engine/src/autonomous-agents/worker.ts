@@ -53,7 +53,7 @@ async function recordMissionReview(claim:Claim,mission:any,output:MissionResult,
  const verdict = report.verdict === "rejected" || semanticReview.verdict === "rejected" ? "rejected" :
   report.verdict === "revision_required" || semanticReview.verdict === "revision_required" ? "revision_required" : "accepted";
  const combined = {...report, reviewerAgentId:semanticReview.reviewerId, verdict, semanticReview,
-  findings:[...report.findings,...semanticReview.findings.map(f=>({code:"AI_"+f.code,severity:f.severity==="blocking"?"blocking":f.severity,message:f.message}))],
+  findings:[...report.findings,...semanticReview.findings.map(f=>({code:"AI_"+f.code,severity:f.severity==="blocking"?"blocking":f.severity,message:f.message,citations:f.citations}))],
   closureEligible:false as const};
  await db("afe_agent_events",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify({
   workspace_id:claim.workspace_id,mission_id:claim.mission_id,agent_id:claim.agent_id,
