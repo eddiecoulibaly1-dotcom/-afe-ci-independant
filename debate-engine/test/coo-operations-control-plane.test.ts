@@ -236,3 +236,22 @@ test("COO mission portfolio exposes one-click copy with complete mission results
   assert.match(source, /document\.execCommand\("copy"\)/);
   assert.match(source, /lines\.join\("\\n"\)/);
 });
+
+
+test("COO reporting reconciles legacy missions through their assigned agent department", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /effectiveDepartmentId = m\.department_id \?\? agent\?\.department_id \?\? null/);
+  assert.match(source, /department_resolution: m\.department_id \? "explicit" : effectiveDepartmentId \? "inferred_from_agent" : "unassigned"/);
+  assert.match(source, /effective_department_id === d\.id/);
+  assert.match(source, /unassignedMissions: data\.missions\.filter\(m => !m\.effective_department_id\)\.length/);
+});
+
+test("COO reports reconcile mission totals and flag completed missions without task evidence", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /const tasksByMission = new Map<string, number>\(\)/);
+  assert.match(source, /completedWithoutTasks = data\.missions\.filter\(m => m\.status === "completed" && !tasksByMission\.has\(m\.id\)\)/);
+  assert.match(source, /unassignedMissionCount: unassignedMissions\.length/);
+  assert.match(source, /dataQualityFindings/);
+  assert.match(source, /quality\.completedWithoutTasks/);
+  assert.match(source, /quality\.unassignedMissionCount/);
+});
