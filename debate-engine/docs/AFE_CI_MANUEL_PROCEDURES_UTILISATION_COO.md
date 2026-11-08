@@ -693,3 +693,332 @@ Ce manuel décrit le fonctionnement de l’interface COO observé dans la versio
 **Règle de diffusion :** utiliser la copie intégrée à l’application comme référence courante ; les copies téléchargées sont des instantanés et peuvent devenir obsolètes après une mise à jour logicielle.
 
 **Fin du manuel.**
+
+
+---
+
+## 19. Module « Équipe & Gouvernance » — procédures de chaque fenêtre
+
+### 19.1 Ouvrir le module et choisir le workspace
+
+Le lien **Équipe & Gouvernance** ouvre la page `/team`. Ce module est distinct du poste COO, mais il utilise le même compte et le même espace de travail.
+
+La barre supérieure permet :
+- de sélectionner un workspace auquel le compte a accès ;
+- de voir le rôle du compte et le nombre de membres affiché ;
+- de créer un espace avec le champ de nom et le bouton **Créer** lorsque cette action est autorisée ;
+- de naviguer entre les quatorze onglets du module.
+
+Toujours vérifier le workspace avant d'inviter un membre, de créer un agent, de déposer un document ou d'approuver une action. Les données et les droits restent cloisonnés par workspace.
+
+### 19.2 Vue générale
+
+**Objectif :** obtenir une synthèse de l'activité collaborative du workspace.
+
+Les indicateurs affichés comprennent :
+- **Membres** : nombre de membres ;
+- **Débats** : nombre de débats enregistrés ;
+- **Débats en cours** : débats encore en traitement ;
+- **Tâches ouvertes** : tâches non terminées ;
+- **En retard** : tâches en retard ;
+- **Validations en attente** : décisions humaines en attente ;
+- **Documents** : documents enregistrés dans l'espace.
+
+La zone **Activité récente** présente les dernières actions journalisées avec leur date.
+
+**Procédure de consultation :**
+1. sélectionner le workspace ;
+2. ouvrir **Vue générale** ;
+3. examiner les indicateurs ;
+4. lire les dernières activités ;
+5. ouvrir l'onglet métier correspondant à chaque anomalie.
+
+Les chiffres sont une synthèse. Pour examiner une opération, consulter sa fiche détaillée ou son journal d'audit.
+
+### 19.3 Agents IA
+
+**Objectif :** superviser les agents spécialisés du workspace et gérer leur cycle de vie.
+
+La page présente :
+- les agents actifs ;
+- les missions en attente et en cours ;
+- les approbations requises ;
+- les délégations en attente ;
+- les mémoires proposées à validation.
+
+**Créer les six profils de département (brouillons)** : cette action initialise les profils prévus comme brouillons. Elle ne signifie pas que tous les agents sont immédiatement actifs. Vérifier ensuite la liste.
+
+**Créer un agent spécialisé :**
+1. saisir le **Nom de l’agent** ;
+2. saisir un identifiant technique unique dans **identifiant-agent** ;
+3. renseigner la **Spécialité** ;
+4. rédiger un **Mandat détaillé** d'au moins dix caractères, décrivant la mission, le périmètre, les responsabilités, les limites et les livrables ;
+5. renseigner les **Instructions système complémentaires** si nécessaire ;
+6. choisir le niveau d'autonomie :
+   - **L1 · Analyse** : analyser et proposer ;
+   - **L2 · Production de livrables** : produire des résultats dans le périmètre autorisé ;
+   - **L3 · Actions autorisées sous contrôle** : capacité plus sensible, à n'utiliser qu'après vérification des permissions et des contrôles applicables ;
+7. cliquer sur **Créer l’agent en brouillon** ;
+8. relire le mandat et vérifier le rattachement avant activation.
+
+Un agent en brouillon ne doit pas être considéré comme opérationnel. Les boutons **Activer** sont réservés aux rôles autorisés, notamment propriétaire ou administrateur, et ne s'affichent que pour les agents en brouillon.
+
+**Exécuter une étape de mission (Preview)** : déclenche une étape du worker dans l'environnement Preview. Cette opération peut prendre en charge une mission éligible et produire un résultat. Elle est réservée au propriétaire ou à l'administrateur dans cette interface. Vérifier la mission et son résultat après exécution ; ne pas lancer plusieurs fois une opération encore en cours.
+
+### 19.4 Missions — file de travail des agents
+
+Cet onglet permet de créer une mission directement dans la file de travail des agents et de consulter son historique.
+
+**Créer une mission :**
+1. choisir un **Agent responsable** parmi les agents actifs ;
+2. saisir un **Titre** explicite ;
+3. décrire l’**Objectif** et le résultat attendu ;
+4. compléter le **Contexte complémentaire** avec les informations utiles, contraintes, hypothèses et références ;
+5. choisir la **Priorité** (1 très haute, 2 haute, 3 normale, 4 basse, 5 très basse) ;
+6. cliquer sur **Enregistrer la mission** ;
+7. vérifier le message de confirmation et le statut attribué.
+
+La mission est enregistrée dans la file serveur. Elle ne sera exécutée que lorsque le worker et les conditions d'éligibilité le permettront.
+
+**Consulter les détails :**
+1. ouvrir l'historique ;
+2. cliquer sur **Détails** sur la mission choisie ;
+3. examiner l'objectif, le statut, le nombre de tentatives, le résultat et le journal d'événements ;
+4. examiner le panneau **Contrôle qualité & décision COO**.
+
+Le panneau de contrôle indique l'état de la revue, l'éligibilité de clôture et les événements relatifs à la soumission, aux preuves et aux décisions. La déclaration de fin de l'agent n'est pas une clôture.
+
+Lorsque le compte est propriétaire ou administrateur et qu'une soumission attend une revue, les actions possibles sont :
+
+- **Valider et clôturer** : confirme la clôture après examen du résultat et des contrôles. Une confirmation explicite est demandée.
+- **Retourner en correction** : saisir une note d'au moins dix caractères, préciser les éléments à reprendre, puis confirmer. La mission repart en correction.
+- **Rejeter le livrable** : saisir une note d'au moins dix caractères, expliquer le motif du rejet, puis confirmer.
+
+Le détail peut aussi proposer :
+- **Copier** : copie la conclusion ou le rapport ;
+- **Word** : télécharge une version compatible Word ;
+- **PDF** : ouvre la fenêtre d'impression ; choisir « Enregistrer au format PDF » ;
+- **Écouter la conclusion** : lance la lecture vocale du rapport si le navigateur le permet.
+
+Après toute décision, vérifier le statut et le journal d'événements. Ne pas valider un résultat non vérifié ou un livrable incomplet.
+
+### 19.5 Délégations — messages inter-agents
+
+**Objectif :** transmettre un travail d'un agent actif à un autre agent actif.
+
+Champs :
+- **Agent émetteur** : agent qui formule la délégation ;
+- **Agent destinataire** : agent qui reçoit le travail ; il doit être différent de l'émetteur ;
+- **Objet** : sujet court de la délégation ;
+- **Consigne de délégation** : instructions détaillées, périmètre, livrables et critères de qualité.
+
+Procédure :
+1. choisir l'émetteur ;
+2. choisir le destinataire ;
+3. saisir un objet explicite ;
+4. rédiger les instructions ;
+5. cliquer sur **Envoyer la délégation** ;
+6. vérifier le message de confirmation ;
+7. consulter l'**Historique des messages inter-agents**.
+
+Une délégation crée un message durable. Le worker peut ensuite le convertir en mission pour l'agent destinataire. Le traitement est conçu pour éviter la création répétée de la même mission. Un message envoyé ne signifie pas que le destinataire a déjà terminé le travail.
+
+### 19.6 Approbations IA — autoriser la reprise d'un workflow
+
+Cette fenêtre liste les actions d'agents qui attendent une décision humaine. Chaque ligne indique la clé de l'action, le niveau de risque, la date et la mission concernée.
+
+Pour chaque demande :
+1. ouvrir la ligne et identifier la mission ;
+2. consulter le dossier de mission et les informations disponibles ;
+3. comprendre précisément l'action demandée et son risque ;
+4. cliquer sur **Approuver** ou **Rejeter** ;
+5. vérifier que la décision est enregistrée.
+
+Une approbation autorise uniquement la reprise du workflow enregistré. Elle ne réalise pas à elle seule une action externe et ne doit pas être considérée comme une autorisation générale pour d'autres opérations. En cas de doute, rejeter ou demander des précisions plutôt que d'approuver par défaut.
+
+### 19.7 Notifications
+
+La page **Notifications** rassemble les messages associés au compte : titre, contenu, date et état lu / non lu.
+
+- **Marquer comme lu** : marque une notification individuelle comme consultée.
+- **Tout marquer comme lu** : marque toutes les notifications affichées comme lues.
+
+La lecture d'une notification ne clôture pas la mission ou l'alerte à laquelle elle se rapporte. Après lecture, ouvrir l'élément métier pour traiter l'action éventuellement attendue.
+
+### 19.8 Membres — invitations, rôles et révocations
+
+Cette fenêtre permet de consulter les membres et, selon les droits, de gérer les accès.
+
+**Inviter un membre :**
+1. saisir son adresse e-mail ;
+2. choisir le rôle initial : **Viewer**, **Editor** ou **Admin** ;
+3. cliquer sur **Inviter** ;
+4. vérifier la confirmation ;
+5. suivre l'invitation dans la zone **En attente**, qui indique l'adresse, le rôle et l'expiration.
+
+**Modifier un rôle :** utiliser la liste de rôle associée au membre. Le serveur applique les limites de gouvernance : le propriétaire conserve son statut ; un administrateur ne peut gérer que les rôles inférieurs autorisés, notamment Editor et Viewer.
+
+**Retirer un membre :** utiliser **Retirer** uniquement après avoir vérifié que la personne n'a plus besoin d'accéder au workspace et que ses responsabilités ont été reprises.
+
+**Révoquer une invitation :** dans la zone **En attente**, cliquer sur **Révoquer** pour invalider l'invitation correspondante.
+
+Règles :
+- le propriétaire ne peut pas être remplacé par une simple modification de rôle ;
+- un administrateur ne peut pas promouvoir un membre au-delà des limites prévues ;
+- un éditeur ou un lecteur ne gère pas les adhésions ;
+- appliquer le principe du moindre privilège ;
+- vérifier l'adresse e-mail avant l'envoi.
+
+### 19.9 Débats — délibération contradictoire multi-agents
+
+Cette fenêtre sert à rattacher une délibération à une mission ouverte ou à créer une mission de diagnostic dédiée.
+
+**Choisir ou créer la mission :**
+- si une mission ouverte éligible existe, la sélectionner ;
+- sinon, renseigner le titre, l'objectif, l'agent responsable et le contexte du diagnostic, puis créer la mission dans l'environnement prévu.
+
+**Constituer la délibération :**
+1. sélectionner au moins deux agents actifs participants ;
+2. choisir un **Arbitre indépendant** ;
+3. vérifier que l'arbitre est différent des agents participants ;
+4. choisir le nombre de tours (2 à 5) ;
+5. cliquer sur **Créer et rattacher le débat**.
+
+La délibération ne doit pas être créée si le nombre d'agents est insuffisant, si l'arbitre n'est pas désigné ou si l'arbitre participe lui-même comme agent débattant.
+
+**Exécuter le worker Preview :**
+1. vérifier que la mission et la délibération sont correctement enregistrées ;
+2. cliquer sur **Exécuter le worker maintenant** ;
+3. lire le résultat du worker ;
+4. vérifier si une mission a été prise en charge et si le traitement a abouti ;
+5. actualiser et consulter les délibérations enregistrées.
+
+Le worker ne crée pas une nouvelle mission lorsqu'il est déclenché depuis cette zone : il traite une mission admissible déjà présente dans la file.
+
+**Consulter les détails d'une délibération :**
+- examiner le statut, le nombre de tours, les contributions et les preuves ;
+- lire les constats et l'arbitrage ;
+- lire les désaccords non résolus et les limites ;
+- utiliser **Copier le rapport**, **Télécharger Word**, **Exporter PDF** ou **Écouter la conclusion** selon le besoin.
+
+Lorsque l'arbitrage exige une validation humaine et que le compte possède les droits, la zone de validation permet **Approuver l’arbitrage** ou **Rejeter l’arbitrage**. La décision est enregistrée et auditée. Lire le rapport complet avant de prendre cette décision.
+
+### 19.10 Tâches — suivi de l'exécution
+
+La page liste les tâches avec leur titre, leur statut, leur priorité et leur échéance.
+
+**Créer une tâche :**
+1. saisir le titre ;
+2. décrire le travail dans **Description** ;
+3. choisir la priorité : normal, low, high ou critical ;
+4. renseigner l'échéance si nécessaire ;
+5. cliquer sur **Créer**.
+
+**Mettre à jour une tâche :** utiliser la liste de statut associée à la tâche :
+- À faire ;
+- En cours ;
+- Bloquée ;
+- Terminée ;
+- Annulée.
+
+Ne choisir « Terminée » qu'après réalisation réelle. Le statut doit rester cohérent avec les livrables et les preuves de la mission associée.
+
+### 19.11 Validations — approbations liées aux débats
+
+Cette fenêtre présente les demandes de validation associées aux débats, leur identifiant et leur statut.
+
+**Demander une validation :**
+1. saisir l'ID exact du débat ;
+2. rédiger une note expliquant l'objet de la demande ;
+3. cliquer sur **Demander validation** ;
+4. vérifier que la demande apparaît dans la liste.
+
+**Traiter une demande en attente :** les comptes owner ou admin autorisés peuvent cliquer sur **Approuver** ou **Rejeter**. La décision met à jour le statut de la demande. Vérifier l'identifiant du débat et le rapport associé avant de décider.
+
+Ne pas confondre cette fenêtre avec **Approbations IA** : les validations portent sur des demandes liées aux débats, tandis que les approbations IA portent sur des actions de workflow d'agents.
+
+### 19.12 Documents — coffre documentaire privé
+
+La page **Documents** présente les documents enregistrés avec leur titre, leur type MIME et leur taille.
+
+**Formats annoncés par l'interface :** PDF, TXT, CSV, DOC, DOCX, XLS, XLSX, PPT, PPTX, JPG, JPEG, PNG et WEBP. La limite indiquée est de 50 Mo par document. Le stockage est privé et le téléchargement utilise une URL temporaire.
+
+**Téléverser un document :**
+1. saisir un titre ou laisser le nom du fichier être repris ;
+2. choisir le fichier dans le sélecteur ;
+3. vérifier le nom et la taille ;
+4. cliquer sur **Téléverser et enregistrer** ;
+5. attendre la confirmation ;
+6. vérifier que le document apparaît dans la liste.
+
+**Télécharger un document :**
+1. retrouver le document dans la liste ;
+2. cliquer sur **Télécharger** ;
+3. le système demande une URL temporaire de téléchargement ;
+4. ouvrir le fichier et vérifier qu'il s'agit du bon document.
+
+Ne téléverser que des documents autorisés pour ce workspace. Vérifier les droits d'accès et la sensibilité du contenu avant partage.
+
+### 19.13 Audit — journal et export CSV
+
+Le journal d'audit présente les événements enregistrés avec l'action, le type d'entité et la date.
+
+**Consulter :**
+1. ouvrir **Audit** ;
+2. rechercher l'action ou l'entité concernée dans la chronologie ;
+3. relever la date et le contexte ;
+4. rapprocher l'événement du dossier de mission, de la tâche, du membre ou du débat.
+
+**Exporter CSV :** cliquer sur **Exporter CSV**, attendre le téléchargement, puis ouvrir le fichier avec un tableur. Conserver le fichier dans un emplacement autorisé et ne pas le diffuser à des personnes non habilitées.
+
+Le journal d'audit est un outil de traçabilité ; il ne remplace pas le contenu complet des dossiers métier.
+
+### 19.14 Assistant IA — aide à la gouvernance
+
+Cette fenêtre présente des suggestions générées à partir des indicateurs disponibles dans le workspace.
+
+Les suggestions sont des pistes d'analyse. Elles ne modifient pas automatiquement les permissions, les paramètres, les missions ou les décisions. L'utilisateur doit vérifier leur pertinence et ouvrir les modules métier pour agir.
+
+Le lien **Ouvrir Decision Lab V2** ouvre un module distinct d'analyse et de décision. Les procédures détaillées de ce module doivent être consultées dans son manuel spécifique.
+
+### 19.15 Paramètres du workspace
+
+Cette fenêtre permet de modifier les informations générales de l'espace :
+
+- **Nom** : intitulé du workspace ;
+- **Description** : objet et contexte de l'espace ;
+- **Catégorie** : classification de l'espace.
+
+Pour modifier :
+1. saisir les nouvelles valeurs ;
+2. vérifier l'orthographe et le sens ;
+3. cliquer sur **Enregistrer** ;
+4. vérifier la confirmation et le nouveau nom affiché.
+
+Pour un propriétaire, des actions supplémentaires peuvent apparaître :
+- **Archiver** : archive l'espace après une confirmation. Cette opération ne doit pas être utilisée comme une suppression ordinaire ; vérifier les conséquences et les besoins de conservation avant de confirmer.
+- **Restaurer l’espace** : réactive un espace précédemment archivé.
+
+L'archivage et la restauration sont réservés au propriétaire. Ne pas archiver le workspace de production pour résoudre un problème d'affichage ou d'accès.
+
+### 19.16 Créer un workspace
+
+Lorsque le compte est autorisé, le champ de création d'espace permet de saisir un nom puis de cliquer sur **Créer**. Après création :
+1. sélectionner le nouvel espace ;
+2. vérifier son nom et son rôle ;
+3. inviter uniquement les personnes nécessaires ;
+4. configurer les agents, les missions et les paramètres adaptés à ce périmètre.
+
+La création d'un workspace distinct ne déplace pas automatiquement les données d'un autre workspace.
+
+---
+
+## 20. Limites de périmètre et modules distincts
+
+Le présent manuel couvre les deux surfaces de l'organisation autonome :
+- le poste **Direction des Opérations** (`/coo`) ;
+- l'espace **Équipe & Gouvernance** (`/team`).
+
+Le **Decision Lab / Debate Engine** accessible depuis les modules de débat ou le laboratoire (`/lab` et `/lab/v2`) constitue une surface applicative distincte, avec ses propres écrans de délibération, de recherche, de preuve et de décision. Le lien vers Decision Lab V2 est décrit dans le présent manuel, mais le détail exhaustif de ses écrans doit faire l'objet d'un manuel spécialisé séparé afin de ne pas mélanger les procédures de gouvernance opérationnelle avec celles du moteur de débat.
+
+**Règle de mise à jour :** à chaque ajout ou modification d'un onglet, d'un champ, d'un bouton, d'un droit ou d'un workflow dans `/coo` ou `/team`, la présente procédure doit être révisée et testée avant diffusion.
