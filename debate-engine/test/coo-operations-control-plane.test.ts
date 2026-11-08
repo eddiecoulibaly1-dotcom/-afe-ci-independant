@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const migrationUrl = new URL("../supabase/migrations/20261107190000_afe_ci_coo_operations_control_plane.sql", import.meta.url);
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
+const reportingUrl = new URL("../src/coo-reporting.ts", import.meta.url);
 const indexesUrl = new URL("../supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql", import.meta.url);
 const headsUrl = new URL("../supabase/migrations/20261107210000_afe_ci_coo_department_heads.sql", import.meta.url);
 const serverUrl = new URL("../src/server.ts", import.meta.url);
@@ -248,10 +249,12 @@ test("COO reporting reconciles legacy missions through their assigned agent depa
 
 test("COO reports reconcile mission totals and flag completed missions without task evidence", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /const tasksByMission = new Map<string, any\[\]>\(\)/);
-  assert.match(source, /completedWithoutTasks = completedMissions\.filter/);
-  assert.match(source, /unassignedMissionCount: unassignedMissions\.length/);
-  assert.match(source, /dataQualityFindings/);
+  const reporting = await readFile(reportingUrl, "utf8");
+  assert.match(source, /buildCooDataQuality\(missions, tasks, dashboard\.departmentPerformance\)/);
+  assert.match(source, /dataQuality: \{ \.\.\.dataQuality \}/);
+  assert.match(reporting, /const tasksByMission = new Map<string, ReportingTask\[\]>\(\)/);
+  assert.match(reporting, /completedWithoutTasks = completed\.filter/);
+  assert.match(reporting, /unassignedMissionCount: unassignedMissions\.length/);
   assert.match(source, /quality\.completedWithoutTasks/);
   assert.match(source, /quality\.unassignedMissionCount/);
 });
@@ -268,21 +271,24 @@ test("COO report scopes mission and task indicators to the declared reporting pe
 
 test("COO reporting resolves legacy agent ownership only through an exact department slug", async () => {
   const source = await readFile(platformUrl, "utf8");
+  const reporting = await readFile(reportingUrl, "utf8");
   assert.match(source, /agentTokens\.slice\(index, index \+ departmentTokens\.length\)\.join\("-"\) === d\.slug/);
   assert.match(source, /inferred_from_agent_slug/);
-  assert.match(source, /mission\?\.effective_department_id/);
+  assert.match(reporting, /mission\?\.effective_department_id/);
   assert.match(source, /department_resolution: resolution\.source/);
+  assert.match(source, /resolveTaskDepartmentId\(t, mission,/);
 });
 
 test("COO report reconciliation distinguishes verified, unverified and incomplete completed missions", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /completedWithoutTasks = completedMissions\.filter/);
-  assert.match(source, /completedWithIncompleteTasks = completedMissions\.filter/);
-  assert.match(source, /completedVerified = completedMissions\.filter/);
-  assert.match(source, /completedVerifiedMissions: completedVerified\.length/);
+  const reporting = await readFile(reportingUrl, "utf8");
+  assert.match(reporting, /completedWithoutTasks = completed\.filter/);
+  assert.match(reporting, /completedWithIncompleteTasks = completed\.filter/);
+  assert.match(reporting, /completedVerified = completed\.filter/);
+  assert.match(source, /completedVerifiedMissions: completedVerifiedMissionCount/);
   assert.match(source, /completedUnverifiedMissions: completedWithoutTasks\.length \+ completedWithIncompleteTasks\.length/);
-  assert.match(source, /completedWithIncompleteTasks: completedWithIncompleteTasks\.map/);
-  assert.match(source, /ne se réconcilie pas avec les missions ventilées/);
+  assert.match(reporting, /completedWithIncompleteTasks: completedWithIncompleteTasks\.map/);
+  assert.match(reporting, /ne correspond pas au nombre de missions affectées/);
 });
 
 test("COO report regeneration refreshes an existing idempotent period report", async () => {
