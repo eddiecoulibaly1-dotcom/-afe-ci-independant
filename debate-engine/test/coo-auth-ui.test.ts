@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 const coo = await readFile(new URL("../src/coo-platform.ts", import.meta.url), "utf8");
 
 test("COO exposes a direct email/password sign-in form when no session exists", () => {
-  assert.match(coo, /id="cooLogin" class="card login-card" hidden/);
+  assert.match(coo, /id="cooLogin" class="card login-card"/);\n  assert.doesNotMatch(coo, /id="cooLogin" class="card login-card" hidden/);
   assert.match(coo, /id="cooLoginEmail" type="email"/);
   assert.match(coo, /id="cooLoginPassword" type="password"/);
   assert.match(coo, /id="cooLoginButton"/);
