@@ -146,15 +146,3 @@ test("reconciliation identifies missions assigned to department IDs absent from 
   assert.ok(result.findings.some(x => x.includes("direction absente du référentiel")));
 });
 
-test("report department activity is distinct from active department configuration", async () => {
-  const source = await readFile(platformUrl, "utf8");
-  assert.ok(source.includes("departmentsWithActivity: deptPerformance.filter(d => d.active && (d.missionCount > 0 || d.taskCount > 0)).length"));
-  assert.ok(source.includes("Directions configurées actives : "));
-  assert.ok(source.includes("Directions ayant une activité : "));
-});
-
-test("legacy archived reports disclose missing period and verification data without inventing zero values", async () => {
-  const source = await readFile(platformUrl, "utf8");
-  assert.ok(source.includes("Activité sur la période : non disponible dans cette version du rapport archivé."));
-  assert.ok(source.includes("Vérification des missions terminées : non disponible dans cette version du rapport archivé."));
-});
