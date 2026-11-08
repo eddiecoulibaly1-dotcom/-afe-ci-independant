@@ -296,3 +296,39 @@ test("COO report regeneration refreshes an existing idempotent period report", a
   assert.match(source, /Rebuild an existing period report with the corrected reconciliation logic/);
   assert.match(source, /method: "PATCH", headers: \{ Prefer: "return=representation" \}/);
 });
+
+
+test("COO mission review dossier is workspace-scoped and exposes submissions, reviews, tasks, approvals and audit events", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /p\[6\] && p\[7\] === "review"/);
+  assert.match(source, /afe_agent_events\?workspace_id=.*mission_id=/);
+  assert.match(source, /afe_operational_tasks\?workspace_id=.*mission_id=/);
+  assert.match(source, /afe_agent_approvals\?workspace_id=.*mission_id=/);
+  assert.match(source, /independentReview: latestReview/);
+  assert.match(source, /canValidate: access\.role === "owner"/);
+  assert.match(source, /async function renderMissionReview\(missionId\)/);
+  assert.match(source, /Soumission de l’agent/);
+  assert.match(source, /Revue indépendante/);
+  assert.match(source, /Historique de contrôle et validations/);
+  assert.match(source, /data-review-mission/);
+});
+
+test("COO closure requires an accepted independent review and every operational task completed", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /action === "accept_closure"/);
+  assert.match(source, /independentReview\?\.verdict !== "accepted"/);
+  assert.match(source, /operationalTasks\.some\(\(task: any\) => task\.status !== "done"\)/);
+  assert.match(source, /expectedIds\.size !== completed\.length/);
+  assert.match(source, /clean\(t\.deliverable, 4000\)\.length >= 20/);
+  assert.match(source, /event_type: "coo\.mission\.human_decision"/);
+  assert.match(source, /access\.role === "owner"/);
+});
+
+test("COO correction request is auditable and returns the mission to the durable queue", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /action === "request_revision"/);
+  assert.match(source, /cooRevisionRequest:/);
+  assert.match(source, /status: "queued", blocked_reason: note/);
+  assert.match(source, /event_type: "coo\.mission\.revision_requested"/);
+  assert.match(source, /Demander une correction et relancer/);
+});
