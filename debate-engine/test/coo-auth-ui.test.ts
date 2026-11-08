@@ -11,7 +11,15 @@ test("COO exposes a direct email/password sign-in form when no session exists", 
   assert.match(coo, /id="cooLoginEmail" type="email"/);
   assert.match(coo, /id="cooLoginPassword" type="password"/);
   assert.match(coo, /id="cooLoginButton"/);
-  assert.match(coo, /if\(!session\(\)\?\.access_token\)loginPrompt\("Authentification requise"\)\)/);
+  assert.match(coo, /const startupSession=session\(\);if\(startupSession\?\.access_token\)/);
+});
+
+
+test("COO does not show the login form over an existing authenticated session", () => {
+  assert.match(coo, /const startupSession=session\(\);if\(startupSession\?\.access_token\)\{\$\("cooLogin"\)\.hidden=true/);
+  assert.match(coo, /Session active, mais impossible de charger l’espace de travail/);
+  assert.match(coo, /if\(!session\(\)\?\.access_token\)\{loginPrompt\("Session expirée/);
+  assert.match(coo, /else\{\$\("cooLogin"\)\.hidden=true/);
 });
 
 test("COO sign-in uses the shared Auth session endpoint and restores the workspace", () => {
