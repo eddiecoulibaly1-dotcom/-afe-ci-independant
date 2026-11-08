@@ -259,17 +259,28 @@ async function snapshot(workspaceId: string) {
   const agentById = new Map(agents.map(a => [a.id, a]));
   const missionById = new Map(missions.map(m => [m.id, m]));
   // Resolve legacy null department IDs for reporting without mutating source records.
+  const resolveMissionDepartment = (mission: any, agent: any) => {
+    if (mission.department_id && deptById.has(mission.department_id)) return { id: mission.department_id, source: "explicit" };
+    if (agent?.department_id && deptById.has(agent.department_id)) return { id: agent.department_id, source: "inferred_from_agent" };
+    // Legacy/test agents sometimes predate department_id. Infer only from an exact
+    // department-slug token in the agent slug; never guess from a display name.
+    const agentSlug = typeof agent?.slug === "string" ? agent.slug.toLowerCase() : "";
+    const matched = departments.find(d => agentSlug.split(/[-_]/).includes(d.slug) ||
+      d.slug.split("-").every((part: string) => agentSlug.split(/[-_]/).includes(part)));
+    return matched ? { id: matched.id, source: "inferred_from_agent_slug" } : { id: null, source: "unassigned" };
+  };
   const decoratedMissions = missions.map(m => {
     const agent = agentById.get(m.agent_id);
-    const effectiveDepartmentId = m.department_id ?? agent?.department_id ?? null;
+    const resolution = resolveMissionDepartment(m, agent);
+    const effectiveDepartmentId = resolution.id;
     return { ...m, effective_department_id: effectiveDepartmentId,
       department_name: deptById.get(effectiveDepartmentId)?.name ?? "Non affectée",
       agent_name: agent?.name ?? "Agent inconnu",
-      department_resolution: m.department_id ? "explicit" : effectiveDepartmentId ? "inferred_from_agent" : "unassigned" };
+      department_resolution: resolution.source };
   });
   const decoratedTasks = tasks.map(t => {
     const mission = t.mission_id ? missionById.get(t.mission_id) : null;
-    const effectiveDepartmentId = t.department_id ?? mission?.department_id ?? agentById.get(t.assigned_agent_id)?.department_id ?? null;
+    const effectiveDepartmentId = t.department_id ?? mission?.effective_department_id ?? agentById.get(t.assigned_agent_id)?.department_id ?? null;
     return { ...t, effective_department_id: effectiveDepartmentId,
       department_name: deptById.get(effectiveDepartmentId)?.name ?? "Direction inconnue",
       assigned_agent_name: t.assigned_agent_id ? agentById.get(t.assigned_agent_id)?.name ?? "Agent inconnu" : null };
@@ -467,27 +478,61 @@ async function handleDashboard(workspaceId: string, user: AuthUser) {
   return { dashboard: computeDashboard(refreshed), departments: refreshed.departments, missions: refreshed.missions, tasks: refreshed.tasks, alerts: refreshed.alerts.filter(x => x.status !== "resolved"), settings: await settings(workspaceId, a.workspace.owner_id) };
 }
 async function generateReport(workspaceId: string, reportType: "daily" | "weekly" | "ad_hoc", periodStart: string, periodEnd: string, actorId?: string) {
+  const startMs = Date.parse(periodStart), endMs = Date.parse(periodEnd);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs > endMs) {
+    throw fail("Période de rapport invalide : dates ISO requises et début antérieur à la fin.");
+  }
   const initial = await snapshot(workspaceId);
   await refreshAlerts(workspaceId, initial.missions, initial.tasks);
-  const data = await snapshot(workspaceId);
+  const fullData = await snapshot(workspaceId);
+  // A report must describe its declared period, not the entire lifetime of the workspace.
+  const inPeriod = (value: unknown) => {
+    const timestamp = typeof value === "string" ? Date.parse(value) : Number.NaN;
+    return Number.isFinite(timestamp) && timestamp >= startMs && timestamp <= endMs;
+  };
+  const missions = fullData.missions.filter(m => inPeriod(m.created_at));
+  const periodMissionIds = new Set(missions.map(m => m.id));
+  const tasks = fullData.tasks.filter(t => inPeriod(t.created_at) || (t.mission_id && periodMissionIds.has(t.mission_id)));
+  const data = { ...fullData, missions, tasks };
   const dashboard = computeDashboard(data);
-  const tasksByMission = new Map<string, number>();
-  for (const task of data.tasks) if (task.mission_id) tasksByMission.set(task.mission_id, (tasksByMission.get(task.mission_id) ?? 0) + 1);
-  const completedWithoutTasks = data.missions.filter(m => m.status === "completed" && !tasksByMission.has(m.id));
-  const unassignedMissions = data.missions.filter(m => !m.effective_department_id);
+  const tasksByMission = new Map<string, any[]>();
+  for (const task of tasks) if (task.mission_id) {
+    const current = tasksByMission.get(task.mission_id) ?? [];
+    current.push(task);
+    tasksByMission.set(task.mission_id, current);
+  }
+  const completedMissions = missions.filter(m => m.status === "completed");
+  const completedWithoutTasks = completedMissions.filter(m => !(tasksByMission.get(m.id)?.length));
+  const completedWithIncompleteTasks = completedMissions.filter(m => {
+    const linked = tasksByMission.get(m.id) ?? [];
+    return linked.length > 0 && linked.some(t => t.status !== "done");
+  });
+  const completedVerified = completedMissions.filter(m => {
+    const linked = tasksByMission.get(m.id) ?? [];
+    return linked.length > 0 && linked.every(t => t.status === "done");
+  });
+  const unassignedMissions = missions.filter(m => !m.effective_department_id);
   const assignedMissionCount = dashboard.departmentPerformance.reduce((n, d) => n + d.missionCount, 0);
   const dataQualityFindings: string[] = [];
   if (completedWithoutTasks.length) dataQualityFindings.push(completedWithoutTasks.length + " mission(s) terminée(s) sans tâche opérationnelle associée : exécution non démontrée par le registre des tâches.");
+  if (completedWithIncompleteTasks.length) dataQualityFindings.push(completedWithIncompleteTasks.length + " mission(s) terminée(s) possèdent des tâches non terminées : clôture incohérente.");
   if (unassignedMissions.length) dataQualityFindings.push(unassignedMissions.length + " mission(s) sans direction identifiable après rapprochement avec le responsable IA.");
-  if (assignedMissionCount + unassignedMissions.length !== data.missions.length) dataQualityFindings.push("La ventilation par direction et les missions non affectées ne réconcilient pas le total.");
+  if (assignedMissionCount + unassignedMissions.length !== missions.length) dataQualityFindings.push("La ventilation par direction et les missions non affectées ne réconcilient pas le total.");
   const reportContent = {
     title: reportType === "daily" ? "Rapport opérationnel quotidien" : reportType === "weekly" ? "Revue opérationnelle hebdomadaire" : "Rapport opérationnel",
-    generatedAt: nowIso(), period: { start: periodStart, end: periodEnd }, indicators: dashboard.indicators,
+    generatedAt: nowIso(), period: { start: periodStart, end: periodEnd }, indicators: {
+      ...dashboard.indicators,
+      completedVerifiedMissions: completedVerified.length,
+      completedUnverifiedMissions: completedWithoutTasks.length + completedWithIncompleteTasks.length
+    },
     departmentPerformance: dashboard.departmentPerformance, missionsAtRisk: dashboard.missionsAtRisk, priorityAlerts: dashboard.priorityAlerts,
-    dataQuality: { missionCount: data.missions.length, assignedMissionCount, unassignedMissionCount: unassignedMissions.length,
-      completedWithoutTasks: completedWithoutTasks.map(m => ({ id: m.id, title: m.title, department: m.department_name })), findings: dataQualityFindings },
+    dataQuality: { missionCount: missions.length, assignedMissionCount, unassignedMissionCount: unassignedMissions.length,
+      completedVerifiedMissionCount: completedVerified.length,
+      completedWithoutTasks: completedWithoutTasks.map(m => ({ id: m.id, title: m.title, department: m.department_name })),
+      completedWithIncompleteTasks: completedWithIncompleteTasks.map(m => ({ id: m.id, title: m.title, department: m.department_name })),
+      findings: dataQualityFindings },
     decisionsRequired: { humanApprovals: data.approvals, escalations: dashboard.priorityAlerts.filter(x => x.severity === "critical") },
-    governanceNote: "Ce rapport décrit l'exécution opérationnelle. Il ne modifie aucun constat technique, arbitrage indépendant ou décision soumise à validation humaine."
+    governanceNote: "Ce rapport décrit l'exécution opérationnelle. Une mission terminée sans tâches opérationnelles toutes achevées est signalée comme non vérifiée. Il ne modifie aucun constat technique, arbitrage indépendant ou décision soumise à validation humaine."
   };
   const key = reportType + ":" + periodStart.slice(0, 10) + ":" + periodEnd.slice(0, 10);
   const existing = await db<any[]>("afe_coo_reports?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(key) + "&limit=1");
@@ -506,6 +551,13 @@ async function generateReport(workspaceId: string, reportType: "daily" | "weekly
       if (duplicate[0]) report = duplicate[0];
       else throw e;
     }
+  } else {
+    // Rebuild an existing period report with the corrected reconciliation logic.
+    const rows = await db<any[]>("afe_coo_reports?id=eq." + enc(report.id) + "&workspace_id=eq." + enc(workspaceId), {
+      method: "PATCH", headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ report_content: reportContent, period_start: periodStart, period_end: periodEnd, generated_by: actorId ?? report.generated_by })
+    });
+    report = rows[0] ?? { ...report, report_content: reportContent };
   }
   const ws = await db<any[]>("debate_workspaces?id=eq." + enc(workspaceId) + "&limit=1");
   const s = await settings(workspaceId, ws[0]?.owner_id);
@@ -518,7 +570,7 @@ async function generateReport(workspaceId: string, reportType: "daily" | "weekly
     });
     report = { ...report, status: "sent" };
   }
-  return { report, created };
+  return { report, created, reconciliation: { periodMissionCount: missions.length, assignedMissionCount, unassignedMissionCount: unassignedMissions.length, completedVerifiedMissionCount: completedVerified.length, completedUnverifiedMissionCount: completedWithoutTasks.length + completedWithIncompleteTasks.length } };
 }
 async function listReports(workspaceId: string) {
   return db<any[]>("afe_coo_reports?workspace_id=eq." + enc(workspaceId) + "&order=created_at.desc&limit=100");
@@ -1017,9 +1069,11 @@ function reportText(report){
  lines.push("","3. MISSIONS À RISQUE");const risks=arr(c.missionsAtRisk);if(!risks.length)lines.push("Aucune mission à risque recensée dans les données du rapport.");else risks.forEach(m=>lines.push("- "+m.title+" — "+statusLabel(m.status)+"; direction : "+(m.department_name||"non renseignée")+"; échéance : "+date(m.due_at)));
  lines.push("","4. ALERTES PRIORITAIRES");const alerts=arr(c.priorityAlerts);if(!alerts.length)lines.push("Aucune alerte prioritaire recensée.");else alerts.forEach(a=>lines.push("- ["+String(a.severity||"information").toUpperCase()+"] "+a.title+" : "+(a.description||"")));
  const decisions=c.decisionsRequired||{};lines.push("","5. DÉCISIONS ET ESCALADES");const approvals=arr(decisions.humanApprovals),escalations=arr(decisions.escalations);lines.push("Approbations humaines : "+approvals.length,"Escalades : "+escalations.length);approvals.forEach(a=>lines.push("- Approbation requise : "+(a.action_key||a.mission_id||a.id)));escalations.forEach(a=>lines.push("- Escalade : "+(a.title||a.description||a.id)));
+ lines.push("Missions terminées vérifiées : "+fmt(i.completedVerifiedMissions)+", non vérifiées : "+fmt(i.completedUnverifiedMissions));
  const missionCount=Number(i.totalMissions||0),departmentMissionCount=depts.reduce((n,d)=>n+Number(d.missionCount||0),0),findings=[];
  const quality=c.dataQuality||{};
  if(arr(quality.completedWithoutTasks).length)findings.push(arr(quality.completedWithoutTasks).length+" mission(s) terminée(s) sans tâche opérationnelle associée : exécution non démontrée.");
+ if(arr(quality.completedWithIncompleteTasks).length)findings.push(arr(quality.completedWithIncompleteTasks).length+" mission(s) terminée(s) avec des tâches non achevées : clôture incohérente.");
  if(Number(quality.unassignedMissionCount||0)>0)findings.push(Number(quality.unassignedMissionCount)+" mission(s) sans direction identifiable après rapprochement avec le responsable IA.");
  if(missionCount!==departmentMissionCount+Number(quality.unassignedMissionCount||0))findings.push("Le total des missions ne se réconcilie pas avec les missions affectées et non affectées.");
  arr(quality.findings).filter((x:string)=>!findings.includes(x)).forEach((x:string)=>findings.push(x));
