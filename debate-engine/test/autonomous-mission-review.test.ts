@@ -11,13 +11,13 @@ const valid = {
   objective: "Évaluer les risques opérationnels et proposer des recommandations vérifiables.",
   acceptanceCriteria: ["Les risques sont classés", "Les recommandations sont priorisées"],
   result: {
-    summary: "A complete operational summary with verifiable outcome.",
-    analysis: "The analysis identifies operational risks, facts, impacts and recommendations against the requested objective and acceptance criteria.",
-    deliverables: ["A documented deliverable containing concrete results and traceable references."],
+    summary: "Synthèse opérationnelle des risques identifiés et des recommandations proposées.",
+    analysis: "Les constats identifient les risques opérationnels, leurs causes et leurs impacts. L’analyse formule des recommandations priorisées et précise les limites ainsi que les prochaines étapes.",
+    deliverables: ["Rapport documenté présentant les risques classés, les recommandations et les références vérifiables."],
     task_results: [{
       taskId: "task-1", status: "done" as const, progressPercent: 100,
-      summary: "Task completed with evidence.",
-      deliverable: "A task-level output with concrete content and verifiable references."
+      summary: "Tâche achevée avec éléments de preuve documentés.",
+      deliverable: "Livrable de tâche détaillant les résultats concrets et les références vérifiables."
     }]
   }
 };
