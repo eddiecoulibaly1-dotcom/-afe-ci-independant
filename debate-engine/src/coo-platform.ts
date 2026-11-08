@@ -1018,6 +1018,11 @@ function reportText(report){
  lines.push("","4. ALERTES PRIORITAIRES");const alerts=arr(c.priorityAlerts);if(!alerts.length)lines.push("Aucune alerte prioritaire recensée.");else alerts.forEach(a=>lines.push("- ["+String(a.severity||"information").toUpperCase()+"] "+a.title+" : "+(a.description||"")));
  const decisions=c.decisionsRequired||{};lines.push("","5. DÉCISIONS ET ESCALADES");const approvals=arr(decisions.humanApprovals),escalations=arr(decisions.escalations);lines.push("Approbations humaines : "+approvals.length,"Escalades : "+escalations.length);approvals.forEach(a=>lines.push("- Approbation requise : "+(a.action_key||a.mission_id||a.id)));escalations.forEach(a=>lines.push("- Escalade : "+(a.title||a.description||a.id)));
  const missionCount=Number(i.totalMissions||0),departmentMissionCount=depts.reduce((n,d)=>n+Number(d.missionCount||0),0),findings=[];
+ const quality=c.dataQuality||{};
+ if(arr(quality.completedWithoutTasks).length)findings.push(arr(quality.completedWithoutTasks).length+" mission(s) terminée(s) sans tâche opérationnelle associée : exécution non démontrée.");
+ if(Number(quality.unassignedMissionCount||0)>0)findings.push(Number(quality.unassignedMissionCount)+" mission(s) sans direction identifiable après rapprochement avec le responsable IA.");
+ if(missionCount!==departmentMissionCount+Number(quality.unassignedMissionCount||0))findings.push("Le total des missions ne se réconcilie pas avec les missions affectées et non affectées.");
+ arr(quality.findings).filter((x:string)=>!findings.includes(x)).forEach((x:string)=>findings.push(x));
  if(Number(i.completedMissions||0)>0&&Number(i.totalTasks||0)===0)findings.push("Des missions sont déclarées terminées alors qu'aucune tâche n'est recensée. Leur exécution ne peut pas être confirmée par les données de tâches.");
  if(missionCount!==departmentMissionCount)findings.push("Le total des missions ("+missionCount+") ne correspond pas à la somme des missions ventilées par direction ("+departmentMissionCount+"). Des missions peuvent ne pas être rattachées à une direction.");
  if(depts.some(d=>d.taskCompletionRate==null||d.missionClosureRate==null))findings.push("Certaines directions n'ont pas de volume d'activité permettant de calculer un taux de performance. Une valeur non calculable ne doit pas être interprétée comme 0 %.");
@@ -1028,6 +1033,11 @@ function reportHtml(report){
  const c=report.report_content||{},i=c.indicators||{},depts=arr(c.departmentPerformance),text=reportText(report);
  const metricCards=[["Missions",i.totalMissions],["Terminées",i.completedMissions],["Actives",i.activeMissions],["Tâches",i.totalTasks],["Tâches ouvertes",i.openTasks],["Alertes",i.openAlerts],["Alertes critiques",i.criticalAlerts],["Validations humaines",i.pendingHumanApprovals]];
  const missionCount=Number(i.totalMissions||0),byDept=depts.reduce((n,d)=>n+Number(d.missionCount||0),0),warnings=[];
+ const quality=c.dataQuality||{};
+ if(arr(quality.completedWithoutTasks).length)warnings.push(arr(quality.completedWithoutTasks).length+" mission(s) terminée(s) sans tâche associée : exécution non démontrée.");
+ if(Number(quality.unassignedMissionCount||0)>0)warnings.push(Number(quality.unassignedMissionCount)+" mission(s) sans direction identifiable.");
+ if(missionCount!==byDept+Number(quality.unassignedMissionCount||0))warnings.push("Réconciliation incomplète entre missions totales, affectées et non affectées.");
+ arr(quality.findings).filter((x:string)=>!warnings.includes(x)).forEach((x:string)=>warnings.push(x));
  if(Number(i.completedMissions||0)>0&&Number(i.totalTasks||0)===0)warnings.push("Des missions sont déclarées terminées alors qu'aucune tâche n'est recensée : leur exécution n'est pas démontrée par le suivi des tâches.");
  if(missionCount!==byDept)warnings.push("Ventilation incomplète : "+missionCount+" mission(s) au total contre "+byDept+" ventilée(s) par direction.");
  if(depts.some(d=>d.taskCompletionRate==null||d.missionClosureRate==null))warnings.push("Certaines directions ne disposent pas d'un volume suffisant pour calculer leurs taux. « Non calculable » ne signifie pas 0 %.");
