@@ -1065,17 +1065,34 @@ function message(t,error){$("message").textContent=t;$("message").className=erro
 function showLogin(){const card=$("cooLogin");if(card)card.hidden=false}
 function loginPrompt(text){message(text,true);showLogin();$("message").innerHTML='Authentification requise. Tu peux te connecter directement ci-dessous ou utiliser <a href="/team?return=%2Fcoo" style="font-weight:700">Équipe & Gouvernance ↗</a>';}
 async function loginFromCoo(){const button=$("cooLoginButton"),error=$("cooLoginError");error.textContent="";const email=$("cooLoginEmail").value.trim(),password=$("cooLoginPassword").value;if(!email||!password){error.textContent="Saisis ton adresse e-mail et ton mot de passe.";return}button.disabled=true;button.textContent="Connexion…";try{const response=await fetch("/auth/session",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({action:"signin",email,password})});const raw=await response.text();let data={};try{data=JSON.parse(raw||"{}")}catch{}if(!response.ok||!data.access_token||!data.user?.id)throw new Error(data.msg||data.message||data.error_description||data.error||"Connexion impossible. Vérifie tes identifiants.");localStorage.setItem("afe-v09-session",JSON.stringify(data));$("cooLoginPassword").value="";$("cooLogin").hidden=true;message("Connexion réussie. Chargement de ton espace de travail…");await loadWorkspaceList();}catch(e){error.textContent=e instanceof Error?e.message:"Erreur de connexion.";showLogin();}finally{button.disabled=false;button.textContent="Se connecter";}}
+let refreshInFlight=null;
+async function refreshSession(){
+ const current=session();
+ if(!current?.refresh_token)throw Error("Session expirée. Reconnecte-toi.");
+ if(!refreshInFlight)refreshInFlight=(async()=>{
+  const response=await fetch("/auth/session",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({action:"refresh",refresh_token:current.refresh_token})});
+  const raw=await response.text();let data={};try{data=JSON.parse(raw||"{}")}catch{}
+  if(!response.ok||!data.access_token||!data.user?.id)throw Error(data.msg||data.message||data.error_description||data.error||"Renouvellement de session impossible.");
+  localStorage.setItem("afe-v09-session",JSON.stringify(data));return data;
+ })().finally(()=>{refreshInFlight=null});
+ return refreshInFlight;
+}
 async function api(path,options){
- const s=session();
- if(!s?.access_token){loginPrompt("Authentification requise.");throw Error("Connectez-vous depuis Équipe & Gouvernance.");}
- const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
- let r;
- try{
-  r=await fetch(path,{...(options||{}),signal:controller.signal,headers:{Authorization:"Bearer "+s.access_token,"Content-Type":"application/json",...((options&&options.headers)||{})}});
- }catch(e){
-  if(e?.name==="AbortError")throw Error("Le serveur met trop de temps à répondre ("+path+"). Vérifie le Preview et réessaie.");
-  throw Error("Impossible de joindre le serveur ("+path+"). "+(e?.message||""));
- }finally{clearTimeout(timer)}
+ let s=session();
+ if(!s?.access_token){loginPrompt("Authentification requise.");throw Error("Connecte-toi pour accéder à ton espace de travail.");}
+ const expiry=Number(s.expires_at||0);
+ if(s.refresh_token&&expiry>0&&expiry*1000<Date.now()+60000){try{s=await refreshSession()}catch(e){localStorage.removeItem("afe-v09-session");loginPrompt("Ta session a expiré. Reconnecte-toi.");throw e}}
+ const request=async(token)=>{
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+  try{return await fetch(path,{...(options||{}),signal:controller.signal,headers:{Authorization:"Bearer "+token,"Content-Type":"application/json",...((options&&options.headers)||{})}})}
+  catch(e){if(e?.name==="AbortError")throw Error("Le serveur met trop de temps à répondre ("+path+"). Réessaie dans quelques instants.");throw Error("Impossible de joindre le serveur ("+path+"). "+(e?.message||""))}
+  finally{clearTimeout(timer)}
+ };
+ let r=await request(s.access_token);
+ if(r.status===401&&s.refresh_token){
+  try{s=await refreshSession();r=await request(s.access_token)}
+  catch(e){localStorage.removeItem("afe-v09-session");loginPrompt("Session expirée. Reconnecte-toi.");throw e}
+ }
  const raw=await r.text();let d={};try{d=JSON.parse(raw||"{}")}catch{}
  if(r.status===401){localStorage.removeItem("afe-v09-session");loginPrompt("Session expirée. Reconnecte-toi.");}
  if(!r.ok)throw Error(d.error||d.message||("Erreur serveur "+r.status+" sur "+path));
@@ -1085,7 +1102,7 @@ const base=()=>"/team/api/workspaces/"+encodeURIComponent(wid)+"/coo/";
 const metric=(label,value)=>'<div class="metric"><b>'+esc(value??"—")+'</b><span class="small">'+esc(label)+'</span></div>';
 const date=v=>v?new Date(v).toLocaleString("fr-FR"):"—";
 const statusLabel=s=>({queued:"En attente",planning:"Planification",running:"En cours",waiting_approval:"Validation requise",paused:"Suspendue",completed:"Terminée",failed:"Échec",cancelled:"Annulée",todo:"À faire",in_progress:"En cours",blocked:"Bloquée",done:"Terminée",open:"Ouverte",acknowledged:"Prise en charge",resolved:"Résolue"}[s]||s||"—");
-async function loadWorkspaceList(){message("Session reconnue. Récupération de tes espaces de travail…");const data=await api("/team/api/workspaces");const spaces=arr(data);$("spaces").innerHTML=spaces.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+' · '+esc(x.role)+'</option>').join("")||'<option value="">Aucun espace</option>';if(!wid&&spaces.length)wid=spaces[0].id;if(wid)$("spaces").value=wid;if(!wid){message("Aucun espace disponible. Créez-en un depuis Équipe & Gouvernance.",true);return}await render();$("cooLogin").hidden=true}
+async function loadWorkspaceList(){message("Connexion validée. Récupération de tes espaces de travail…");const data=await api("/team/api/workspaces");const spaces=arr(data);$("spaces").innerHTML=spaces.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+' · '+esc(x.role)+'</option>').join("")||'<option value="">Aucun espace</option>';if(!wid&&spaces.length)wid=spaces[0].id;if(wid)$("spaces").value=wid;if(!wid){$("cooLogin").hidden=true;message("Connecté, mais aucun espace de travail n'est associé à ce compte.",true);return false}const rendered=await render();if(!rendered)return false;$("cooLogin").hidden=true;message("Espace de travail chargé · "+spaces.find(x=>x.id===wid)?.name);return true}
 async function loadCommon(){const [dash,agents,members]=await Promise.all([api(base()+"dashboard"),api("/team/api/workspaces/"+encodeURIComponent(wid)+"/agents"),api("/team/api/workspaces/"+encodeURIComponent(wid)+"/members")]);cache={...dash,agents:arr(agents.agents),members:arr(members)};return cache}
 function renderOverview(d){
  const x=d.dashboard.indicators,alerts=arr(d.dashboard.priorityAlerts),risks=arr(d.dashboard.missionsAtRisk);
@@ -1186,7 +1203,7 @@ async function renderSettings(){
  $("view").innerHTML='<section class="card"><h2>COO IA — mandat et autonomie</h2><p class="small">Le niveau 2 permet de planifier et déléguer des opérations réversibles dans cet espace. Le niveau 3 reste verrouillé jusqu’à la réussite des tests de sécurité et une décision distincte de la Direction générale. L’arrêt d’urgence bloque les nouvelles orchestrations.</p><div class="form"><div><label>Agent COO désigné</label><select class="field" id="cooAgent"><option value="">Non désigné</option>'+agents.map(x=>'<option value="'+esc(x.id)+'" '+(cfg.coo_agent_id===x.id?"selected":"")+'>'+esc(x.name)+'</option>').join("")+'</select></div><div><label>Autonomie opérationnelle</label><select class="field" id="cooAutonomy"><option value="1" '+(Number(cfg.coo_autonomy_level)===1?"selected":"")+'>Niveau 1 — Proposer et planifier</option><option value="2" '+(Number(cfg.coo_autonomy_level)===2?"selected":"")+'>Niveau 2 — Déléguer les opérations réversibles</option></select></div><div><label>Activation du moteur</label><select class="field" id="cooEnabled"><option value="true" '+(cfg.coo_enabled?"selected":"")+'>Activé</option><option value="false" '+(!cfg.coo_enabled?"selected":"")+'>Désactivé</option></select></div><div><label>Arrêt d’urgence</label><select class="field" id="cooKill"><option value="false" '+(!cfg.coo_kill_switch?"selected":"")+'>Inactif</option><option value="true" '+(cfg.coo_kill_switch?"selected":"")+'>ACTIVÉ — bloquer les nouvelles orchestrations</option></select></div><div><label>Rapport automatique quotidien</label><select class="field" id="dailyEnabled"><option value="true" '+(cfg.daily_report_enabled?"selected":"")+'>Activé</option><option value="false" '+(!cfg.daily_report_enabled?"selected":"")+'>Désactivé</option></select></div></div><p><button class="btn primary" id="saveSettings" '+(role==="owner"?"":"disabled") +'>Enregistrer les paramètres du COO IA</button></p></section>';
  $("saveSettings").onclick=async()=>{try{await api(base()+"settings",{method:"PATCH",body:JSON.stringify({cooAgentId:$("cooAgent").value||null,cooAutonomyLevel:Number($("cooAutonomy").value),cooEnabled:$("cooEnabled").value==="true",cooKillSwitch:$("cooKill").value==="true",dailyReportEnabled:$("dailyEnabled").value==="true"})});message("Mandat et autonomie du COO IA enregistrés.");await render()}catch(e){message(e.message,true)}};
 }
-async function render(){if(!wid)return;try{$("role").textContent="Rôle : "+role;const w=await api("/team/api/workspaces/"+encodeURIComponent(wid));role=w.role||role;$("role").textContent="Rôle : "+role;const v=$("view");v.innerHTML='<section class="card">Chargement…</section>';if(tab==="overview"){const d=await loadCommon();v.innerHTML=renderOverview(d)}else if(tab==="missions")await renderMissions();else if(tab==="departments")await renderDepartments();else if(tab==="tasks")await renderTasks();else if(tab==="alerts")await renderAlerts();else if(tab==="reports")await renderReports();else if(tab==="settings")await renderSettings()}catch(e){message(e.message,true);$("view").innerHTML='<section class="card error">'+esc(e.message)+'</section>'}}
+async function render(){if(!wid){$("view").innerHTML='<section class="card">Aucun espace de travail sélectionné.</section>';return false}try{$("role").textContent="Rôle : "+role;const w=await api("/team/api/workspaces/"+encodeURIComponent(wid));role=w.role||role;$("role").textContent="Rôle : "+role;const v=$("view");v.innerHTML='<section class="card">Chargement des données COO…</section>';if(tab==="overview"){const d=await loadCommon();v.innerHTML=renderOverview(d)}else if(tab==="missions")await renderMissions();else if(tab==="departments")await renderDepartments();else if(tab==="tasks")await renderTasks();else if(tab==="alerts")await renderAlerts();else if(tab==="reports")await renderReports();else if(tab==="settings")await renderSettings();return true}catch(e){message("Échec du chargement COO : "+e.message,true);$("view").innerHTML='<section class="card error">'+esc(e.message)+'</section>';return false}}
 $("tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(!b)return;tab=b.dataset.tab;$("tabs").querySelectorAll("button").forEach(x=>x.classList.toggle("active",x===b));render()});
 $("spaces").onchange=()=>{wid=$("spaces").value;render()};$("refresh").onclick=()=>render();$("cooLoginButton").onclick=loginFromCoo;$("cooLoginPassword").addEventListener("keydown",e=>{if(e.key==="Enter")loginFromCoo()});showLogin();if(!session()?.access_token)loginPrompt("Authentification requise.");else loadWorkspaceList().catch(e=>{showLogin();if(!session()?.access_token)loginPrompt("Session expirée.");else message("Impossible de charger les espaces de travail : "+e.message,true)});
 </script></body></html>`;
