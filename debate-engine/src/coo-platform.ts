@@ -902,7 +902,7 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
       if (!docs.length) throw fail("Ajoutez au moins un document au dossier avant de confirmer sa complétude.");
       const rows = await db<any[]>("afe_coo_mission_archives?id=eq." + enc(p[6]) + "&workspace_id=eq." + enc(workspaceId), {
         method: "PATCH", headers: { Prefer: "return=representation" },
-        body: JSON.stringify({ document_count: docs.length, document_status: "complete", document_checklist: Object.fromEntries(required.map(key => [key, true])), completion_confirmed_by: user.id, completion_confirmed_at: nowIso(), updated_at: nowIso() })
+        body: JSON.stringify({ document_count: docs.length, document_status: "complete", updated_at: nowIso() })
       });
       await audit(workspaceId, user.id, "coo.mission_archive.completeness_confirmed", "mission_archive", p[6], { documentCount: docs.length, checklist: Object.fromEntries(required.map(key => [key, true])) });
       send(res, 200, { ok: true, archive: rows[0] ?? found[0] }); return true;
