@@ -29,7 +29,6 @@ export async function handleDgDecisionRequest(req:IncomingMessage,res:ServerResp
    if(!["approve","approve_with_conditions","reject","return_for_revision","acknowledge"].includes(requestedOutcome)){fail(res,400,"Résultat attendu invalide.");return true;}
    const inserted=await db<any[]>("afe_coo_dg_decisions?select=*",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({workspace_id:workspaceId,title,summary,rationale,decision_type:decisionType,requested_outcome:requestedOutcome,requested_by:user.id})});
    const decision=inserted[0];if(!decision)throw new Error("La décision n'a pas été enregistrée.");
-   await db("afe_coo_dg_decision_events",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({workspace_id:workspaceId,decision_id:decision.id,event_type:"submitted",actor_id:user.id,note:"Dossier soumis à la Direction générale.",snapshot:{title,decision_type:decisionType,requested_outcome:requestedOutcome}})});
    send(res,201,{decision});return true;
   }
   const match=suffix.match(/^\/([0-9a-f-]{36})\/decision$/i);
@@ -44,7 +43,6 @@ export async function handleDgDecisionRequest(req:IncomingMessage,res:ServerResp
    if(current[0].status!=="pending"){fail(res,409,"Ce dossier a déjà fait l'objet d'une décision. Son historique est conservé.");return true;}
    const updated=await db<any[]>("afe_coo_dg_decisions?id=eq."+enc(match[1])+"&workspace_id=eq."+enc(workspaceId)+"&status=eq.pending&select=*",{method:"PATCH",headers:{Prefer:"return=representation"},body:JSON.stringify({status:map[outcome],decided_by:user.id,decided_at:new Date().toISOString(),decision_note:note,updated_at:new Date().toISOString(),version:Number(current[0].version||1)+1})});
    if(!updated[0]){fail(res,409,"Le dossier a été modifié simultanément. Actualise la file DG.");return true;}
-   await db("afe_coo_dg_decision_events",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({workspace_id:workspaceId,decision_id:match[1],event_type:map[outcome],actor_id:user.id,note,snapshot:{previous_status:"pending",status:map[outcome],version:updated[0].version}})});
    send(res,200,{decision:updated[0]});return true;
   }
   fail(res,405,"Méthode ou route non autorisée.");return true;
