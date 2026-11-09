@@ -127,24 +127,6 @@ FOR EACH ROW
 WHEN (NEW.status = 'completed')
 EXECUTE FUNCTION public.afe_coo_archive_completed_mission();
 
--- Backfill all missions already marked completed at migration time. Idempotent and non-destructive.
-DO $$
-DECLARE r record;
-BEGIN
-  FOR r IN
-    SELECT m.*
-    FROM public.afe_agent_missions m
-    WHERE m.status = 'completed'
-      AND NOT EXISTS (
-        SELECT 1 FROM public.afe_coo_mission_archives a
-        WHERE a.workspace_id = m.workspace_id AND a.mission_id = m.id
-      )
-    ORDER BY COALESCE(m.updated_at, m.created_at), m.id
-  LOOP
-    PERFORM public.afe_coo_archive_completed_mission_backfill(r);
-  END LOOP;
-END $$;
-
 CREATE OR REPLACE FUNCTION public.afe_coo_archive_completed_mission_backfill(p_mission public.afe_agent_missions)
 RETURNS void
 LANGUAGE plpgsql
@@ -177,6 +159,24 @@ BEGIN
   ON CONFLICT (workspace_id, mission_id) DO NOTHING;
 END;
 $$;
+
+-- Backfill all missions already marked completed at migration time. Idempotent and non-destructive.
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT m.*
+    FROM public.afe_agent_missions m
+    WHERE m.status = 'completed'
+      AND NOT EXISTS (
+        SELECT 1 FROM public.afe_coo_mission_archives a
+        WHERE a.workspace_id = m.workspace_id AND a.mission_id = m.id
+      )
+    ORDER BY COALESCE(m.updated_at, m.created_at), m.id
+  LOOP
+    PERFORM public.afe_coo_archive_completed_mission_backfill(r);
+  END LOOP;
+END $$;
 
 REVOKE ALL ON FUNCTION public.afe_coo_archive_completed_mission() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.afe_coo_archive_completed_mission_backfill(public.afe_agent_missions) FROM PUBLIC, anon, authenticated;
