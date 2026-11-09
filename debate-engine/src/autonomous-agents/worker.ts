@@ -131,13 +131,13 @@ async function syncCooTaskResults(claim:Claim,mission:any,output:MissionResult,h
 }
 async function recordFailure(claim:Claim,error:unknown){
  const message=(error instanceof Error?error.message:String(error)).slice(0,3500);
- const current=await db<any[]>("afe_agent_missions?id=eq."+encodeURIComponent(claim.mission_id)+"&workspace_id=eq."+encodeURIComponent(claim.workspace_id)+"&lease_token=eq."+encodeURIComponent(claim.lease_token)+"&select=attempt_count,max_attempts&limit=1");
+ const current=await db<any[]>("afe_agent_missions?id=eq."+encodeURIComponent(claim.mission_id)+"&workspace_id=eq."+encodeURIComponent(claim.workspace_id)+"&lease_token=eq."+encodeURIComponent(claim.lease_token)+"&status=eq.running&select=attempt_count,max_attempts&limit=1");
  if(!current.length)return false;
  const attempt=Number(current[0].attempt_count)||claim.attempt_count;
  const maxAttempts=Math.max(1,Number(current[0].max_attempts)||3);
  const terminal=attempt>=maxAttempts;
  const delay=Math.min(900,15*Math.pow(2,Math.max(0,attempt-1)));
- const saved=await db<any[]>("afe_agent_missions?id=eq."+encodeURIComponent(claim.mission_id)+"&workspace_id=eq."+encodeURIComponent(claim.workspace_id)+"&lease_token=eq."+encodeURIComponent(claim.lease_token)+"&lease_expires_at=gt."+encodeURIComponent(new Date().toISOString()),{
+ const saved=await db<any[]>("afe_agent_missions?id=eq."+encodeURIComponent(claim.mission_id)+"&workspace_id=eq."+encodeURIComponent(claim.workspace_id)+"&lease_token=eq."+encodeURIComponent(claim.lease_token)+"&status=eq.running&lease_expires_at=gt."+encodeURIComponent(new Date().toISOString()),{
   method:"PATCH",headers:{"Prefer":"return=representation"},
   body:JSON.stringify({status:terminal?"failed":"queued",failure_code:"WORKER_EXECUTION_FAILED",failure_message:message,run_after:new Date(Date.now()+delay*1000).toISOString(),lease_token:null,lease_expires_at:null,updated_at:new Date().toISOString()})
  });
