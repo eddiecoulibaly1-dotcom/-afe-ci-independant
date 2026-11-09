@@ -27,6 +27,7 @@ const legacyRecoveryMigrationUrl=new URL("../supabase/migrations/20261109104000_
 const searchPathMigrationUrl=new URL("../supabase/migrations/20261109105000_coo_dependency_trigger_search_path.sql",import.meta.url);
 const strictClaimMigrationUrl=new URL("../supabase/migrations/20261109106000_coo_strict_dependency_claim_gate.sql",import.meta.url);
 const strictWorkspaceClaimMigrationUrl=new URL("../supabase/migrations/20261109106100_coo_strict_dependency_workspace_claim_gate.sql",import.meta.url);
+const dependencyIndexMigrationUrl=new URL("../supabase/migrations/20261109104600_coo_dependency_fk_index_alignment.sql",import.meta.url);
 const cooPlatformUrl=new URL("../src/coo-platform.ts",import.meta.url);
 test("mission dependency API is workspace-scoped, auditable and restricted to non-running missions",async()=>{
  const source=await readFile(platformUrl,"utf8");
@@ -89,4 +90,12 @@ test("global and workspace claim functions require successful prerequisite compl
  assert.match(workspaceSql,/p\.status<>''completed''/);
  assert.match(globalSql,/claim_afe_agent_mission\(integer\)/);
  assert.match(workspaceSql,/claim_afe_agent_mission_for_workspace\(uuid,integer\)/);
+});
+
+test("mission dependency indexes cover each foreign key without duplicate indexes",async()=>{
+ const sql=await readFile(dependencyIndexMigrationUrl,"utf8");
+ assert.match(sql,/mission_fk_idx ON public\.afe_agent_mission_dependencies \(mission_id,workspace_id\)/);
+ assert.match(sql,/prerequisite_fk_idx ON public\.afe_agent_mission_dependencies \(depends_on_mission_id,workspace_id\)/);
+ assert.match(sql,/created_by_idx ON public\.afe_agent_mission_dependencies \(created_by\)/);
+ assert.match(sql,/DROP INDEX IF EXISTS public\.afe_agent_mission_dependencies_prerequisite_idx/);
 });
