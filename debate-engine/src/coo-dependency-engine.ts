@@ -160,8 +160,7 @@ async function analyzeDependencies(workspaceId: string, user: AuthUser, input: a
   const deptMap = new Map(departments.map(d => [d.id, d]));
   const analyzedTaskIds = taskSet.filter(t => {
     const parent = t.mission_id ? missionMap.get(t.mission_id) : null;
-    return parent?.status !== "running" &&
-      !(t.status === "blocked" && !String(t.blocked_reason || "").startsWith("COO_DEPENDENCY_BLOCKED:"));
+    return parent?.status !== "running";
   }).map(t => t.id);
   const existingKeys = new Set(existing.filter(e => e.status !== "rejected").map(e =>
     [e.dependent_kind, e.dependent_task_id ?? e.dependent_mission_id, e.prerequisite_kind, e.prerequisite_task_id ?? e.prerequisite_mission_id ?? e.prerequisite_department_id, e.relation_type].join(":")
@@ -306,7 +305,6 @@ async function decideDependency(workspaceId: string, user: AuthUser, edgeId: str
     } else {
       const task = (await db<any[]>("afe_operational_tasks?id=eq." + enc(edge.dependent_task_id) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1"))[0];
       if (!task) throw fail("Tâche dépendante introuvable.", 404);
-      if (task.status === "blocked" && !String(task.blocked_reason || "").startsWith("COO_DEPENDENCY_BLOCKED:")) throw fail("Cette tâche est déjà bloquée pour un autre motif. Le blocage doit être résolu avant l'activation.", 409);
       if (task.mission_id) dependentMission = (await db<any[]>("afe_agent_missions?id=eq." + enc(task.mission_id) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1"))[0];
     }
     if (dependentMission?.status === "running") throw fail("La mission consommatrice doit être suspendue avant l'activation du prérequis.", 409);
@@ -464,8 +462,7 @@ export async function handleCooDependencyWorker(req: IncomingMessage, res: Serve
       const autoAnalysisTasks = tasks.filter(t =>
         t.dependency_analysis_status === "pending" &&
         !["done","cancelled"].includes(t.status) &&
-        (!t.mission_id || missionStatus.get(t.mission_id) !== "running") &&
-        !(t.status === "blocked" && !String(t.blocked_reason || "").startsWith("COO_DEPENDENCY_BLOCKED:"))
+        (!t.mission_id || missionStatus.get(t.mission_id) !== "running")
       ).slice(0, 30);
       if (autoAnalysisTasks.length && workspace.owner_id) {
         try {
