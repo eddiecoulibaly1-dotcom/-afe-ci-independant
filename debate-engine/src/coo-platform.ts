@@ -186,7 +186,7 @@ async function upsertAlert(workspaceId: string, alert: { key: string; type: stri
         mission_id: alert.missionId ?? null, task_id: alert.taskId ?? null
       })
     });
-  } else if (found[0].status === "resolved") {
+  } else if (found[0].status === "resolved" || found[0].workflow_status === "pending_verification") {
     const reopenedAt = nowIso();
     await db("afe_coo_alerts?id=eq." + enc(found[0].id) + "&workspace_id=eq." + enc(workspaceId), {
       method: "PATCH", headers: { Prefer: "return=minimal" },
@@ -243,10 +243,14 @@ async function refreshAlerts(workspaceId: string, missions: any[], tasks: any[])
       else if (alert.alert_type === "approval_overdue") active = m.status === "waiting_approval" && now - new Date(m.updated_at ?? m.created_at).getTime() > 86400000;
       else known = false;
     }
-    if (known && !active) {
+    if (known && !active && alert.workflow_status !== "pending_verification" && alert.status !== "resolved") {
+      const clearedAt = nowIso();
       await db("afe_coo_alerts?id=eq." + enc(alert.id) + "&workspace_id=eq." + enc(workspaceId), {
         method: "PATCH", headers: { Prefer: "return=minimal" },
-        body: JSON.stringify({ status: "resolved", resolved_by: null, resolved_at: nowIso(), updated_at: nowIso() })
+        body: JSON.stringify({ status: "acknowledged", workflow_status: "pending_verification", updated_at: clearedAt })
+      });
+      await appendAlertEvent(workspaceId, alert.id, null, "condition_cleared_pending_verification", {
+        message: "La condition déclenchante n'est plus détectée. La résolution reste à documenter et à vérifier indépendamment."
       });
     }
   }
@@ -611,6 +615,7 @@ async function actOnAlert(workspaceId: string, user: AuthUser, id: string, input
     if (diagnosis.length < 20 || correctiveAction.length < 20 || evidenceReference.length < 10 || resolutionSummary.length < 20) {
       throw fail("Avant la vérification, renseigne le diagnostic, les actions réalisées, une référence de preuve et le résumé du résultat.", 400);
     }
+    await ensureAlertConditionCleared(workspaceId, alert);
     patch.diagnosis = diagnosis; patch.corrective_action = correctiveAction;
     patch.evidence_reference = evidenceReference; patch.resolution_summary = resolutionSummary;
     patch.workflow_status = "pending_verification"; patch.status = "acknowledged";
@@ -620,6 +625,7 @@ async function actOnAlert(workspaceId: string, user: AuthUser, id: string, input
   } else if (action === "verify") {
     if (alert.workflow_status !== "pending_verification") throw fail("Cette alerte n'attend pas de vérification.", 409);
     if (alert.assigned_to && alert.assigned_to === user.id) throw fail("La vérification doit être effectuée par une personne différente du responsable de la correction.", 403);
+    if (clean(alert.evidence_reference, 2000).length < 10 || clean(alert.resolution_summary, 4000).length < 20) throw fail("La résolution ne peut pas être validée sans référence de preuve et résumé du résultat.", 409);
     if (verificationNote.length < 20) throw fail("La note de vérification doit comporter au moins 20 caractères.", 400);
     const decision = clean(input?.decision, 16);
     if (decision === "approve") {
