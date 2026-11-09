@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 const migrationUrl = new URL("../supabase/migrations/20261109064541_afe_ci_coo_mission_archives.sql", import.meta.url);
+const indexesUrl = new URL("../supabase/migrations/20261109070000_afe_ci_coo_mission_archive_indexes.sql", import.meta.url);
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
 test("COO mission archives are workspace-scoped and preserve immutable mission/task snapshots", async () => {
  const sql = await readFile(migrationUrl, "utf8");
@@ -18,6 +19,10 @@ test("completed missions are archived automatically and existing completed missi
  assert.match(sql, /if new\.status <> 'completed' then return new/);
  assert.match(sql, /where m\.status='completed'/);
  assert.match(sql, /on conflict \(workspace_id, mission_id\) do nothing/);
+});
+test("archive document foreign keys are indexed", async () => {
+ const sql = await readFile(indexesUrl, "utf8");
+ for (const name of ["afe_coo_mission_archives_mission_id_idx","afe_coo_mission_archive_documents_archive_workspace_idx","afe_coo_mission_archive_documents_source_document_idx","afe_coo_mission_archive_documents_uploaded_by_idx","afe_coo_mission_archive_documents_linked_by_idx"]) assert.ok(sql.includes(name));
 });
 test("archive documents are independent storage copies with source provenance", async () => {
  const sql = await readFile(migrationUrl, "utf8"), source = await readFile(platformUrl, "utf8");
