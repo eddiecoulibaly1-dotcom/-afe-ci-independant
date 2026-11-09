@@ -187,10 +187,16 @@ async function upsertAlert(workspaceId: string, alert: { key: string; type: stri
       })
     });
   } else if (found[0].status === "resolved") {
+    const reopenedAt = nowIso();
     await db("afe_coo_alerts?id=eq." + enc(found[0].id) + "&workspace_id=eq." + enc(workspaceId), {
       method: "PATCH", headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ status: "open", severity: alert.severity, title: alert.title, description: alert.description, acknowledged_by: null, acknowledged_at: null, resolved_by: null, resolved_at: null, updated_at: nowIso() })
+      body: JSON.stringify({
+        status: "open", workflow_status: "reopened", severity: alert.severity, title: alert.title, description: alert.description,
+        acknowledged_by: null, acknowledged_at: null, resolved_by: null, resolved_at: null, verified_by: null, verified_at: null,
+        reopen_count: Number(found[0].reopen_count || 0) + 1, last_reopened_at: reopenedAt, updated_at: reopenedAt
+      })
     });
+    await appendAlertEvent(workspaceId, found[0].id, null, "condition_reappeared", { alert_type: alert.type, message: "La condition déclenchante est réapparue après clôture." });
   }
 }
 async function refreshAlerts(workspaceId: string, missions: any[], tasks: any[]) {
