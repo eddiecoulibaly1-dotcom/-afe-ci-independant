@@ -29,6 +29,7 @@ const strictClaimMigrationUrl=new URL("../supabase/migrations/20261109104351_coo
 const strictWorkspaceClaimMigrationUrl=new URL("../supabase/migrations/20261109104353_coo_strict_dependency_workspace_claim_gate.sql",import.meta.url);
 const dependencyIndexMigrationUrl=new URL("../supabase/migrations/20261109104547_coo_dependency_fk_index_alignment.sql",import.meta.url);
 const cooPlatformUrl=new URL("../src/coo-platform.ts",import.meta.url);
+const workerTickMigrationUrl=new URL("../supabase/migrations/20261109120420_coo_worker_heartbeat_monitoring.sql",import.meta.url);
 test("mission dependency API is workspace-scoped, auditable and restricted to non-running missions",async()=>{
  const source=await readFile(platformUrl,"utf8");
  assert.match(source,/p\[6\]==="dependencies"/);
@@ -149,7 +150,7 @@ test("COO supervision uses real worker heartbeats and distinguishes failed cross
  assert.match(source,/lastHeartbeatAt:lastWorkerTick\?\.heartbeat_at/);
  assert.match(source,/crossDepartmentDependencies:dependencyRows\.filter/);
  assert.match(source,/state = prerequisiteStatus==="completed" \? "satisfied" : \["failed","cancelled","missing"\]/);
- assert.match(source,/Heartbeat provient des ticks réels du worker/);
+ assert.match(source,/heartbeat provient des ticks réels du worker/);
 });
 
 test("COO supervision consumes durable worker ticks returned by its sixth query",async()=>{
