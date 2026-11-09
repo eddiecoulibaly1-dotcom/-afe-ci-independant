@@ -378,6 +378,33 @@ async function decideDependency(workspaceId: string, user: AuthUser, edgeId: str
   return updated[0] ?? { ...edge, ...patch };
 }
 
+async function revokeDependency(workspaceId: string, user: AuthUser, edgeId: string, input: any) {
+  await requireRole(workspaceId, user, "owner");
+  const note = clean(input.note, 3000);
+  if (note.length < 8) throw fail("Un motif d'au moins 8 caractères est requis pour révoquer une dépendance.");
+  const rows = await db<any[]>("afe_coo_dependency_edges?id=eq." + enc(edgeId) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
+  const edge = rows[0];
+  if (!edge) throw fail("Dépendance introuvable.", 404);
+  if (edge.status !== "active") throw fail("Seule une dépendance active peut être révoquée.", 409);
+  if (edge.relation_type === "hard_prerequisite") {
+    throw fail("Une dépendance bloquante exige une procédure de levée de blocage dédiée.", 409);
+  }
+  const timestamp = nowIso();
+  const patch = {
+    status: "revoked",
+    reviewed_by: user.id,
+    reviewed_at: timestamp,
+    decision_note: note,
+    updated_at: timestamp
+  };
+  const updated = await db<any[]>("afe_coo_dependency_edges?id=eq." + enc(edgeId) + "&workspace_id=eq." + enc(workspaceId) + "&status=eq.active", {
+    method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch)
+  });
+  if (!updated[0]) throw fail("La dépendance a changé entre-temps. Actualisez la page avant de réessayer.", 409);
+  // The database AFTER UPDATE trigger records this status transition atomically.
+  return updated[0];
+}
+
 async function decideDeliverable(workspaceId: string, user: AuthUser, deliverableId: string, input: any) {
   await requireRole(workspaceId, user, "owner");
   const decision = clean(input.decision, 16), note = clean(input.note, 4000);
@@ -436,6 +463,10 @@ export async function handleCooDependencyRequest(req: IncomingMessage, res: Serv
     if (resource === "dependencies" && p[6] && p[7] === "decision" && method === "POST" && p.length === 8) {
       const input = await readBody(req);
       send(res, 200, { edge: await decideDependency(workspaceId, user, p[6], input) }); return true;
+    }
+    if (resource === "dependencies" && p[6] && p[7] === "revoke" && method === "POST" && p.length === 8) {
+      const input = await readBody(req);
+      send(res, 200, { edge: await revokeDependency(workspaceId, user, p[6], input) }); return true;
     }
     if (resource === "deliverables" && p[6] && p[7] === "decision" && method === "POST" && p.length === 8) {
       const input = await readBody(req);
