@@ -2,8 +2,6 @@
 -- Additive only. The trigger snapshots completed missions; source records and files are never deleted.
 -- Apply first in Preview/test. Production application requires separate approval.
 
-CREATE SEQUENCE IF NOT EXISTS public.afe_coo_mission_archive_number_seq;
-
 CREATE TABLE IF NOT EXISTS public.afe_coo_mission_archives (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   archive_number bigint GENERATED ALWAYS AS IDENTITY UNIQUE,
@@ -21,6 +19,9 @@ CREATE TABLE IF NOT EXISTS public.afe_coo_mission_archives (
   events_snapshot jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(events_snapshot) = 'array'),
   document_count integer NOT NULL DEFAULT 0 CHECK (document_count >= 0),
   document_status text NOT NULL DEFAULT 'pending' CHECK (document_status IN ('pending','partial','complete')),
+  document_checklist jsonb NOT NULL DEFAULT '{"dgReport":false,"departmentReports":false,"supportingEvidence":false}'::jsonb CHECK (jsonb_typeof(document_checklist) = 'object'),
+  completion_confirmed_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  completion_confirmed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (workspace_id, mission_id),
@@ -60,7 +61,6 @@ ALTER TABLE public.afe_coo_mission_archives ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.afe_coo_mission_archive_documents ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.afe_coo_mission_archives, public.afe_coo_mission_archive_documents FROM anon, authenticated;
 GRANT ALL ON TABLE public.afe_coo_mission_archives, public.afe_coo_mission_archive_documents TO service_role;
-GRANT USAGE, SELECT ON SEQUENCE public.afe_coo_mission_archives_archive_number_seq TO service_role;
 
 COMMENT ON TABLE public.afe_coo_mission_archives IS
   'Immutable workspace-scoped closure snapshot of a completed COO mission, indexed by generated mission number and UTC archive date.';
@@ -78,6 +78,7 @@ DECLARE
   v_agent_name text;
   v_tasks jsonb;
   v_events jsonb;
+  v_archived_at timestamptz;
 BEGIN
   IF NEW.status IS DISTINCT FROM 'completed' THEN
     RETURN NEW;
@@ -85,6 +86,8 @@ BEGIN
   IF TG_OP = 'UPDATE' AND OLD.status IS NOT DISTINCT FROM NEW.status THEN
     RETURN NEW;
   END IF;
+
+  v_archived_at := COALESCE(NULLIF(to_jsonb(NEW)->>'completed_at', '')::timestamptz, NEW.updated_at, now());
 
   SELECT d.name INTO v_department_name
   FROM public.afe_org_departments d
@@ -111,7 +114,7 @@ BEGIN
     archive_date, archived_at, mission_snapshot, tasks_snapshot, events_snapshot
   ) VALUES (
     NEW.workspace_id, NEW.id, NEW.title, v_department_name, v_agent_name,
-    (now() AT TIME ZONE 'UTC')::date, now(), to_jsonb(NEW),
+    (v_archived_at AT TIME ZONE 'UTC')::date, v_archived_at, to_jsonb(NEW),
     COALESCE(v_tasks, '[]'::jsonb), COALESCE(v_events, '[]'::jsonb)
   )
   ON CONFLICT (workspace_id, mission_id) DO NOTHING;
@@ -138,7 +141,9 @@ DECLARE
   v_agent_name text;
   v_tasks jsonb;
   v_events jsonb;
+  v_archived_at timestamptz;
 BEGIN
+  v_archived_at := COALESCE(NULLIF(to_jsonb(p_mission)->>'completed_at', '')::timestamptz, p_mission.updated_at, p_mission.created_at, now());
   SELECT d.name INTO v_department_name FROM public.afe_org_departments d
     WHERE d.id = p_mission.department_id AND d.workspace_id = p_mission.workspace_id LIMIT 1;
   SELECT a.name INTO v_agent_name FROM public.afe_agents a
@@ -152,8 +157,8 @@ BEGIN
     archive_date, archived_at, mission_snapshot, tasks_snapshot, events_snapshot
   ) VALUES (
     p_mission.workspace_id, p_mission.id, p_mission.title, v_department_name, v_agent_name,
-    (COALESCE(p_mission.updated_at, p_mission.created_at, now()) AT TIME ZONE 'UTC')::date,
-    COALESCE(p_mission.updated_at, p_mission.created_at, now()), to_jsonb(p_mission),
+    (v_archived_at AT TIME ZONE 'UTC')::date,
+    v_archived_at, to_jsonb(p_mission),
     COALESCE(v_tasks, '[]'::jsonb), COALESCE(v_events, '[]'::jsonb)
   )
   ON CONFLICT (workspace_id, mission_id) DO NOTHING;
