@@ -466,7 +466,8 @@ export async function handleCooDependencyWorker(req: IncomingMessage, res: Serve
       const dgUserId = settingsRow.dg_user_id || workspace.owner_id || null;
       const missionStatus = new Map(missions.map(x => [x.id, x.status]));
       const autoAnalysisTasks = settingsRow.coo_enabled === true && settingsRow.coo_kill_switch !== true ? tasks.filter(t =>
-        t.dependency_analysis_status === "pending" &&
+        (t.dependency_analysis_status === "pending" ||
+          (t.dependency_analysis_status === "failed" && Date.parse(t.dependency_analysis_at || "1970-01-01") < Date.now() - 30 * 60 * 1000)) &&
         !["done","cancelled"].includes(t.status) &&
         (!t.mission_id || missionStatus.get(t.mission_id) !== "running")
       ).slice(0, 30) : [];
