@@ -15,6 +15,8 @@ test("DG decision migration creates workspace-scoped decisions and append-only a
   assert.match(sql, /FORCE ROW LEVEL SECURITY/);
   assert.match(sql, /REVOKE ALL ON TABLE public\.afe_coo_dg_decisions FROM public, anon, authenticated/i);
   assert.match(sql, /DG decision events are append-only/);
+  assert.match(sql, /capture_afe_coo_dg_decision_event/);
+  assert.match(sql, /after insert or update of status/i);
   assert.match(sql, /BEFORE UPDATE OR DELETE/);
 });
 
