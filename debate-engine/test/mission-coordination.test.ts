@@ -25,6 +25,8 @@ const migrationUrl=new URL("../supabase/migrations/20261109102000_coo_mission_de
 const recoveryMigrationUrl=new URL("../supabase/migrations/20261109103000_coo_expired_worker_lease_recovery.sql",import.meta.url);
 const legacyRecoveryMigrationUrl=new URL("../supabase/migrations/20261109104000_coo_recover_legacy_unleased_missions.sql",import.meta.url);
 const searchPathMigrationUrl=new URL("../supabase/migrations/20261109105000_coo_dependency_trigger_search_path.sql",import.meta.url);
+const strictClaimMigrationUrl=new URL("../supabase/migrations/20261109106000_coo_strict_dependency_claim_gate.sql",import.meta.url);
+const strictWorkspaceClaimMigrationUrl=new URL("../supabase/migrations/20261109106100_coo_strict_dependency_workspace_claim_gate.sql",import.meta.url);
 const cooPlatformUrl=new URL("../src/coo-platform.ts",import.meta.url);
 test("mission dependency API is workspace-scoped, auditable and restricted to non-running missions",async()=>{
  const source=await readFile(platformUrl,"utf8");
@@ -78,4 +80,13 @@ test("both worker paths fence incomplete and final writes with the active lease"
  const source=await readFile(workerUrl,"utf8");
  assert.equal((source.match(/await heartbeat\.assertOwned\(\);await recordIncompleteDeliberation/g)||[]).length,2);
  assert.equal((source.match(/await heartbeat\.assertOwned\(\);const pendingResult/g)||[]).length,2);
+});
+
+test("global and workspace claim functions require successful prerequisite completion",async()=>{
+ const globalSql=await readFile(strictClaimMigrationUrl,"utf8");
+ const workspaceSql=await readFile(strictWorkspaceClaimMigrationUrl,"utf8");
+ assert.match(globalSql,/p\.status<>''completed''/);
+ assert.match(workspaceSql,/p\.status<>''completed''/);
+ assert.match(globalSql,/claim_afe_agent_mission\(integer\)/);
+ assert.match(workspaceSql,/claim_afe_agent_mission_for_workspace\(uuid,integer\)/);
 });
