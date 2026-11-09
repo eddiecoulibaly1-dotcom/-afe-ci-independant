@@ -1009,7 +1009,14 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
           if (!Array.isArray(result.deliverables) || result.deliverables.length < 1) throw fail("Clôture refusée : aucun livrable de mission n'est enregistré.", 409);
           const decision = { status: "accepted", decidedBy: user.id, decidedAt: nowIso(), reviewerVerdict: independentReview.verdict, closureEligible: true, note };
           await db("afe_agent_missions?id=eq." + enc(missionId) + "&workspace_id=eq." + enc(workspaceId), { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ status: "completed", progress_percent: 100, blocked_reason: null, result: { ...result, coo_review: decision }, updated_at: nowIso() }) });
-          await db("afe_agent_events", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ workspace_id: workspaceId, mission_id: missionId, agent_id: mission.agent_id, actor_type: "human", actor_id: user.id, event_type: "coo.mission.human_decision", payload: decision }) });
+          const decisionEventRows = await db<any[]>("afe_agent_events", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ workspace_id: workspaceId, mission_id: missionId, agent_id: mission.agent_id, actor_type: "human", actor_id: user.id, event_type: "coo.mission.human_decision", payload: decision }) });
+          const archiveRows = await db<any[]>("afe_coo_mission_archives?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(missionId) + "&limit=1");
+          if (archiveRows[0] && decisionEventRows[0]) {
+            const archivedEvents = Array.isArray(archiveRows[0].events_snapshot) ? archiveRows[0].events_snapshot : [];
+            const decisionEvent = decisionEventRows[0];
+            const eventsSnapshot = decisionEvent.id && archivedEvents.some((event: any) => event.id === decisionEvent.id) ? archivedEvents : [...archivedEvents, decisionEvent];
+            await db("afe_coo_mission_archives?id=eq." + enc(archiveRows[0].id) + "&workspace_id=eq." + enc(workspaceId), { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ events_snapshot: eventsSnapshot, updated_at: nowIso() }) });
+          }
           await audit(workspaceId, user.id, "coo.mission.accepted", "mission", missionId, { reviewerVerdict: independentReview.verdict });
           send(res, 200, { ok: true, action, status: "completed", decision }); return true;
         }
