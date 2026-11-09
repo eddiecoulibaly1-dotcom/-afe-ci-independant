@@ -279,70 +279,6 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.sync_afe_coo_dependency_edge()
-RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
-DECLARE
-  v_satisfied boolean;
-  v_mission_id uuid;
-  v_department_id uuid;
-BEGIN
-  IF NEW.status <> 'active' OR NEW.relation_type <> 'hard_prerequisite' THEN
-    RETURN NEW;
-  END IF;
-
-  IF NEW.dependent_kind = 'task' THEN
-    SELECT mission_id, department_id INTO v_mission_id, v_department_id
-    FROM public.afe_operational_tasks
-    WHERE id = NEW.dependent_task_id AND workspace_id = NEW.workspace_id
-    FOR UPDATE;
-  ELSE
-    SELECT id, department_id INTO v_mission_id, v_department_id
-    FROM public.afe_agent_missions
-    WHERE id = NEW.dependent_mission_id AND workspace_id = NEW.workspace_id
-    FOR UPDATE;
-  END IF;
-
-  IF v_mission_id IS NOT NULL THEN
-    SELECT status INTO STRICT v_mission_status FROM public.afe_agent_missions
-    WHERE id = v_mission_id AND workspace_id = NEW.workspace_id;
-  END IF;
-
-  v_satisfied := public.afe_coo_dependency_prerequisite_satisfied(
-    NEW.workspace_id, NEW.prerequisite_kind, NEW.prerequisite_task_id,
-    NEW.prerequisite_mission_id, NEW.required_deliverable_id
-  );
-
-  IF v_satisfied THEN
-    UPDATE public.afe_coo_dependency_edges SET status = 'satisfied', satisfied_at = now(), updated_at = now()
-    WHERE id = NEW.id AND workspace_id = NEW.workspace_id;
-  ELSE
-    IF NEW.dependent_kind = 'task' THEN
-      UPDATE public.afe_operational_tasks
-      SET status = 'blocked',
-          blocked_reason = 'COO_DEPENDENCY_BLOCKED: prérequis DG non satisfait (' || NEW.id::text || ')',
-          updated_at = now()
-      WHERE id = NEW.dependent_task_id AND workspace_id = NEW.workspace_id
-        AND status NOT IN ('done','cancelled');
-    END IF;
-    IF v_mission_id IS NOT NULL THEN
-      UPDATE public.afe_agent_missions
-      SET status = 'paused',
-          blocked_reason = 'COO_DEPENDENCY_BLOCKED: dépendance DG non satisfaite (' || NEW.id::text || ')',
-          updated_at = now()
-      WHERE id = v_mission_id AND workspace_id = NEW.workspace_id
-        AND status IN ('queued','planning','running');
-    END IF;
-  END IF;
-
-  IF NEW.dependent_kind = 'mission' AND NEW.prerequisite_kind = 'mission' THEN
-    INSERT INTO public.afe_agent_mission_dependencies(workspace_id, mission_id, depends_on_mission_id, created_by)
-    VALUES (NEW.workspace_id, NEW.dependent_mission_id, NEW.prerequisite_mission_id, NEW.proposed_by)
-    ON CONFLICT DO NOTHING;
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
 -- Fix declaration separately so the function has no dependency on a non-existent local variable.
 CREATE OR REPLACE FUNCTION public.sync_afe_coo_dependency_edge()
 RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
@@ -475,7 +411,7 @@ BEGIN
   ELSE v_workspace_id := COALESCE(NEW.workspace_id, OLD.workspace_id);
   END IF;
   PERFORM public.refresh_afe_coo_dependency_readiness(v_workspace_id);
-  RETURN COALESCE(NEW, OLD);
+  RETURN NULL;
 END;
 $$;
 DROP TRIGGER IF EXISTS afe_coo_deliverable_readiness_refresh ON public.afe_coo_deliverables;
@@ -506,12 +442,13 @@ DECLARE
   v_mission record;
 BEGIN
   IF NEW.event_type <> 'mission.deliverables.submitted' THEN RETURN NEW; END IF;
-  SELECT m.id, m.department_id, m.workspace_id INTO v_mission
+  SELECT m.id, COALESCE(m.department_id, a.department_id), m.workspace_id INTO v_mission
   FROM public.afe_agent_missions m
+  LEFT JOIN public.afe_agents a ON a.id = m.agent_id AND a.workspace_id = m.workspace_id
   WHERE m.id = NEW.mission_id AND m.workspace_id = NEW.workspace_id;
   IF NOT FOUND THEN RETURN NEW; END IF;
 
-  FOR item IN SELECT value FROM jsonb_array_elements(COALESCE(NEW.payload->'taskDeliverables','[]'::jsonb))
+  FOR item IN SELECT value FROM jsonb_array_elements(CASE WHEN jsonb_typeof(NEW.payload->'taskDeliverables') = 'array' THEN NEW.payload->'taskDeliverables' ELSE '[]'::jsonb END)
   LOOP
     BEGIN
       v_task_id := NULLIF(item->>'taskId','')::uuid;
@@ -540,11 +477,11 @@ BEGIN
         jsonb_build_object('criterion','Le livrable contient un résultat concret et vérifiable','required',true),
         jsonb_build_object('criterion','La tâche est déclarée terminée et sa progression atteint 100 %','required',true),
         jsonb_build_object('criterion','Le résultat répond à la description de la tâche','required',true)
-      ), NEW.actor_id, NEW.id
+      ), CASE WHEN NEW.actor_type = 'human' THEN NEW.actor_id ELSE NULL END, NEW.id
     ) ON CONFLICT (source_event_id, deliverable_key) WHERE source_event_id IS NOT NULL DO NOTHING;
   END LOOP;
 
-  FOR item IN SELECT value FROM jsonb_array_elements(COALESCE(NEW.payload->'deliverables','[]'::jsonb))
+  FOR item IN SELECT value FROM jsonb_array_elements(CASE WHEN jsonb_typeof(NEW.payload->'deliverables') = 'array' THEN NEW.payload->'deliverables' ELSE '[]'::jsonb END)
   LOOP
     v_index := v_index + 1;
     v_text := CASE WHEN jsonb_typeof(item) = 'string' THEN item #>> '{}' ELSE item::text END;
