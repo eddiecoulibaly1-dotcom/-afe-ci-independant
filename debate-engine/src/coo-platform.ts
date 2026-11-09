@@ -631,7 +631,8 @@ async function actOnAlert(workspaceId: string, user: AuthUser, id: string, input
     details.evidence_reference = evidenceReference; details.resolution_summary = resolutionSummary;
   } else if (action === "verify") {
     if (alert.workflow_status !== "pending_verification") throw fail("Cette alerte n'attend pas de vérification.", 409);
-    if (alert.assigned_to && alert.assigned_to === user.id) throw fail("La vérification doit être effectuée par une personne différente du responsable de la correction.", 403);
+    if (!alert.assigned_to) throw fail("Cette alerte doit d'abord être prise en charge par un responsable avant la vérification indépendante.", 409);
+    if (alert.assigned_to === user.id) throw fail("La vérification doit être effectuée par une personne différente du responsable de la correction.", 403);
     if (clean(alert.evidence_reference, 2000).length < 10 || clean(alert.resolution_summary, 4000).length < 20) throw fail("La résolution ne peut pas être validée sans référence de preuve et résumé du résultat.", 409);
     if (verificationNote.length < 20) throw fail("La note de vérification doit comporter au moins 20 caractères.", 400);
     const decision = clean(input?.decision, 16);
