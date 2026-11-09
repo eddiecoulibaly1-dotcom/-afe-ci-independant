@@ -486,7 +486,7 @@ async function patchMission(workspaceId: string, user: AuthUser, id: string, inp
 }
 async function handleSupervision(workspaceId: string, user: AuthUser) {
   await requireAccess(workspaceId, user);
-  const [missions, agents, departments, dependencies, workerEvents] = await Promise.all([
+  const [missions, agents, departments, dependencies, workerEvents, workerTicks] = await Promise.all([
     db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&order=created_at.desc&limit=500"),
     db<any[]>("afe_agents?workspace_id=eq." + enc(workspaceId) + "&select=id,name,slug,status,department_id,autonomy_level"),
     db<any[]>("afe_org_departments?workspace_id=eq." + enc(workspaceId) + "&order=name.asc"),
