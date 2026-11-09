@@ -13,6 +13,10 @@
     {
       "path": "/internal/coo-report-worker",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/internal/coo-dependency-worker",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
