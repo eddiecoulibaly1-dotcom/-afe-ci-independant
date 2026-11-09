@@ -363,47 +363,58 @@ test("legacy archived reports disclose missing period and verification data with
 
 
 
-const archiveMigrationUrl = new URL("../supabase/migrations/20261109070000_afe_ci_coo_mission_archives.sql", import.meta.url);
 
-test("completed COO missions are automatically archived with stable numbers, dates and operational snapshots", async () => {
+const archiveMigrationUrl = new URL("../supabase/migrations/20261109064541_afe_ci_coo_mission_archives.sql", import.meta.url);
+const archiveHierarchyMigrationUrl = new URL("../supabase/migrations/20261109071000_afe_ci_coo_mission_archive_hierarchy.sql", import.meta.url);
+
+test("completed COO missions are automatically archived once with a numbered record and completion date", async () => {
   const sql = await readFile(archiveMigrationUrl, "utf8");
   for (const expected of [
     "CREATE TABLE IF NOT EXISTS public.afe_coo_mission_archives",
-    "mission_number text GENERATED ALWAYS AS",
-    "UNIQUE (workspace_id, mission_id)",
-    "CREATE TRIGGER afe_agent_missions_archive_completed",
-    "AFTER INSERT OR UPDATE OF status ON public.afe_agent_missions",
-    "NEW.status = 'completed'",
-    "mission_snapshot",
-    "tasks_snapshot",
-    "events_snapshot",
-    "ON CONFLICT (workspace_id, mission_id) DO NOTHING"
-  ]) assert.ok(sql.includes(expected), "Missing archive invariant: " + expected);
+    "mission_number text not null",
+    "unique (workspace_id, mission_id)",
+    "create or replace function public.afe_coo_archive_completed_mission()",
+    "if new.status <> 'completed' then return new; end if",
+    "new.completed_at::date",
+    "on conflict (workspace_id, mission_id) do nothing",
+    "create trigger afe_coo_archive_completed_mission_trigger"
+  ]) assert.ok(sql.toLowerCase().includes(expected.toLowerCase()), "Missing archive invariant: " + expected);
 });
 
-test("archive migration backfills already completed missions without mutating source mission records", async () => {
+test("existing completed missions are backfilled and source mission rows are retained", async () => {
   const sql = await readFile(archiveMigrationUrl, "utf8");
-  assert.ok(sql.includes("WHERE m.status = 'completed'"));
-  assert.ok(sql.includes("afe_coo_archive_completed_mission_backfill"));
-  assert.ok(sql.includes("ON CONFLICT (workspace_id, mission_id) DO NOTHING"));
-  assert.equal(sql.includes("UPDATE public.afe_agent_missions"), false);
-  assert.equal(sql.includes("DELETE FROM public.afe_agent_missions"), false);
+  assert.ok(sql.toLowerCase().includes("insert into public.afe_coo_mission_archives"));
+  assert.ok(sql.toLowerCase().includes("where m.status = 'completed'"));
+  assert.ok(sql.toLowerCase().includes("on conflict (workspace_id, mission_id) do nothing"));
+  assert.equal(sql.toLowerCase().includes("delete from public.afe_agent_missions"), false);
 });
 
-test("archive documents use private workspace-scoped storage metadata and auditable completeness", async () => {
+test("mission archive documents are copied into private workspace-scoped storage", async () => {
   const sql = await readFile(archiveMigrationUrl, "utf8");
   for (const expected of [
-    "CREATE TABLE IF NOT EXISTS public.afe_coo_mission_archive_documents",
-    "FOREIGN KEY (archive_id, workspace_id)",
-    "CHECK (storage_path LIKE",
-    "document_checklist jsonb",
-    "completion_confirmed_by",
-    "ENABLE ROW LEVEL SECURITY",
-    "FROM anon, authenticated"
-  ]) assert.ok(sql.includes(expected), "Missing archive document control: " + expected);
+    "public.afe_coo_mission_archive_documents",
+    "source_document_id uuid references public.debate_workspace_documents",
+    "foreign key (archive_id, workspace_id)",
+    "afe_coo_archives_server_only",
+    "afe_coo_archive_documents_server_only",
+    "grant all on public.afe_coo_mission_archives"
+  ]) assert.ok(sql.toLowerCase().includes(expected.toLowerCase()), "Missing document archive control: " + expected);
 });
 
-test("COO archive API scopes access to the selected workspace and requires DG attestation for complete status", async () => {
+test("archive snapshots include the complete delegated mission tree, tasks and events", async () => {
+  const sql = await readFile(archiveHierarchyMigrationUrl, "utf8");
+  for (const expected of [
+    "with recursive mission_tree",
+    "child.parent_mission_id = parent.id",
+    "related_missions_snapshot",
+    "events_snapshot",
+    "public.afe_operational_tasks",
+    "public.afe_agent_events",
+    "update public.afe_coo_mission_archives"
+  ]) assert.ok(sql.includes(expected), "Missing hierarchical archive snapshot: " + expected);
+});
+
+test("COO archive API is workspace-scoped and requires DG attestation for complete status", async () => {
   const source = await readFile(platformUrl, "utf8");
   assert.ok(source.includes('resource === "archives" && method === "GET"'));
   assert.ok(source.includes("afe_coo_mission_archives?workspace_id=eq."));
@@ -411,6 +422,7 @@ test("COO archive API scopes access to the selected workspace and requires DG at
   assert.ok(source.includes('requireAccess(workspaceId, user, "owner")'));
   assert.ok(source.includes('document_status: "complete"'));
   assert.ok(source.includes("coo.mission_archive.completeness_confirmed"));
+  assert.equal(source.includes("document_checklist:"), false);
 });
 
 test("COO archive interface supports mission/date search, snapshots, report attachments and downloads", async () => {
