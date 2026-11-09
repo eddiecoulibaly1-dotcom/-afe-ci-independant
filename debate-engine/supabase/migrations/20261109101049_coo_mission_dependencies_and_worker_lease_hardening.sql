@@ -5,7 +5,7 @@ ALTER TABLE public.afe_agent_mission_dependencies DROP CONSTRAINT IF EXISTS afe_
 ALTER TABLE public.afe_agent_mission_dependencies ADD CONSTRAINT afe_agent_mission_dependencies_no_self_check CHECK (mission_id <> depends_on_mission_id);
 
 CREATE OR REPLACE FUNCTION public.guard_afe_agent_mission_dependency_cycle()
-RETURNS trigger LANGUAGE plpgsql SET search_path=public AS $$
+RETURNS trigger LANGUAGE plpgsql AS $
 DECLARE v_cycle boolean;
 BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.workspace_id::text,0));
@@ -17,4 +17,4 @@ BEGIN
  WITH RECURSIVE reachable(mission_id) AS (
   SELECT NEW.depends_on_mission_id
   UNION
-  SELECT d.depends_on_mission_id FROM public.afe_agent_mission_dep¶»§q«^
+  SELECT d.depends_on_mission_id FROM public.afe_agent_mission_depÂ¶Â»Â§qÂ«^
