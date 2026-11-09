@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 const migrationUrl = new URL("../supabase/migrations/20261109064541_afe_ci_coo_mission_archives.sql", import.meta.url);
 const indexesUrl = new URL("../supabase/migrations/20261109070000_afe_ci_coo_mission_archive_indexes.sql", import.meta.url);
+const hierarchyUrl = new URL("../supabase/migrations/20261109071000_afe_ci_coo_mission_archive_hierarchy.sql", import.meta.url);
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
 test("COO mission archives are workspace-scoped and preserve immutable mission/task snapshots", async () => {
  const sql = await readFile(migrationUrl, "utf8");
@@ -20,9 +21,17 @@ test("completed missions are archived automatically and existing completed missi
  assert.match(sql, /where m\.status='completed'/);
  assert.match(sql, /on conflict \(workspace_id, mission_id\) do nothing/);
 });
-test("archive document foreign keys are indexed", async () => {
+test("archive foreign keys are indexed", async () => {
  const sql = await readFile(indexesUrl, "utf8");
  for (const name of ["afe_coo_mission_archives_mission_id_idx","afe_coo_mission_archive_documents_archive_workspace_idx","afe_coo_mission_archive_documents_source_document_idx","afe_coo_mission_archive_documents_uploaded_by_idx","afe_coo_mission_archive_documents_linked_by_idx"]) assert.ok(sql.includes(name));
+});
+test("archive closure snapshots include delegated mission reports, tasks and agent events", async () => {
+ const sql = await readFile(hierarchyUrl, "utf8");
+ assert.match(sql, /related_missions_snapshot jsonb/);
+ assert.match(sql, /events_snapshot jsonb/);
+ assert.match(sql, /with recursive mission_tree/i);
+ assert.match(sql, /public\.afe_agent_events/);
+ assert.match(sql, /public\.afe_operational_tasks/);
 });
 test("archive documents are independent storage copies with source provenance", async () => {
  const sql = await readFile(migrationUrl, "utf8"), source = await readFile(platformUrl, "utf8");
@@ -51,6 +60,7 @@ test("COO navigation exposes archive search and mission dossier details", async 
  assert.match(source, /data-tab="archives">Archives des missions/);
  assert.match(source, /function renderArchives\(\)/);
  assert.match(source, /archiveSearch/);
- assert.match(source, /Photographie des tâches à la clôture/);
+ assert.match(source, /Rapports des directions contributrices/);
+ assert.match(source, /Historique des événements/);
  assert.match(source, /Documents et rapports associés/);
 });
