@@ -373,12 +373,6 @@ async function decideDependency(workspaceId: string, user: AuthUser, edgeId: str
   const updated = await db<any[]>("afe_coo_dependency_edges?id=eq." + enc(edgeId) + "&workspace_id=eq." + enc(workspaceId), {
     method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch)
   });
-  await recordEvent(workspaceId, user.id, decision === "approve" ? "dependency.approved_by_dg" : "dependency.rejected_by_dg", {
-    decision, note, relationType: edge.relation_type, dependentKind: edge.dependent_kind,
-    dependentId: edge.dependent_task_id ?? edge.dependent_mission_id,
-    prerequisiteKind: edge.prerequisite_kind,
-    prerequisiteId: edge.prerequisite_task_id ?? edge.prerequisite_mission_id ?? edge.prerequisite_department_id
-  }, edgeId);
   return updated[0] ?? { ...edge, ...patch };
 }
 
