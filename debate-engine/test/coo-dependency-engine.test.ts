@@ -134,6 +134,20 @@ test("COO console exposes the dependency and deliverables governance center", as
   assert.match(source, /Accepter le livrable/);
 });
 
+test("dependency revocation is owner-only, reasoned, and audited", async () => {
+  const source = await readFile(engineUrl, "utf8");
+  const platform = await readFile(cooUrl, "utf8");
+  const migration = await readFile(new URL("../supabase/migrations/20261110100000_coo_dependency_revocation_status.sql", import.meta.url), "utf8");
+  assert.match(source, /async function revokeDependency/);
+  assert.match(source, /requireRole\(workspaceId, user, "owner"\)/);
+  assert.match(source, /status: "revoked"/);
+  assert.match(source, /status=eq\.active/);
+  assert.match(source, /database AFTER UPDATE trigger records this status transition atomically/);
+  assert.match(platform, /data-edge-revoke/);
+  assert.match(platform, /dependencies\/"\+encodeURIComponent\(b\.dataset\.edgeRevoke\)\+"\/revoke/);
+  assert.match(migration, /'revoked'/);
+});
+
 test("dependency escalation worker is scheduled every five minutes", async () => {
   const config = JSON.parse(await readFile(vercelUrl, "utf8"));
   assert.ok(config.crons.some((cron: any) => cron.path === "/internal/coo-dependency-worker" && cron.schedule === "*/5 * * * *"));
