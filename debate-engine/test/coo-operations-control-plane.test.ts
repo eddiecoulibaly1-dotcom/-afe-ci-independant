@@ -438,3 +438,13 @@ test("COO archive interface supports mission/date search, snapshots, report atta
     "confirmArchiveComplete"
   ]) assert.ok(source.includes(expected), "Missing archive UI capability: " + expected);
 });
+
+
+test("the final DG closure decision is appended to the archive event snapshot after the completion trigger", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.ok(source.includes('const decisionEventRows = await db<any[]>("afe_agent_events"'));
+  assert.ok(source.includes('event_type: "coo.mission.human_decision"'));
+  assert.ok(source.includes('afe_coo_mission_archives?workspace_id=eq.'));
+  assert.ok(source.includes('events_snapshot: eventsSnapshot'));
+  assert.ok(source.includes('event.id === decisionEvent.id'));
+});
