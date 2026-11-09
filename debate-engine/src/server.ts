@@ -17,6 +17,7 @@ import { TEAM_HTML, handleTeamRequest } from "./team-platform.js";
 import { handleAutonomousAgentsRequest } from "./autonomous-agents/platform.js";
 import { COO_HTML, handleCooRequest, handleCooReportWorker } from "./coo-platform.js";
 import { handleCooDependencyRequest, handleCooDependencyWorker } from "./coo-dependency-engine.js";
+import { handleDgDecisionRequest } from "./coo-dg-decisions.js";
 import { handleAgentWorker } from "./autonomous-agents/worker.js";
 import type { DebateConfig, Provider } from "./types.js";
 const VERSION="1.1.2",port=Number(process.env.PORT??8787);
@@ -65,7 +66,7 @@ return;
 if(path==="/internal/coo-report-worker"){if(await handleCooReportWorker(req,res))return;}
 if(path==="/internal/coo-dependency-worker"){if(await handleCooDependencyWorker(req,res))return;}
 const user=await authenticateRequest(req);if(!user){send(res,401,{error:"Authentication required"});return;}
-if(path.startsWith("/team/api/")){if(await handleCooDependencyRequest(req,res,path,user))return;if(await handleCooRequest(req,res,path,user))return;if(await handleAutonomousAgentsRequest(req,res,path,user))return;if(await handleTeamRequest(req,res,path,user))return;}
+if(path.startsWith("/team/api/")){if(await handleDgDecisionRequest(req,res,path,user))return;if(await handleCooDependencyRequest(req,res,path,user))return;if(await handleCooRequest(req,res,path,user))return;if(await handleAutonomousAgentsRequest(req,res,path,user))return;if(await handleTeamRequest(req,res,path,user))return;}
 if(path.startsWith("/decision-cases")){if(!supabasePersistenceEnabled()){send(res,503,{error:"La plateforme V2 exige la persistance Supabase configurée."});return;}if(await handleV2Request(req,res,path,user))return;}
 // Market Intelligence is an optional subsystem. Keep its HTTP surface disabled unless explicitly enabled.
 if(path.startsWith("/market-prices")&&process.env.MARKET_INTELLIGENCE_ENABLED!=="true"){send(res,404,{error:"Le module Market Intelligence est désactivé sur cet environnement."});return;}
