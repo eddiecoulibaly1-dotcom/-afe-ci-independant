@@ -1107,6 +1107,45 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
       }
     }
     if (resource === "missions") {
+      if (p[6] && p[7] === "dependencies" && ["GET","POST"].includes(method)) {
+        const access = await requireAccess(workspaceId,user,method==="POST"?"editor":"viewer");
+        const missionId=p[6];
+        const found=await db<any[]>("afe_agent_missions?id=eq."+enc(missionId)+"&workspace_id=eq."+enc(workspaceId)+"&limit=1");
+        const mission=found[0];if(!mission)throw fail("Mission introuvable dans cet espace.",404);
+        if(method==="GET"){
+          const edges=await db<any[]>("afe_agent_mission_dependencies?workspace_id=eq."+enc(workspaceId)+"&mission_id=eq."+enc(missionId)+"&order=created_at.asc");
+          const all=await db<any[]>("afe_agent_missions?workspace_id=eq."+enc(workspaceId)+"&select=id,title,status,department_id,agent_id&order=created_at.desc&limit=500");
+          const ids=new Set(edges.map(x=>String(x.depends_on_mission_id)));
+          const prerequisites=all.filter(x=>ids.has(String(x.id)));
+          const candidates=all.filter(x=>x.id!==missionId&&!["failed","cancelled"].includes(x.status)&&!ids.has(String(x.id)));
+          const statusMap=new Map(prerequisites.map(x=>[x.id,x.status]));
+          const dependencies=edges.map(edge=>({...edge,prerequisite:prerequisites.find(x=>x.id===edge.depends_on_mission_id)??null}));
+          send(res,200,{missionId,dependencies,candidates,readiness:evaluateDependencyReadiness(edges.map(x=>({missionId:x.mission_id,dependsOnMissionId:x.depends_on_mission_id})),statusMap)});return true;
+        }
+        if(!["queued","paused"].includes(mission.status))throw fail("Les dépendances ne peuvent être modifiées que lorsque la mission est en attente ou suspendue.",409);
+        const input=await readBody(req),action=clean(input.action,20);
+        if(action==="add"){
+          const prerequisiteId=clean(input.dependsOnMissionId,64);
+          if(!prerequisiteId)throw fail("Sélectionne la mission prérequise.",400);
+          const prerequisite=(await db<any[]>("afe_agent_missions?id=eq."+enc(prerequisiteId)+"&workspace_id=eq."+enc(workspaceId)+"&limit=1"))[0];
+          if(!prerequisite)throw fail("La mission prérequise doit appartenir au même espace.",404);
+          if(["failed","cancelled"].includes(prerequisite.status))throw fail("Un prérequis en échec ou annulé doit d'abord être rétabli.",409);
+          const existing=await db<any[]>("afe_agent_mission_dependencies?workspace_id=eq."+enc(workspaceId)+"&select=mission_id,depends_on_mission_id");
+          try{assertDependencyAddition(missionId,prerequisiteId,existing.map(x=>({missionId:x.mission_id,dependsOnMissionId:x.depends_on_mission_id})));}catch(e){throw fail(e instanceof Error?e.message:"Dépendance invalide.",409);}
+          const inserted=await db<any[]>("afe_agent_mission_dependencies",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({workspace_id:workspaceId,mission_id:missionId,depends_on_mission_id:prerequisiteId,created_by:user.id})});
+          await audit(workspaceId,user.id,"coo.mission.dependency.added","mission",missionId,{dependsOnMissionId:prerequisiteId,dependencyId:inserted[0]?.id});
+          send(res,201,{dependency:inserted[0]});return true;
+        }
+        if(action==="remove"){
+          const dependencyId=clean(input.dependencyId,64);
+          if(!dependencyId)throw fail("Identifiant de dépendance requis.",400);
+          const removed=await db<any[]>("afe_agent_mission_dependencies?id=eq."+enc(dependencyId)+"&workspace_id=eq."+enc(workspaceId)+"&mission_id=eq."+enc(missionId)+"&select=id,depends_on_mission_id",{method:"DELETE",headers:{Prefer:"return=representation"}});
+          if(!removed.length)throw fail("Dépendance introuvable.",404);
+          await audit(workspaceId,user.id,"coo.mission.dependency.removed","mission",missionId,{dependsOnMissionId:removed[0].depends_on_mission_id,dependencyId});
+          send(res,200,{removed:true});return true;
+        }
+        throw fail("Action de dépendance inconnue.",400);
+      }
       if (p[6] && p[7] === "review" && ["GET", "POST"].includes(method)) {
         const access = await requireAccess(workspaceId, user, method === "POST" ? "owner" : "viewer");        const missionId = p[6];
         const found = await db<any[]>("afe_agent_missions?id=eq." + enc(missionId) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
