@@ -93,6 +93,8 @@ test("COO console exposes the dependency and deliverables governance center", as
   const source = await readFile(cooUrl, "utf8");
   assert.match(source, /data-tab="dependencies">Dépendances & livrables/);
   assert.match(source, /async function renderDependencies\(\)/);
+  assert.match(source, /Ordre de travail calculé par le COO/);
+  assert.match(source, /executionStages/);
   assert.match(source, /Analyser les tâches ouvertes/);
   assert.match(source, /Approuver et activer/);
   assert.match(source, /Accepter le livrable/);
