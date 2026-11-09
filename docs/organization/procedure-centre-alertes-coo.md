@@ -13,7 +13,7 @@ Le bouton « Résoudre » direct n'est plus un mode de clôture autorisé.
 ## 2. Cycle de vie
 
 1. **Nouvelle** — l'application détecte une condition (tâche bloquée, mission suspendue, échéance dépassée, échec ou validation en attente).
-2. **Prise en charge** — un membre habilité clique « Prendre en charge ». Il devient le responsable enregistré. Une échéance de traitement peut être indiquée.
+2. **Prise en charge / affectation** — un membre habilité peut cliquer « Prendre en charge » pour se désigner, ou « Affecter / transférer » pour désigner un membre éditeur ou supérieur du même espace. Une échéance de traitement peut être indiquée.
 3. **Diagnostic** — le responsable décrit la cause réelle, les éléments vérifiés et les dépendances.
 4. **Correction** — le responsable consigne les actions à mener et leur exécution.
 5. **Soumission à vérification** — le responsable joint une référence de preuve et résume le résultat. La condition déclenchante doit être levée.
