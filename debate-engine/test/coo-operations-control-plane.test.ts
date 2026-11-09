@@ -384,7 +384,7 @@ test("completed COO missions are automatically archived once with a numbered rec
 test("existing completed missions are backfilled and source mission rows are retained", async () => {
   const sql = await readFile(archiveMigrationUrl, "utf8");
   assert.ok(sql.toLowerCase().includes("insert into public.afe_coo_mission_archives"));
-  assert.ok(sql.toLowerCase().includes("where m.status = 'completed'"));
+  assert.ok(sql.toLowerCase().includes("where m.status='completed'"));
   assert.ok(sql.toLowerCase().includes("on conflict (workspace_id, mission_id) do nothing"));
   assert.equal(sql.toLowerCase().includes("delete from public.afe_agent_missions"), false);
 });
