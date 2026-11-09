@@ -34,7 +34,7 @@ test("hard prerequisites cannot be attached to a department-only node", () => {
   );
   assert.throws(
     () => validateProposedRelation("mission", "m1", "mission", "m1", "hard_prerequisite"),
-    /elle-même/
+    /lui-même/
   );
 });
 
