@@ -555,17 +555,101 @@ async function ensureAlertConditionCleared(workspaceId: string, alert: any) {
   }
 }
 
-async function actOnAlert(workspaceId: string, user: AuthUser, id: string, action: string) {
-  if (!["acknowledge", "resolve"].includes(action)) throw fail("Action d'alerte invalide.");
+async function appendAlertEvent(workspaceId: string, alertId: string, actorId: string, eventType: string, details: Record<string, unknown> = {}) {
+  await db("afe_coo_alert_events", {
+    method: "POST",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ workspace_id: workspaceId, alert_id: alertId, actor_id: actorId, event_type: eventType, details })
+  });
+}
+
+async function getAlertDetails(workspaceId: string, id: string) {
   const rows = await db<any[]>("afe_coo_alerts?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
   if (!rows[0]) throw fail("Alerte introuvable.", 404);
-  if (action === "resolve") await ensureAlertConditionCleared(workspaceId, rows[0]);
-  const patch = action === "acknowledge"
-    ? { status: "acknowledged", acknowledged_by: user.id, acknowledged_at: nowIso(), updated_at: nowIso() }
-    : { status: "resolved", resolved_by: user.id, resolved_at: nowIso(), updated_at: nowIso() };
-  await db("afe_coo_alerts?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId), { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(patch) });
-  await audit(workspaceId, user.id, "coo.alert." + action, "alert", id);
-  return { id, status: patch.status };
+  const events = await db<any[]>("afe_coo_alert_events?alert_id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId) + "&order=created_at.desc&limit=100");
+  return { alert: rows[0], events };
+}
+
+async function actOnAlert(workspaceId: string, user: AuthUser, id: string, input: any) {
+  const action = clean(input?.action, 40);
+  const rows = await db<any[]>("afe_coo_alerts?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
+  const alert = rows[0];
+  if (!alert) throw fail("Alerte introuvable.", 404);
+  const stamp = nowIso();
+  const patch: Record<string, unknown> = { updated_at: stamp };
+  const details: Record<string, unknown> = {};
+  let eventType = "";
+  const diagnosis = clean(input?.diagnosis, 4000);
+  const correctiveAction = clean(input?.correctiveAction, 4000);
+  const evidenceReference = clean(input?.evidenceReference, 2000);
+  const resolutionSummary = clean(input?.resolutionSummary, 4000);
+  const verificationNote = clean(input?.verificationNote, 2000);
+
+  if (action === "acknowledge" || action === "take") {
+    if (alert.workflow_status === "resolved" || alert.status === "resolved") throw fail("Cette alerte est déjà clôturée. Utilise Réouvrir si le problème est réapparu.", 409);
+    patch.status = "acknowledged"; patch.workflow_status = "assigned";
+    patch.assigned_to = user.id; patch.assigned_at = stamp;
+    patch.acknowledged_by = user.id; patch.acknowledged_at = stamp;
+    eventType = "taken_in_charge";
+  } else if (action === "diagnose") {
+    if (alert.workflow_status === "resolved") throw fail("Une alerte clôturée doit être rouverte avant modification.", 409);
+    if (diagnosis.length < 20) throw fail("Le diagnostic doit comporter au moins 20 caractères et décrire la cause du problème.", 400);
+    patch.diagnosis = diagnosis; patch.workflow_status = "diagnosing"; patch.status = "acknowledged";
+    eventType = "diagnosis_recorded"; details.diagnosis = diagnosis;
+  } else if (action === "start") {
+    if (diagnosis.length < 20 || correctiveAction.length < 20) throw fail("Renseigne un diagnostic et un plan correctif précis (20 caractères minimum chacun).", 400);
+    patch.diagnosis = diagnosis; patch.corrective_action = correctiveAction;
+    patch.workflow_status = "in_progress"; patch.status = "acknowledged";
+    eventType = "remediation_started"; details.corrective_action = correctiveAction;
+  } else if (action === "submit_for_verification") {
+    if (diagnosis.length < 20 || correctiveAction.length < 20 || evidenceReference.length < 10 || resolutionSummary.length < 20) {
+      throw fail("Avant la vérification, renseigne le diagnostic, les actions réalisées, une référence de preuve et le résumé du résultat.", 400);
+    }
+    patch.diagnosis = diagnosis; patch.corrective_action = correctiveAction;
+    patch.evidence_reference = evidenceReference; patch.resolution_summary = resolutionSummary;
+    patch.workflow_status = "pending_verification"; patch.status = "acknowledged";
+    patch.verification_note = "";
+    eventType = "submitted_for_verification";
+    details.evidence_reference = evidenceReference; details.resolution_summary = resolutionSummary;
+  } else if (action === "verify") {
+    if (alert.workflow_status !== "pending_verification") throw fail("Cette alerte n'attend pas de vérification.", 409);
+    if (alert.assigned_to && alert.assigned_to === user.id) throw fail("La vérification doit être effectuée par une personne différente du responsable de la correction.", 403);
+    if (verificationNote.length < 20) throw fail("La note de vérification doit comporter au moins 20 caractères.", 400);
+    const decision = clean(input?.decision, 16);
+    if (decision === "approve") {
+      await ensureAlertConditionCleared(workspaceId, alert);
+      patch.workflow_status = "resolved"; patch.status = "resolved";
+      patch.resolved_by = user.id; patch.resolved_at = stamp;
+      patch.verified_by = user.id; patch.verified_at = stamp;
+      patch.verification_note = verificationNote;
+      eventType = "resolution_verified";
+    } else if (decision === "reject") {
+      patch.workflow_status = "in_progress"; patch.status = "acknowledged";
+      patch.verified_by = user.id; patch.verified_at = stamp;
+      patch.verification_note = verificationNote;
+      eventType = "verification_rejected";
+    } else throw fail("Décision de vérification invalide.", 400);
+    details.decision = decision; details.verification_note = verificationNote;
+  } else if (action === "reopen") {
+    if (alert.workflow_status !== "resolved" && alert.status !== "resolved") throw fail("Seule une alerte clôturée peut être rouverte.", 409);
+    if (verificationNote.length < 20) throw fail("Explique la réouverture (20 caractères minimum).", 400);
+    patch.status = "open"; patch.workflow_status = "reopened";
+    patch.resolved_by = null; patch.resolved_at = null;
+    patch.verified_by = null; patch.verified_at = null;
+    patch.reopen_count = Number(alert.reopen_count || 0) + 1;
+    patch.last_reopened_at = stamp;
+    patch.verification_note = verificationNote;
+    eventType = "reopened"; details.reason = verificationNote;
+  } else if (action === "resolve") {
+    throw fail("La clôture directe est désactivée. Soumets d'abord la correction à une vérification indépendante.", 409);
+  } else throw fail("Action d'alerte invalide.", 400);
+
+  await db("afe_coo_alerts?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId), {
+    method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(patch)
+  });
+  await appendAlertEvent(workspaceId, id, user.id, eventType, details);
+  await audit(workspaceId, user.id, "coo.alert." + eventType, "alert", id);
+  return { id, status: patch.status || alert.status, workflow_status: patch.workflow_status || alert.workflow_status };
 }
 
 
@@ -1051,8 +1135,9 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
     }
     if (resource === "alerts") {
       await requireAccess(workspaceId, user);
+      if (method === "GET" && p[6]) { send(res, 200, await getAlertDetails(workspaceId, p[6])); return true; }
       if (method === "GET") { const data = await snapshot(workspaceId); await refreshAlerts(workspaceId, data.missions, data.tasks); send(res, 200, { alerts: (await snapshot(workspaceId)).alerts }); return true; }
-      if (p[6] && method === "POST") { await canOperate(workspaceId, user); send(res, 200, await actOnAlert(workspaceId, user, p[6], clean((await readBody(req)).action, 32))); return true; }
+      if (p[6] && method === "POST") { await canOperate(workspaceId, user); send(res, 200, await actOnAlert(workspaceId, user, p[6], await readBody(req))); return true; }
     }
     if (resource === "reports") {
       await requireAccess(workspaceId, user);
@@ -1256,7 +1341,23 @@ async function renderDepartments(){
 async function renderTasks(){const [t,m,a,d,mem]=await Promise.all([api(base()+"tasks"),api(base()+"missions"),api("/team/api/workspaces/"+encodeURIComponent(wid)+"/agents"),api(base()+"departments"),api("/team/api/workspaces/"+encodeURIComponent(wid)+"/members")]);const departments=arr(d.departments).filter(x=>x.active&&!x.is_independent&&!x.human_only),agents=arr(a.agents).filter(x=>x.status==="active");$("view").innerHTML='<section class="card"><h2>Nouvelle tâche et attribution</h2><div class="form"><div><label>Direction</label><select class="field" id="taskDepartment">'+departments.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join("")+'</select></div><div><label>Mission associée</label><select class="field" id="taskMission"><option value="">Aucune</option>'+arr(m.missions).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.title)+'</option>').join("")+'</select></div><div><label>Agent responsable</label><select class="field" id="taskAgent"><option value="">Non affecté</option>'+agents.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join("")+'</select></div><div><label>Collaborateur responsable</label><select class="field" id="taskUser"><option value="">Non affecté</option>'+arr(mem).filter(x=>["owner","admin","editor"].includes(x.role)).map(x=>'<option value="'+esc(x.user_id)+'">'+esc(x.profile?.full_name||x.profile?.email||x.user_id)+'</option>').join("")+'</select></div><div class="wide"><label>Intitulé</label><input class="field" id="taskTitle" placeholder="Travail à réaliser"></div><div class="wide"><label>Description / critères de réalisation</label><textarea class="field" id="taskDescription" rows="2"></textarea></div><div><label>Priorité</label><select class="field" id="taskPriority"><option value="1">1 · Critique</option><option value="2">2 · Haute</option><option value="3" selected>3 · Normale</option><option value="4">4 · Basse</option><option value="5">5 · Très basse</option></select></div><div><label>Échéance</label><input class="field" id="taskDue" type="datetime-local"></div></div><p><button class="btn primary" id="taskCreate">Attribuer la tâche</button></p></section><section class="card"><h2>Suivi des tâches</h2>'+arr(t.tasks).map(x=>'<div class="row"><div><strong>'+esc(x.title)+'</strong><span class="small">'+esc(x.department_name)+' · '+esc(x.assigned_agent_name||"Sans agent")+' · '+esc(statusLabel(x.status))+' · '+esc(x.progress_percent)+' % · '+date(x.due_at)+'</span></div><select class="field" style="max-width:150px" data-task="'+esc(x.id)+'"><option value="todo" '+(x.status==="todo"?"selected":"")+'>À faire</option><option value="in_progress" '+(x.status==="in_progress"?"selected":"")+'>En cours</option><option value="blocked" '+(x.status==="blocked"?"selected":"")+'>Bloquée</option><option value="done" '+(x.status==="done"?"selected":"")+'>Terminée</option><option value="cancelled" '+(x.status==="cancelled"?"selected":"")+'>Annulée</option></select></div>').join("")||'<div class="empty">Aucune tâche.</div>'+'</section>';function updateTaskChoices(){const departmentId=$("taskDepartment").value;const validAgents=agents.filter(x=>!x.department_id||x.department_id===departmentId);$("taskAgent").innerHTML='<option value="">Non affecté</option>'+validAgents.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join("");const validMissions=arr(m.missions).filter(x=>x.department_id===departmentId);$("taskMission").innerHTML='<option value="">Aucune</option>'+validMissions.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.title)+'</option>').join("")}
 $("taskDepartment").onchange=updateTaskChoices;updateTaskChoices();
 $("taskCreate").onclick=async()=>{try{await api(base()+"tasks",{method:"POST",body:JSON.stringify({departmentId:$("taskDepartment").value,missionId:$("taskMission").value||null,assignedAgentId:$("taskAgent").value||null,assignedUserId:$("taskUser").value||null,title:$("taskTitle").value,description:$("taskDescription").value,priority:Number($("taskPriority").value),dueAt:$("taskDue").value?new Date($("taskDue").value).toISOString():null})});message("Tâche attribuée et journalisée.");await render()}catch(e){message(e.message,true)}};$("view").querySelectorAll("[data-task]").forEach(el=>el.onchange=async()=>{try{await api(base()+"tasks/"+encodeURIComponent(el.dataset.task),{method:"PATCH",body:JSON.stringify({status:el.value})});message("Statut de tâche mis à jour.");await render()}catch(e){message(e.message,true)}})}
-async function renderAlerts(){const d=await api(base()+"alerts");$("view").innerHTML='<section class="card"><h2>Centre d’alertes</h2>'+arr(d.alerts).filter(x=>x.status!=="resolved").map(x=>'<div class="row"><div><strong>'+esc(x.title)+'</strong><span class="small">'+esc(x.description)+' · '+date(x.created_at)+'</span></div><div class="actions"><span class="tag '+esc(x.severity)+'">'+esc(x.severity)+'</span><button class="btn" data-ack="'+esc(x.id)+'">Prendre en charge</button><button class="btn danger" data-resolve="'+esc(x.id)+'">Résoudre</button></div></div>').join("")||'<div class="empty">Aucune alerte active.</div>'+'</section>';$("view").querySelectorAll("[data-ack],[data-resolve]").forEach(b=>b.onclick=async()=>{try{await api(base()+"alerts/"+encodeURIComponent(b.dataset.ack||b.dataset.resolve),{method:"POST",body:JSON.stringify({action:b.dataset.ack?"acknowledge":"resolve"})});await render()}catch(e){message(e.message,true)}})}
+async function renderAlerts(){
+ const d=await api(base()+"alerts"),alerts=arr(d.alerts),active=alerts.filter(x=>x.workflow_status!=="resolved"&&x.status!=="resolved"),closed=alerts.filter(x=>x.workflow_status==="resolved"||x.status==="resolved");
+ const label=x=>({new:"Nouvelle",assigned:"Prise en charge",diagnosing:"Diagnostic",in_progress:"Correction en cours",pending_verification:"À vérifier",resolved:"Résolue",reopened:"Rouverte"}[x.workflow_status]||x.status||"À traiter");
+ const card=x=>{
+  const state=x.workflow_status|| (x.status==="resolved"?"resolved":x.status==="acknowledged"?"assigned":"new");
+  const fields='<div class="grid"><label>Diagnostic de la cause<textarea name="diagnosis" rows="2" maxlength="4000">'+esc(x.diagnosis||"")+'</textarea></label><label>Actions correctives réalisées / prévues<textarea name="correctiveAction" rows="2" maxlength="4000">'+esc(x.corrective_action||"")+'</textarea></label><label>Référence de preuve (lien, document ou identifiant)<input name="evidenceReference" maxlength="2000" value="'+esc(x.evidence_reference||"")+'"></label><label>Résumé du résultat obtenu<textarea name="resolutionSummary" rows="2" maxlength="4000">'+esc(x.resolution_summary||"")+'</textarea></label><label>Note de vérification / motif de réouverture<textarea name="verificationNote" rows="2" maxlength="2000" placeholder="Obligatoire pour valider, refuser ou rouvrir"></textarea></label></div>';
+  let actions='';
+  if(state==="new"||state==="reopened") actions+='<button class="btn" data-alert-action="take">Prendre en charge</button>';
+  if(state!=="resolved") actions+='<button class="btn" data-alert-action="diagnose">Enregistrer le diagnostic</button><button class="btn" data-alert-action="start">Démarrer / mettre à jour la correction</button><button class="btn" data-alert-action="submit_for_verification">Soumettre à vérification</button>';
+  if(state==="pending_verification") actions+='<button class="btn" data-alert-action="verify" data-decision="approve">Valider la résolution</button><button class="btn danger" data-alert-action="verify" data-decision="reject">Refuser et retourner en correction</button>';
+  if(state==="resolved") actions+='<button class="btn danger" data-alert-action="reopen">Réouvrir l’alerte</button>';
+  return '<article class="card alert-card" data-alert-id="'+esc(x.id)+'"><div class="row"><div><strong>'+esc(x.title)+'</strong><span class="small">'+esc(x.description)+' · Détectée le '+date(x.created_at)+'</span><span class="small">Responsable : '+esc(x.assigned_to||"Non attribuée")+' · Échéance : '+date(x.due_at)+' · Réouvertures : '+esc(x.reopen_count||0)+'</span></div><div class="actions"><span class="tag '+esc(x.severity)+'">'+esc(x.severity)+'</span><span class="tag">'+esc(label(x))+'</span></div></div><details><summary>Dossier de traitement et historique</summary><form class="alert-workflow-form">'+fields+'<div class="actions">'+actions+'</div></form><div class="alert-history"><button class="btn" type="button" data-alert-history>Charger l’historique des actions</button><div data-alert-events></div></div></details></article>';
+ };
+ $("view").innerHTML='<section class="card"><h2>Centre d’alertes</h2><p class="small">Chaque alerte suit un cycle contrôlé : prise en charge → diagnostic → correction → preuves → vérification indépendante → clôture. Une clôture sans preuve ni vérification est interdite.</p><div class="metrics">'+metric("Alertes actives",active.length)+metric("À vérifier",active.filter(x=>x.workflow_status==="pending_verification").length)+metric("Critiques",active.filter(x=>x.severity==="critical").length)+metric("Clôturées",closed.length)+'</div></section><section class="card"><h3>Alertes à traiter</h3>'+ (active.map(card).join("")||'<div class="empty">Aucune alerte active.</div>')+'</section><section class="card"><h3>Historique des alertes clôturées</h3>'+ (closed.map(card).join("")||'<div class="empty">Aucune alerte clôturée.</div>')+'</section>';
+ $("view").querySelectorAll("[data-alert-action]").forEach(b=>b.onclick=async e=>{e.preventDefault();const form=b.closest("form"),card=b.closest("[data-alert-id]"),data=Object.fromEntries(new FormData(form).entries());data.action=b.dataset.alertAction;if(b.dataset.decision)data.decision=b.dataset.decision;try{await api(base()+"alerts/"+encodeURIComponent(card.dataset.alertId),{method:"POST",body:JSON.stringify(data)});message("Action enregistrée dans le journal de l’alerte.");await renderAlerts()}catch(err){message(err.message,true)}});
+ $("view").querySelectorAll("[data-alert-history]").forEach(b=>b.onclick=async()=>{const card=b.closest("[data-alert-id]"),target=card.querySelector("[data-alert-events]");try{const detail=await api(base()+"alerts/"+encodeURIComponent(card.dataset.alertId));target.innerHTML=arr(detail.events).map(ev=>'<div class="small">'+date(ev.created_at)+' · '+esc(ev.event_type)+' · '+esc(JSON.stringify(ev.details||{}))+'</div>').join("")||'<div class="small">Aucun événement enregistré.</div>';b.disabled=true}catch(err){message(err.message,true)}});
+}
 function reportText(report){
  const c=report.report_content||{},i=c.indicators||{},fmt=v=>v==null?"Non renseigné":String(v),pct=v=>v==null?"Non calculable":v+" %";
  const lines=[c.title||report.report_type||"Rapport opérationnel","Période : "+date(c.period?.start||report.period_start)+" → "+date(c.period?.end||report.period_end),"Généré le : "+date(c.generatedAt||report.created_at),"","1. SYNTHÈSE EXÉCUTIVE","Missions : "+fmt(i.totalMissions)+" au total, dont "+fmt(i.activeMissions)+" actives, "+fmt(i.completedMissions)+" terminées, "+fmt(i.failedMissions)+" en échec.","Tâches : "+fmt(i.totalTasks)+" au total, "+fmt(i.openTasks)+" ouvertes, "+fmt(i.blockedTasks)+" bloquées, "+fmt(i.overdueTasks)+" en retard.","Directions configurées actives : "+fmt(i.activeDepartments)+". Directions ayant une activité : "+fmt(i.departmentsWithActivity)+". Alertes ouvertes : "+fmt(i.openAlerts)+", dont "+fmt(i.criticalAlerts)+" critiques.","Validations humaines en attente : "+fmt(i.pendingHumanApprovals),"","2. PERFORMANCE PAR DIRECTION"];
