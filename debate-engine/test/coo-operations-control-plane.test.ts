@@ -497,3 +497,11 @@ test("COO alert UI exposes the full treatment cycle and action history", async (
     assert.ok(source.includes(label), "Missing alert workflow control: " + label);
   }
 });
+
+test("COO alert condition reappearance reopens the alert and records a system history event", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /workflow_status: "reopened"/);
+  assert.match(source, /reopen_count: Number\(found\[0\]\.reopen_count \|\| 0\) \+ 1/);
+  assert.match(source, /last_reopened_at: reopenedAt/);
+  assert.match(source, /appendAlertEvent\(workspaceId, found\[0\]\.id, null, "condition_reappeared"/);
+});
