@@ -600,6 +600,13 @@ async function actOnAlert(workspaceId: string, user: AuthUser, id: string, input
     patch.status = "acknowledged"; patch.workflow_status = "assigned";
     patch.assigned_to = user.id; patch.assigned_at = stamp;
     patch.acknowledged_by = user.id; patch.acknowledged_at = stamp;
+    const dueAt = clean(input?.dueAt, 40);
+    if (dueAt) {
+      const dueTime = Date.parse(dueAt);
+      if (!Number.isFinite(dueTime) || dueTime <= Date.now()) throw fail("L'échéance doit être une date future valide.", 400);
+      patch.due_at = new Date(dueTime).toISOString();
+      details.due_at = patch.due_at;
+    }
     eventType = "taken_in_charge";
   } else if (action === "diagnose") {
     if (alert.workflow_status === "resolved") throw fail("Une alerte clôturée doit être rouverte avant modification.", 409);
@@ -1358,7 +1365,7 @@ async function renderAlerts(){
  const label=x=>({new:"Nouvelle",assigned:"Prise en charge",diagnosing:"Diagnostic",in_progress:"Correction en cours",pending_verification:"À vérifier",resolved:"Résolue",reopened:"Rouverte"}[x.workflow_status]||x.status||"À traiter");
  const card=x=>{
   const state=x.workflow_status|| (x.status==="resolved"?"resolved":x.status==="acknowledged"?"assigned":"new");
-  const fields='<div class="grid"><label>Diagnostic de la cause<textarea name="diagnosis" rows="2" maxlength="4000">'+esc(x.diagnosis||"")+'</textarea></label><label>Actions correctives réalisées / prévues<textarea name="correctiveAction" rows="2" maxlength="4000">'+esc(x.corrective_action||"")+'</textarea></label><label>Référence de preuve (lien, document ou identifiant)<input name="evidenceReference" maxlength="2000" value="'+esc(x.evidence_reference||"")+'"></label><label>Résumé du résultat obtenu<textarea name="resolutionSummary" rows="2" maxlength="4000">'+esc(x.resolution_summary||"")+'</textarea></label><label>Note de vérification / motif de réouverture<textarea name="verificationNote" rows="2" maxlength="2000" placeholder="Obligatoire pour valider, refuser ou rouvrir"></textarea></label></div>';
+  const fields='<div class="grid"><label>Échéance de traitement (facultative)<input name="dueAt" type="datetime-local"></label><label>Diagnostic de la cause<textarea name="diagnosis" rows="2" maxlength="4000">'+esc(x.diagnosis||"")+'</textarea></label><label>Actions correctives réalisées / prévues<textarea name="correctiveAction" rows="2" maxlength="4000">'+esc(x.corrective_action||"")+'</textarea></label><label>Référence de preuve (lien, document ou identifiant)<input name="evidenceReference" maxlength="2000" value="'+esc(x.evidence_reference||"")+'"></label><label>Résumé du résultat obtenu<textarea name="resolutionSummary" rows="2" maxlength="4000">'+esc(x.resolution_summary||"")+'</textarea></label><label>Note de vérification / motif de réouverture<textarea name="verificationNote" rows="2" maxlength="2000" placeholder="Obligatoire pour valider, refuser ou rouvrir"></textarea></label></div>';
   let actions='';
   if(state==="new"||state==="reopened") actions+='<button class="btn" data-alert-action="take">Prendre en charge</button>';
   if(state!=="resolved") actions+='<button class="btn" data-alert-action="diagnose">Enregistrer le diagnostic</button><button class="btn" data-alert-action="start">Démarrer / mettre à jour la correction</button><button class="btn" data-alert-action="submit_for_verification">Soumettre à vérification</button>';
