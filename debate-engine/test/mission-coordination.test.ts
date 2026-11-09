@@ -122,3 +122,32 @@ test("manual worker recovery is Preview-only, owner-only and workspace-bounded",
  assert.match(source,/requireAccess\(workspaceId, user, "owner"\)/);
  assert.match(source,/p_workspace_id:workspaceId,p_batch_size:25/);
 });
+
+test("worker heartbeat history is durable, server-only and records idle cron ticks",async()=>{
+ const sql=await readFile(workerTickMigrationUrl,"utf8");
+ const worker=await readFile(workerUrl,"utf8");
+ assert.match(sql,/CREATE TABLE IF NOT EXISTS public\.afe_coo_worker_ticks/);
+ assert.match(sql,/status IN \('running','idle','awaiting_validation','paused','retry_scheduled','failed'\)/);
+ assert.match(sql,/ENABLE ROW LEVEL SECURITY/);
+ assert.match(sql,/REVOKE ALL ON TABLE public\.afe_coo_worker_ticks FROM PUBLIC, anon, authenticated/);
+ assert.match(sql,/GRANT ALL ON TABLE public\.afe_coo_worker_ticks TO service_role/);
+ assert.match(worker,/beginWorkerTick\("agent-worker-cron"\)/);
+ assert.match(worker,/finishWorkerTick\(tick,"idle"\)/);
+ assert.match(worker,/touchWorkerTick\(tickId\)/);
+ assert.match(worker,/startLeaseHeartbeat\(claim,tick\.id\)/);
+});
+
+test("worker task and final mission writes are fenced by an unexpired running lease",async()=>{
+ const worker=await readFile(workerUrl,"utf8");
+ assert.ok((worker.match(/&status=eq\.running&lease_expires_at=gt\./g)||[]).length>=5);
+ assert.match(worker,/validateMissionDeliverables\(output\);await heartbeat\.assertOwned\(\);await recordMissionDeliverables/);
+});
+
+test("COO supervision uses real worker heartbeats and distinguishes failed cross-direction prerequisites",async()=>{
+ const source=await readFile(cooPlatformUrl,"utf8");
+ assert.match(source,/afe_coo_worker_ticks\?environment=eq\./);
+ assert.match(source,/lastHeartbeatAt:lastWorkerTick\?\.heartbeat_at/);
+ assert.match(source,/crossDepartmentDependencies:dependencyRows\.filter/);
+ assert.match(source,/state = prerequisiteStatus==="completed" \? "satisfied" : \["failed","cancelled","missing"\]/);
+ assert.match(source,/Heartbeat provient des ticks réels du worker/);
+});
