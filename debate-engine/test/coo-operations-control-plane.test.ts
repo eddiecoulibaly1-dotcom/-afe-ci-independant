@@ -523,3 +523,9 @@ test("COO alert workflow foreign keys have dedicated indexes", async () => {
     assert.ok(sql.includes(index), "Missing alert workflow FK index: " + index);
   }
 });
+
+test("COO alert verification requires an assigned owner and a different reviewer", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /if \(!alert\.assigned_to\) throw fail\("Cette alerte doit d'abord être prise en charge/);
+  assert.match(source, /if \(alert\.assigned_to === user\.id\) throw fail\("La vérification doit être effectuée par une personne différente/);
+});
