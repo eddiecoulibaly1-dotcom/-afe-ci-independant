@@ -24,6 +24,7 @@ const workerUrl=new URL("../src/autonomous-agents/worker.ts",import.meta.url);
 const migrationUrl=new URL("../supabase/migrations/20261109102000_coo_mission_dependencies_and_worker_lease_hardening.sql",import.meta.url);
 const recoveryMigrationUrl=new URL("../supabase/migrations/20261109103000_coo_expired_worker_lease_recovery.sql",import.meta.url);
 const legacyRecoveryMigrationUrl=new URL("../supabase/migrations/20261109104000_coo_recover_legacy_unleased_missions.sql",import.meta.url);
+const searchPathMigrationUrl=new URL("../supabase/migrations/20261109105000_coo_dependency_trigger_search_path.sql",import.meta.url);
 const cooPlatformUrl=new URL("../src/coo-platform.ts",import.meta.url);
 test("mission dependency API is workspace-scoped, auditable and restricted to non-running missions",async()=>{
  const source=await readFile(platformUrl,"utf8");
@@ -65,4 +66,16 @@ test("worker reaper also recovers legacy running missions without a lease timest
  const sql=await readFile(legacyRecoveryMigrationUrl,"utf8");
  assert.match(sql,/lease_expires_at IS NULL OR m\.lease_expires_at<now\(\)/);
  assert.match(sql,/WORKER_LEASE_EXPIRED/);
+});
+
+test("automatic dependency and lease trigger functions have pinned search paths",async()=>{
+ const sql=await readFile(searchPathMigrationUrl,"utf8");
+ assert.match(sql,/guard_afe_agent_mission_dependency_cycle\(\) SET search_path = public/);
+ assert.match(sql,/sync_afe_agent_mission_dependency_gate\(\) SET search_path = public/);
+ assert.match(sql,/release_afe_agent_mission_dependents\(\) SET search_path = public/);
+});
+test("both worker paths fence incomplete and final writes with the active lease",async()=>{
+ const source=await readFile(workerUrl,"utf8");
+ assert.equal((source.match(/await heartbeat\.assertOwned\(\);await recordIncompleteDeliberation/g)||[]).length,2);
+ assert.equal((source.match(/await heartbeat\.assertOwned\(\);const pendingResult/g)||[]).length,2);
 });
