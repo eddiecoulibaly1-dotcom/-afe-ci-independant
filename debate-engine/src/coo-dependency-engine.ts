@@ -110,6 +110,7 @@ async function analyzeDependencies(workspaceId: string, user: AuthUser, input: a
     db<any[]>("afe_agents?workspace_id=eq." + enc(workspaceId) + "&select=id,slug,name,status,model_provider,model_id,mandate,system_instructions,department_id"),
     db<any[]>("afe_coo_dependency_edges?workspace_id=eq." + enc(workspaceId) + "&select=dependent_kind,dependent_task_id,dependent_mission_id,prerequisite_kind,prerequisite_task_id,prerequisite_mission_id,prerequisite_department_id,status,relation_type&limit=2000")
   ]);
+  if (settings[0]?.coo_enabled !== true || settings[0]?.coo_kill_switch === true) throw fail("Analyseur COO désactivé ou verrouillé par le kill switch.", 423);
   const requestedIds = Array.isArray(input.taskIds) ? input.taskIds.map((x: unknown) => clean(x, 64)).filter(Boolean).slice(0, 100) : [];
   const taskSet = requestedIds.length ? tasks.filter(t => requestedIds.includes(t.id)) : tasks;
   if (requestedIds.length && taskSet.length !== requestedIds.length) throw fail("Une ou plusieurs tâches sélectionnées sont introuvables dans cet espace.", 404);
@@ -148,6 +149,7 @@ async function analyzeDependencies(workspaceId: string, user: AuthUser, input: a
       "Une dépendance dure doit relier une tâche ou mission consommatrice à une tâche ou mission productrice. La production d'un livrable accepté est le critère de déblocage.",
       "Une direction seule ne peut pas être un prérequis dur. Utilise une direction uniquement comme référence contextuelle, sans blocage.",
       "Ne déduis jamais une dépendance de la seule similarité des titres ou d'un ordre chronologique. Si deux travaux peuvent avancer en parallèle, propose parallel ou ne propose rien.",
+      "Ne propose jamais un prérequis dur entre deux tâches de la même mission : le worker exécute actuellement une mission comme une unité. Dans ce cas, utilise input_reference si le lien est utile, ou omets la relation."
       "N'invente aucun identifiant : utilise uniquement les identifiants exacts fournis. N'inclus pas les directions indépendantes ou les autorités humaines comme directions exécutantes.",
       "Évite les cycles et les dépendances redondantes. Chaque proposition doit expliquer le livrable attendu et des critères d'acceptation vérifiables.",
       "Toutes les propositions seront soumises à la Direction générale et resteront inactives jusqu'à son approbation."
@@ -185,6 +187,7 @@ async function analyzeDependencies(workspaceId: string, user: AuthUser, input: a
     if (dependentKind === "task" && (dependent as any).status === "blocked" && !String((dependent as any).blocked_reason || "").startsWith("COO_DEPENDENCY_BLOCKED:")) { skipped++; continue; }
     if (prerequisiteKind === "department" && (prerequisite as any).is_independent && relationType !== "human_gate") { skipped++; continue; }
     if (prerequisiteKind === "department" && (prerequisite as any).human_only && relationType !== "human_gate") { skipped++; continue; }
+    if (dependentKind === "task" && prerequisiteKind === "task" && relationType === "hard_prerequisite" && (dependent as any).mission_id && (dependent as any).mission_id === (prerequisite as any).mission_id) { skipped++; continue; }
     const key = [dependentKind, dependentId, prerequisiteKind, prerequisiteId, relationType].join(":");
     if (existingKeys.has(key)) { skipped++; continue; }
     if (typeof item.rationale !== "string" || item.rationale.trim().length < 12 ||
@@ -211,8 +214,6 @@ async function analyzeDependencies(workspaceId: string, user: AuthUser, input: a
       if (inserted[0]) {
         proposed.push(inserted[0]);
         existingKeys.add(key);
-        const dg = settings[0]?.dg_user_id || (await getWorkspace(workspaceId)).owner_id;
-        if (dg) await notifyUser(dg, "coo.dependency.proposed", "Nouvelle dépendance à arbitrer", "Le COO a soumis une proposition de dépendance qui attend votre décision.", workspaceId).catch(() => undefined);
         await recordEvent(workspaceId, user.id, "dependency.proposed", {
           dependentKind, dependentId, prerequisiteKind, prerequisiteId, relationType,
           rationale: row.rationale, expectedDeliverable: row.expected_deliverable, confidence: row.confidence
@@ -222,6 +223,10 @@ async function analyzeDependencies(workspaceId: string, user: AuthUser, input: a
       if ((error as any)?.status === 409) { skipped++; continue; }
       throw error;
     }
+  }
+  if (proposed.length) {
+    const dg = settings[0]?.dg_user_id || (await getWorkspace(workspaceId)).owner_id;
+    if (dg) await notifyUser(dg, "coo.dependency.proposed", "Nouvelles dépendances à arbitrer", proposed.length + " proposition(s) du COO attend(ent) votre décision.", workspaceId).catch(() => undefined);
   }
   if (analyzedTaskIds.length) {
     const filter = analyzedTaskIds.map(encodeURIComponent).join(",");
@@ -283,7 +288,8 @@ async function listDependencies(workspaceId: string) {
       deliverablesAwaitingReview: deliverables.filter(x => x.status === "submitted").length,
       openEscalations: escalations.filter(x => x.status !== "resolved").length,
       crossDepartmentDependencies: enriched.filter(x => x.cross_department).length,
-      pendingTaskAnalysis: tasks.filter(x => x.dependency_analysis_status === "pending").length
+      pendingTaskAnalysis: tasks.filter(x => x.dependency_analysis_status === "pending").length,
+      failedTaskAnalysis: tasks.filter(x => x.dependency_analysis_status === "failed").length
     }
   };
 }
@@ -459,11 +465,11 @@ export async function handleCooDependencyWorker(req: IncomingMessage, res: Serve
       const settingsRow = settings[0] ?? {};
       const dgUserId = settingsRow.dg_user_id || workspace.owner_id || null;
       const missionStatus = new Map(missions.map(x => [x.id, x.status]));
-      const autoAnalysisTasks = tasks.filter(t =>
+      const autoAnalysisTasks = settingsRow.coo_enabled === true && settingsRow.coo_kill_switch !== true ? tasks.filter(t =>
         t.dependency_analysis_status === "pending" &&
         !["done","cancelled"].includes(t.status) &&
         (!t.mission_id || missionStatus.get(t.mission_id) !== "running")
-      ).slice(0, 30);
+      ).slice(0, 30) : [];
       if (autoAnalysisTasks.length && workspace.owner_id) {
         try {
           await analyzeDependencies(workspaceId, { id: workspace.owner_id } as AuthUser, { taskIds: autoAnalysisTasks.map(t => t.id) });
@@ -490,12 +496,17 @@ export async function handleCooDependencyWorker(req: IncomingMessage, res: Serve
         const prerequisite = edge.prerequisite_kind === "task" ? taskMap.get(edge.prerequisite_task_id)
           : edge.prerequisite_kind === "mission" ? missionMap.get(edge.prerequisite_mission_id)
           : deptMap.get(edge.prerequisite_department_id);
-        const responsibleDepartmentId = edge.prerequisite_kind === "department"
+        if (!pending && edge.relation_type !== "hard_prerequisite") continue;
+        let previous = priorMap.get(edge.id);
+        if (!pending && previous && edge.activated_at && Date.parse(edge.activated_at) > Date.parse(previous.blocked_since)) {
+          await db("afe_coo_escalations?id=eq." + enc(previous.id) + "&workspace_id=eq." + enc(workspaceId), { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ status: "resolved", updated_at: nowIso() }) });
+          previous = null;
+        }
+        const responsibleDepartmentId = pending ? null : edge.prerequisite_kind === "department"
           ? edge.prerequisite_department_id : (prerequisite as any)?.department_id ?? null;
         const department = deptMap.get(responsibleDepartmentId);
-        const responsibleName = department?.name ?? (pending ? "Direction générale (revue en attente)" : "Direction productrice non identifiée");
-        const responsibleOwner = department?.director_user_id ?? null;
-        const previous = priorMap.get(edge.id);
+        const responsibleName = pending ? "Direction générale (revue en attente)" : department?.name ?? "Direction productrice non identifiée";
+        const responsibleOwner = pending ? null : department?.director_user_id ?? null;
         const threshold = pending ? policy.pending_review_after_minutes
           : level === "critical" ? policy.critical_after_minutes
           : level === "dg" ? policy.dg_after_minutes
