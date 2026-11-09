@@ -538,3 +538,9 @@ test("COO alerts can be assigned or transferred only to an eligible member of th
   assert.match(source, /Affecter \/ transférer/);
   assert.match(source, /patch\.assigned_to = assignedTo/);
 });
+
+test("COO alert reopening invalidates stale closure evidence so a fresh proof is required", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /evidence_reference: "", resolution_summary: "", verification_note: ""/);
+  assert.match(source, /patch\.evidence_reference = ""; patch\.resolution_summary = ""; patch\.verification_note = ""/);
+});
