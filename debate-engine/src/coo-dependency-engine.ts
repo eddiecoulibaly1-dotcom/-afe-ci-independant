@@ -149,7 +149,7 @@ async function analyzeDependencies(workspaceId: string, user: AuthUser, input: a
       "Une dépendance dure doit relier une tâche ou mission consommatrice à une tâche ou mission productrice. La production d'un livrable accepté est le critère de déblocage.",
       "Une direction seule ne peut pas être un prérequis dur. Utilise une direction uniquement comme référence contextuelle, sans blocage.",
       "Ne déduis jamais une dépendance de la seule similarité des titres ou d'un ordre chronologique. Si deux travaux peuvent avancer en parallèle, propose parallel ou ne propose rien.",
-      "Ne propose jamais un prérequis dur entre deux tâches de la même mission : le worker exécute actuellement une mission comme une unité. Dans ce cas, utilise input_reference si le lien est utile, ou omets la relation."
+      "Ne propose jamais un prérequis dur entre deux tâches de la même mission : le worker exécute actuellement une mission comme une unité. Dans ce cas, utilise input_reference si le lien est utile, ou omets la relation.",
       "N'invente aucun identifiant : utilise uniquement les identifiants exacts fournis. N'inclus pas les directions indépendantes ou les autorités humaines comme directions exécutantes.",
       "Évite les cycles et les dépendances redondantes. Chaque proposition doit expliquer le livrable attendu et des critères d'acceptation vérifiables.",
       "Toutes les propositions seront soumises à la Direction générale et resteront inactives jusqu'à son approbation."
