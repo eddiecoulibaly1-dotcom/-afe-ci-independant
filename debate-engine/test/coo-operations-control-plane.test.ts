@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const migrationUrl = new URL("../supabase/migrations/20261107190000_afe_ci_coo_operations_control_plane.sql", import.meta.url);
-const alertWorkflowUrl = new URL("../supabase/migrations/20261109081150_coo_alert_resolution_workflow.sql", import.meta.url);
+const alertWorkflowUrl = new URL("../supabase/migrations/20261109081327_coo_alert_resolution_workflow.sql", import.meta.url);
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
 const reportingUrl = new URL("../src/coo-reporting.ts", import.meta.url);
 const indexesUrl = new URL("../supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql", import.meta.url);
