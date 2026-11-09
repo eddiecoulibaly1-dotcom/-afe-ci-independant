@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS public.afe_coo_deliverables (
   accepted_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   submitted_at timestamptz NOT NULL DEFAULT now(),
   accepted_at timestamptz,
-  source_event_id uuid REFERENCES public.afe_agent_events(id) ON DELETE SET NULL,
+  source_event_id bigint REFERENCES public.afe_agent_events(id) ON DELETE SET NULL,
   supersedes_id uuid,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
