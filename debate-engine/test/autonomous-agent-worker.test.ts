@@ -27,6 +27,11 @@ test("worker is server authenticated and never trusts browser session identity",
 });
 
 test("worker retries are bounded and use increasing delay",()=>{
- assert.match(worker,/attempt>=maxAttempts/);
- assert.match(worker,/select=attempt_count,max_attempts/);
- assert.match(worker,/lease¶»§q«^
+ assert.match(worker,/attempt>=maxAttempts/);\n assert.match(worker,/select=attempt_count,max_attempts/);\n assert.match(worker,/lease_expires_at=gt\\./);
+ assert.match(worker,/Math\.pow\(2/);
+ assert.match(worker,/status:terminal\?"failed":"queued"/);
+});
+
+test("Vercel invokes the worker independently of the browser",()=>{
+ assert.deepEqual(config.crons,[{path:"/internal/agent-worker",schedule:"* * * * *"},{path:"/internal/coo-report-worker",schedule:"0 8 * * *"}]);
+});
