@@ -119,6 +119,15 @@ test("COO alert lifecycle automatically resolves cleared task and mission condit
   assert.match(source, /status: "resolved", resolved_by: null, resolved_at: nowIso\(\)/);
 });
 
+test("COO alert resolution is rejected while a linked task or mission remains blocked", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /ensureAlertConditionCleared\(workspaceId, rows\[0\]\)/);
+  assert.match(source, /task\.status === "blocked" \|\| clean\(task\.blocked_reason, 3000\)/);
+  assert.match(source, /mission\.status === "paused" \|\| clean\(mission\.blocked_reason, 3000\)/);
+  assert.match(source, /ne peut pas être résolue : la tâche est toujours bloquée/);
+  assert.match(source, /ne peut pas être résolue : la mission est toujours suspendue/);
+});
+
 
 const cooGrantsUrl = new URL("../supabase/migrations/20261107212500_afe_ci_coo_scoped_operational_grants.sql", import.meta.url);
 
