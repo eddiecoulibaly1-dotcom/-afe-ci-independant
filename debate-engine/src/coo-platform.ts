@@ -5,6 +5,7 @@ import { callModel } from "./providers.js";
 import { runAgentWorkerForWorkspace } from "./autonomous-agents/worker.js";
 import { buildCooDataQuality, buildCooReportActivity, buildCooReportIdempotencyKey, resolveTaskDepartmentId } from "./coo-reporting.js";
 import { consolidateDepartmentWorkstreams } from "./coo-planning.js";
+import { assertDependencyAddition, evaluateDependencyReadiness } from "./mission-coordination.js";
 
 type Role = "owner" | "admin" | "editor" | "viewer";
 const rank: Record<Role, number> = { owner: 4, admin: 3, editor: 2, viewer: 1 };
