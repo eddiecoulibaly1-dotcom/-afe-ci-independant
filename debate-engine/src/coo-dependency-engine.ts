@@ -115,8 +115,6 @@ async function analyzeDependencies(workspaceId: string, user: AuthUser, input: a
 
   const missionById = new Map(missions.map(m => [m.id, m]));
   const deptById = new Map(departments.map(d => [d.id, d]));
-  const relevantTaskIds = new Set(taskSet.map(t => t.id));
-  const relevantMissionIds = new Set(missions.map(m => m.id));
   const payload = {
     tasks: taskSet.map(t => ({
       id: t.id, title: t.title, description: t.description, status: t.status, priority: t.priority,
@@ -153,6 +151,11 @@ async function analyzeDependencies(workspaceId: string, user: AuthUser, input: a
   const taskById = new Map(taskSet.map(t => [t.id, t]));
   const missionMap = new Map(missions.map(m => [m.id, m]));
   const deptMap = new Map(departments.map(d => [d.id, d]));
+  const analyzedTaskIds = taskSet.filter(t => {
+    const parent = t.mission_id ? missionMap.get(t.mission_id) : null;
+    return parent?.status !== "running" &&
+      !(t.status === "blocked" && !String(t.blocked_reason || "").startsWith("COO_DEPENDENCY_BLOCKED:"));
+  }).map(t => t.id);
   const existingKeys = new Set(existing.filter(e => e.status !== "rejected").map(e =>
     [e.dependent_kind, e.dependent_task_id ?? e.dependent_mission_id, e.prerequisite_kind, e.prerequisite_task_id ?? e.prerequisite_mission_id ?? e.prerequisite_department_id, e.relation_type].join(":")
   ));
@@ -212,7 +215,14 @@ async function analyzeDependencies(workspaceId: string, user: AuthUser, input: a
       throw error;
     }
   }
-  return { summary: clean(result.summary, 3000), proposed, skipped, analyzedTasks: taskSet.length, analyzedMissions: missions.length, requiresDgApproval: true };
+  if (analyzedTaskIds.length) {
+    const filter = analyzedTaskIds.map(encodeURIComponent).join(",");
+    await db("afe_operational_tasks?id=in.(" + filter + ")&workspace_id=eq." + enc(workspaceId), {
+      method: "PATCH", headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ dependency_analysis_status: "analyzed", dependency_analysis_at: nowIso(), dependency_analysis_error: null, updated_at: nowIso() })
+    });
+  }
+  return { summary: clean(result.summary, 3000), proposed, skipped, analyzedTasks: analyzedTaskIds.length, analyzedTaskIds, analyzedMissions: missions.length, requiresDgApproval: true };
 }
 
 async function listDependencies(workspaceId: string) {
@@ -221,7 +231,7 @@ async function listDependencies(workspaceId: string) {
     db<any[]>("afe_coo_deliverables?workspace_id=eq." + enc(workspaceId) + "&order=submitted_at.desc&limit=1000"),
     db<any[]>("afe_coo_escalations?workspace_id=eq." + enc(workspaceId) + "&order=updated_at.desc&limit=500"),
     db<any[]>("afe_coo_escalation_policies?workspace_id=eq." + enc(workspaceId) + "&limit=1"),
-    db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&select=id,title,status,mission_id,department_id,blocked_reason,due_at&limit=1000"),
+    db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&select=id,title,status,mission_id,department_id,blocked_reason,due_at,dependency_analysis_status&limit=1000"),
     db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&select=id,title,status,department_id,agent_id,blocked_reason,due_at&limit=500"),
     db<any[]>("afe_org_departments?workspace_id=eq." + enc(workspaceId) + "&select=id,name,slug,is_independent,human_only,director_user_id&limit=100")
   ]);
@@ -440,6 +450,28 @@ export async function handleCooDependencyWorker(req: IncomingMessage, res: Serve
       const priorMap = new Map(existing.map(x => [x.edge_id, x]));
       const settingsRow = settings[0] ?? {};
       const dgUserId = settingsRow.dg_user_id || workspace.owner_id || null;
+      const missionStatus = new Map(missions.map(x => [x.id, x.status]));
+      const autoAnalysisTasks = tasks.filter(t =>
+        t.dependency_analysis_status === "pending" &&
+        !["done","cancelled"].includes(t.status) &&
+        (!t.mission_id || missionStatus.get(t.mission_id) !== "running") &&
+        !(t.status === "blocked" && !String(t.blocked_reason || "").startsWith("COO_DEPENDENCY_BLOCKED:"))
+      ).slice(0, 30);
+      if (autoAnalysisTasks.length && workspace.owner_id) {
+        try {
+          await analyzeDependencies(workspaceId, { id: workspace.owner_id } as AuthUser, { taskIds: autoAnalysisTasks.map(t => t.id) });
+        } catch (analysisError) {
+          const ids = autoAnalysisTasks.map(t => encodeURIComponent(t.id)).join(",");
+          await db("afe_operational_tasks?id=in.(" + ids + ")&workspace_id=eq." + enc(workspaceId), {
+            method: "PATCH", headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({ dependency_analysis_status: "failed", dependency_analysis_at: nowIso(), dependency_analysis_error: (analysisError instanceof Error ? analysisError.message : String(analysisError)).slice(0, 2000), updated_at: nowIso() })
+          });
+          await recordEvent(workspaceId, null, "dependency.analysis.failed", {
+            taskIds: autoAnalysisTasks.map(t => t.id),
+            error: (analysisError instanceof Error ? analysisError.message : String(analysisError)).slice(0, 1000)
+          });
+        }
+      }
       const now = Date.now();
       for (const edge of edges) {
         checked++;
