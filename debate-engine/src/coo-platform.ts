@@ -193,6 +193,7 @@ async function upsertAlert(workspaceId: string, alert: { key: string; type: stri
       body: JSON.stringify({
         status: "open", workflow_status: "reopened", severity: alert.severity, title: alert.title, description: alert.description,
         acknowledged_by: null, acknowledged_at: null, resolved_by: null, resolved_at: null, verified_by: null, verified_at: null,
+        evidence_reference: "", resolution_summary: "", verification_note: "",
         reopen_count: Number(found[0].reopen_count || 0) + 1, last_reopened_at: reopenedAt, updated_at: reopenedAt
       })
     });
@@ -672,6 +673,7 @@ async function actOnAlert(workspaceId: string, user: AuthUser, id: string, input
     patch.status = "open"; patch.workflow_status = "reopened";
     patch.resolved_by = null; patch.resolved_at = null;
     patch.verified_by = null; patch.verified_at = null;
+    patch.evidence_reference = ""; patch.resolution_summary = ""; patch.verification_note = "";
     patch.reopen_count = Number(alert.reopen_count || 0) + 1;
     patch.last_reopened_at = stamp;
     patch.verification_note = verificationNote;
