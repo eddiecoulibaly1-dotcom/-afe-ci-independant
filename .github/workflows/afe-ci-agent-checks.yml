@@ -1,0 +1,32 @@
+name: AFE-CI autonomous agents checks
+
+on:
+  push:
+    branches:
+      - feature/autonomous-organization-v1
+  pull_request:
+    paths:
+      - "debate-engine/**"
+      - ".github/workflows/afe-ci-agent-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: debate-engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: debate-engine/package-lock.json
+      - run: npm ci
+      - name: TypeScript strict typecheck
+        run: npm run typecheck
+      - name: Unit and integration tests
+        run: npm test
