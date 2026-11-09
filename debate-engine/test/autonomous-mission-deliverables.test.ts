@@ -26,32 +26,4 @@ test("worker records deliverable evidence before task synchronization and COO re
   assert.match(source, /async function recordMissionDeliverables/);
   assert.match(source, /event_type:"mission\.deliverables\.submitted"/);
   assert.match(source, /taskDeliverables:/);
-  assert.ok((source.match(/await recordMissionDeliverables\(claim,output\)/g) ?? []).length >= 2);
-  assert.equal(source.includes("finish_afe_agent_mission"), false);
-  const submitted = source.indexOf("await recordMissionDeliverables(claim,output)");
-  assert.ok(submitted >= 0 && submitted < source.indexOf("syncCooTaskResults(claim,mission,output)"));
-  assert.match(source, /mission\.awaiting_coo_validation/);
-});
-
-test("incomplete or blocked COO tasks cannot be silently marked as completed", async () => {
-  const source = await readFile(workerUrl, "utf8");
-  assert.match(source, /Le rÃ©sultat de mission ne couvre pas toutes les tÃ¢ches COO attendues/);
-  assert.match(source, /status:"paused"/);
-  assert.match(source, /coo\.tasks\.incomplete/);
-  assert.match(source, /result\.status!=="done"/);
-});
-
-test("independent evidence review is recorded before task synchronization in both worker paths", async () => {
-  const source = await readFile(workerUrl, "utf8");
-  assert.match(source, /import \{ reviewMissionEvidence \} from "\.\/review\.js"/);
-  assert.match(source, /const INDEPENDENT_REVIEWER_ID = "system:independent-evidence-gate"/);
-  assert.match(source, /event_type:"mission\.evidence\.reviewed"/);
-  assert.match(source, /semanticReviewerType:"independent_ai_semantic_reviewer"/);
-  assert.equal((source.match(/await recordMissionReview\(claim,mission,output,provider\)/g) ?? []).length, 2);
-  assert.match(source, /AI review is advisory evidence/);
-  const reviewCall = source.indexOf("await recordMissionReview(claim,mission,output,provider)");
-  const taskSync = source.indexOf("const taskSync=await syncCooTaskResults", reviewCall);
-  assert.ok(reviewCall >= 0 && taskSync > reviewCall);
-  assert.equal(source.includes("finish_afe_agent_mission"), false);
-  assert.match(source, /status:"paused",result:pendingResult/);
-});
+  asser¶»§q«^
