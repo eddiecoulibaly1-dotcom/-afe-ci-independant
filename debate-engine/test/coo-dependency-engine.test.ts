@@ -107,6 +107,7 @@ test("COO analysis counters exclude terminal tasks and analysis runs are bounded
   const platform = await readFile(cooUrl, "utf8");
   assert.match(source, /!\["done","cancelled"\]\.includes\(x\.status\) && x\.dependency_analysis_status === "pending"/);
   assert.match(source, /analysisQueue:/);
+  assert.match(source, /dependency_analysis_status,dependency_analysis_at/);
   assert.match(source, /\)\.slice\(0, 5\) : \[\]/);
   assert.match(platform, /const batchSize=5/);
   assert.match(platform, /Les lots terminés sont conservés/);
