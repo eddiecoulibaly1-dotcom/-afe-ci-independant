@@ -595,7 +595,23 @@ async function actOnAlert(workspaceId: string, user: AuthUser, id: string, input
   const resolutionSummary = clean(input?.resolutionSummary, 4000);
   const verificationNote = clean(input?.verificationNote, 2000);
 
-  if (action === "acknowledge" || action === "take") {
+  if (action === "assign") {
+    if (alert.workflow_status === "resolved" || alert.status === "resolved") throw fail("Une alerte clôturée doit être rouverte avant réaffectation.", 409);
+    const assignedTo = clean(input?.assignedTo, 64);
+    if (!assignedTo) throw fail("Sélectionne un responsable de traitement.", 400);
+    await validateMember(workspaceId, assignedTo);
+    patch.status = "acknowledged"; patch.workflow_status = "assigned";
+    patch.assigned_to = assignedTo; patch.assigned_at = stamp;
+    patch.acknowledged_by = user.id; patch.acknowledged_at = stamp;
+    const dueAt = clean(input?.dueAt, 40);
+    if (dueAt) {
+      const dueTime = Date.parse(dueAt);
+      if (!Number.isFinite(dueTime) || dueTime <= Date.now()) throw fail("L'échéance doit être une date future valide.", 400);
+      patch.due_at = new Date(dueTime).toISOString();
+      details.due_at = patch.due_at;
+    }
+    eventType = "assigned"; details.assigned_to = assignedTo;
+  } else if (action === "acknowledge" || action === "take") {
     if (alert.workflow_status === "resolved" || alert.status === "resolved") throw fail("Cette alerte est déjà clôturée. Utilise Réouvrir si le problème est réapparu.", 409);
     patch.status = "acknowledged"; patch.workflow_status = "assigned";
     patch.assigned_to = user.id; patch.assigned_at = stamp;
@@ -1156,7 +1172,7 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
     if (resource === "alerts") {
       await requireAccess(workspaceId, user);
       if (method === "GET" && p[6]) { send(res, 200, await getAlertDetails(workspaceId, p[6])); return true; }
-      if (method === "GET") { const data = await snapshot(workspaceId); await refreshAlerts(workspaceId, data.missions, data.tasks); send(res, 200, { alerts: (await snapshot(workspaceId)).alerts }); return true; }
+      if (method === "GET") { const data = await snapshot(workspaceId); await refreshAlerts(workspaceId, data.missions, data.tasks); const [fresh, members] = await Promise.all([snapshot(workspaceId), db<any[]>("debate_workspace_members?workspace_id=eq." + enc(workspaceId) + "&order=created_at.asc")]); send(res, 200, { alerts: fresh.alerts, members: members.filter(m => rank[m.role as Role] >= rank.editor).map(m => ({ user_id: m.user_id, role: m.role })) }); return true; }
       if (p[6] && method === "POST") { await canOperate(workspaceId, user); send(res, 200, await actOnAlert(workspaceId, user, p[6], await readBody(req))); return true; }
     }
     if (resource === "reports") {
@@ -1366,10 +1382,10 @@ async function renderAlerts(){
  const label=x=>({new:"Nouvelle",assigned:"Prise en charge",diagnosing:"Diagnostic",in_progress:"Correction en cours",pending_verification:"À vérifier",resolved:"Résolue",reopened:"Rouverte"}[x.workflow_status]||x.status||"À traiter");
  const card=x=>{
   const state=x.workflow_status|| (x.status==="resolved"?"resolved":x.status==="acknowledged"?"assigned":"new");
-  const fields='<div class="grid"><label>Échéance de traitement (facultative)<input name="dueAt" type="datetime-local"></label><label>Diagnostic de la cause<textarea name="diagnosis" rows="2" maxlength="4000">'+esc(x.diagnosis||"")+'</textarea></label><label>Actions correctives réalisées / prévues<textarea name="correctiveAction" rows="2" maxlength="4000">'+esc(x.corrective_action||"")+'</textarea></label><label>Référence de preuve (lien, document ou identifiant)<input name="evidenceReference" maxlength="2000" value="'+esc(x.evidence_reference||"")+'"></label><label>Résumé du résultat obtenu<textarea name="resolutionSummary" rows="2" maxlength="4000">'+esc(x.resolution_summary||"")+'</textarea></label><label>Note de vérification / motif de réouverture<textarea name="verificationNote" rows="2" maxlength="2000" placeholder="Obligatoire pour valider, refuser ou rouvrir"></textarea></label></div>';
+  const fields='<div class="grid"><label>Responsable de traitement<select name="assignedTo"><option value="">Sélectionner un membre</option>'+arr(d.members).filter(m=>m.role!=="viewer").map(m=>'<option value="'+esc(m.user_id)+'" '+(m.user_id===x.assigned_to?'selected':'')+'>'+esc(m.user_id.slice(0,8))+' · '+esc(m.role)+'</option>').join("")+'</select></label><label>Échéance de traitement (facultative)<input name="dueAt" type="datetime-local"></label><label>Diagnostic de la cause<textarea name="diagnosis" rows="2" maxlength="4000">'+esc(x.diagnosis||"")+'</textarea></label><label>Actions correctives réalisées / prévues<textarea name="correctiveAction" rows="2" maxlength="4000">'+esc(x.corrective_action||"")+'</textarea></label><label>Référence de preuve (lien, document ou identifiant)<input name="evidenceReference" maxlength="2000" value="'+esc(x.evidence_reference||"")+'"></label><label>Résumé du résultat obtenu<textarea name="resolutionSummary" rows="2" maxlength="4000">'+esc(x.resolution_summary||"")+'</textarea></label><label>Note de vérification / motif de réouverture<textarea name="verificationNote" rows="2" maxlength="2000" placeholder="Obligatoire pour valider, refuser ou rouvrir"></textarea></label></div>';
   let actions='';
   if(state==="new"||state==="reopened") actions+='<button class="btn" data-alert-action="take">Prendre en charge</button>';
-  if(state!=="resolved") actions+='<button class="btn" data-alert-action="diagnose">Enregistrer le diagnostic</button><button class="btn" data-alert-action="start">Démarrer / mettre à jour la correction</button><button class="btn" data-alert-action="submit_for_verification">Soumettre à vérification</button>';
+  if(state!=="resolved") actions+='<button class="btn" data-alert-action="assign">Affecter / transférer</button><button class="btn" data-alert-action="diagnose">Enregistrer le diagnostic</button><button class="btn" data-alert-action="start">Démarrer / mettre à jour la correction</button><button class="btn" data-alert-action="submit_for_verification">Soumettre à vérification</button>';
   if(state==="pending_verification") actions+='<button class="btn" data-alert-action="verify" data-decision="approve">Valider la résolution</button><button class="btn danger" data-alert-action="verify" data-decision="reject">Refuser et retourner en correction</button>';
   if(state==="resolved") actions+='<button class="btn danger" data-alert-action="reopen">Réouvrir l’alerte</button>';
   return '<article class="card alert-card" data-alert-id="'+esc(x.id)+'"><div class="row"><div><strong>'+esc(x.title)+'</strong><span class="small">'+esc(x.description)+' · Détectée le '+date(x.created_at)+'</span><span class="small">Responsable : '+esc(x.assigned_to||"Non attribuée")+' · Échéance : '+date(x.due_at)+' · Réouvertures : '+esc(x.reopen_count||0)+'</span></div><div class="actions"><span class="tag '+esc(x.severity)+'">'+esc(x.severity)+'</span><span class="tag">'+esc(label(x))+'</span></div></div><details><summary>Dossier de traitement et historique</summary><form class="alert-workflow-form">'+fields+'<div class="actions">'+actions+'</div></form><div class="alert-history"><button class="btn" type="button" data-alert-history>Charger l’historique des actions</button><div data-alert-events></div></div></details></article>';
