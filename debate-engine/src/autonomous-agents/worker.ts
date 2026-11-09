@@ -187,5 +187,5 @@ export async function runAgentWorkerForWorkspace(workspaceId:string){
   }catch(error){
     const retryScheduled=await recordFailure(claim,error);
     return {claimed:true,completed:false,missionId:claim.mission_id,dispatchedMessages:dispatched??0,retryScheduled,error:error instanceof Error?error.message:"Erreur d’exécution"};
-  }
+  } finally { heartbeat.stop(); }
 }
