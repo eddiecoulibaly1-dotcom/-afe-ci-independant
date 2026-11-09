@@ -151,3 +151,10 @@ test("COO supervision uses real worker heartbeats and distinguishes failed cross
  assert.match(source,/state = prerequisiteStatus==="completed" \? "satisfied" : \["failed","cancelled","missing"\]/);
  assert.match(source,/Heartbeat provient des ticks réels du worker/);
 });
+
+test("COO supervision consumes durable worker ticks returned by its sixth query",async()=>{
+ const platform=await readFile(cooPlatformUrl,"utf8");
+ assert.match(platform,/workerEvents, workerTicks\] = await Promise\.all/);
+ assert.match(platform,/afe_coo_worker_ticks\?environment=eq\./);
+ assert.match(platform,/const lastWorkerTick = workerTicks\[0\]/);
+});
