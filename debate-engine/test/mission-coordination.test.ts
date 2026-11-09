@@ -106,3 +106,19 @@ test("worker retry paths cannot overwrite a mission paused by dependency control
  assert.ok(source.includes("&status=eq.running&lease_expires_at=gt."));
  assert.match(source,/if\(!saved\.length\)return false/);
 });
+
+test("COO supervision exposes workspace-scoped worker and dependency health",async()=>{
+ const source=await readFile(cooPlatformUrl,"utf8");
+ assert.match(source,/handleSupervision\(workspaceId: string, user: AuthUser\)/);
+ assert.match(source,/afe_agent_events\?workspace_id=eq\./);
+ assert.match(source,/expiredLeaseMissions/);
+ assert.match(source,/pausedMissions/);
+ assert.match(source,/data-tab="supervision"/);
+ assert.match(source,/async function renderSupervision\(\)/);
+});
+test("manual worker recovery is Preview-only, owner-only and workspace-bounded",async()=>{
+ const source=await readFile(cooPlatformUrl,"utf8");
+ assert.match(source,/process\.env\.VERCEL_ENV !== "preview"/);
+ assert.match(source,/requireAccess\(workspaceId, user, "owner"\)/);
+ assert.match(source,/p_workspace_id:workspaceId,p_batch_size:25/);
+});
