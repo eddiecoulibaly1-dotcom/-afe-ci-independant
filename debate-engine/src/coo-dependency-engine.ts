@@ -329,6 +329,11 @@ async function listDependencies(workspaceId: string) {
   return {
     edges: enriched, deliverables, escalations, policy: policyRows[0] ?? null,
     departments, executionStages, graphCycleDetected,
+    analysisQueue: tasks.filter(x => !["done","cancelled"].includes(x.status) &&
+      (x.dependency_analysis_status === "pending" ||
+       (x.dependency_analysis_status === "failed" && Date.parse(x.dependency_analysis_at || "1970-01-01") < Date.now() - 30 * 60 * 1000)))
+      .filter(x => !x.mission_id || missionMap.get(x.mission_id)?.status !== "running")
+      .map(x => x.id),
     summary: {
       proposalsPendingDg: edges.filter(x => x.status === "pending_dg").length,
       activeHardDependencies: edges.filter(x => x.status === "active" && x.relation_type === "hard_prerequisite").length,
@@ -337,8 +342,8 @@ async function listDependencies(workspaceId: string) {
       deliverablesAwaitingReview: deliverables.filter(x => x.status === "submitted").length,
       openEscalations: escalations.filter(x => x.status !== "resolved").length,
       crossDepartmentDependencies: enriched.filter(x => x.cross_department).length,
-      pendingTaskAnalysis: tasks.filter(x => x.dependency_analysis_status === "pending").length,
-      failedTaskAnalysis: tasks.filter(x => x.dependency_analysis_status === "failed").length
+      pendingTaskAnalysis: tasks.filter(x => !["done","cancelled"].includes(x.status) && x.dependency_analysis_status === "pending").length,
+      failedTaskAnalysis: tasks.filter(x => !["done","cancelled"].includes(x.status) && x.dependency_analysis_status === "failed").length
     }
   };
 }
@@ -513,7 +518,7 @@ export async function handleCooDependencyWorker(req: IncomingMessage, res: Serve
           (t.dependency_analysis_status === "failed" && Date.parse(t.dependency_analysis_at || "1970-01-01") < Date.now() - 30 * 60 * 1000)) &&
         !["done","cancelled"].includes(t.status) &&
         (!t.mission_id || missionStatus.get(t.mission_id) !== "running")
-      ).slice(0, 30) : [];
+      ).slice(0, 5) : [];
       if (autoAnalysisTasks.length && workspace.owner_id) {
         try {
           await analyzeDependencies(workspaceId, { id: workspace.owner_id } as AuthUser, { taskIds: autoAnalysisTasks.map(t => t.id) });
