@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS public.afe_coo_mission_archive_documents (
   source_storage_path text,
   mime_type text NOT NULL,
   size_bytes bigint NOT NULL CHECK (size_bytes BETWEEN 1 AND 50000000),
+  CHECK (storage_path LIKE ('archives/' || workspace_id::text || '/%')),
+  CHECK (mime_type IN ('application/pdf','text/plain','text/csv','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation','image/jpeg','image/png','image/webp')),
   uploaded_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   source_created_at timestamptz,
   linked_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
