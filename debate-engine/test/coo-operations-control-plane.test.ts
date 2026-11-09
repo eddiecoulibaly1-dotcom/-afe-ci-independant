@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const migrationUrl = new URL("../supabase/migrations/20261107190000_afe_ci_coo_operations_control_plane.sql", import.meta.url);
+const alertWorkflowUrl = new URL("../supabase/migrations/20261109081150_coo_alert_resolution_workflow.sql", import.meta.url);
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
 const reportingUrl = new URL("../src/coo-reporting.ts", import.meta.url);
 const indexesUrl = new URL("../supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql", import.meta.url);
@@ -93,7 +94,7 @@ test("COO foreign keys have dedicated covering indexes", async () => {
 
 test("only the designated COO or workspace governance can operate and resolve alerts", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /if \(p\[6\] && method === "POST"\) \{ await canOperate\(workspaceId, user\); send\(res, 200, await actOnAlert/);
+  assert.match(source, /if \(p\[6\] && method === "POST"\) \{ await canOperate\(workspaceId, user\); send\(res, 200, await actOnAlert\(workspaceId, user, p\[6\], await readBody\(req\)\)\);/);
   assert.match(source, /rank\[member\.role\] < rank\.editor/);
 });
 
@@ -456,4 +457,43 @@ test("the final DG closure decision is appended to the archive event snapshot af
   assert.ok(source.includes('afe_coo_mission_archives?workspace_id=eq.'));
   assert.ok(source.includes('events_snapshot: eventsSnapshot'));
   assert.ok(source.includes('event.id === decisionEvent.id'));
+});
+
+test("COO alert workflow migration adds accountable ownership, evidence, verification and append-only history", async () => {
+  const sql = await readFile(alertWorkflowUrl, "utf8");
+  for (const column of ["workflow_status","assigned_to","assigned_at","due_at","diagnosis","corrective_action","evidence_reference","resolution_summary","verified_by","verified_at","reopen_count","last_reopened_at"]) {
+    assert.match(sql, new RegExp("ADD COLUMN IF NOT EXISTS " + column));
+  }
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.afe_coo_alert_events/);
+  assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(sql, /REVOKE ALL ON TABLE public\.afe_coo_alert_events FROM anon, authenticated/);
+  assert.match(sql, /GRANT ALL ON TABLE public\.afe_coo_alert_events TO service_role/);
+});
+
+test("COO alert closure requires evidence, a distinct verifier and a cleared underlying condition", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /action === "submit_for_verification"/);
+  assert.match(source, /action === "verify"/);
+  assert.match(source, /alert\.assigned_to === user\.id/);
+  assert.match(source, /await ensureAlertConditionCleared\(workspaceId, alert\)/);
+  assert.match(source, /La clôture directe est désactivée/);
+  assert.match(source, /evidenceReference\.length < 10/);
+  assert.match(source, /resolutionSummary\.length < 20/);
+});
+
+test("COO alert workflow records every material transition and supports controlled reopening", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  for (const event of ["taken_in_charge","diagnosis_recorded","remediation_started","submitted_for_verification","resolution_verified","verification_rejected","reopened"]) {
+    assert.ok(source.includes(event), "Missing alert history event: " + event);
+  }
+  assert.match(source, /afe_coo_alert_events/);
+  assert.match(source, /patch\.reopen_count = Number\(alert\.reopen_count \|\| 0\) \+ 1/);
+  assert.match(source, /patch\.last_reopened_at = stamp/);
+});
+
+test("COO alert UI exposes the full treatment cycle and action history", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  for (const label of ["Enregistrer le diagnostic","Démarrer / mettre à jour la correction","Soumettre à vérification","Valider la résolution","Refuser et retourner en correction","Réouvrir l’alerte","Charger l’historique des actions"]) {
+    assert.ok(source.includes(label), "Missing alert workflow control: " + label);
+  }
 });
