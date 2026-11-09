@@ -10,6 +10,7 @@ const guardMigrationUrl = new URL("../supabase/migrations/20261109153000_coo_dep
 const refinementMigrationUrl = new URL("../supabase/migrations/20261109160000_coo_dependency_guard_refinements.sql", import.meta.url);
 const auditMigrationUrl = new URL("../supabase/migrations/20261109163000_coo_dependency_audit_immutability.sql", import.meta.url);
 const auditOrderingMigrationUrl = new URL("../supabase/migrations/20261109164000_coo_dependency_audit_ordering.sql", import.meta.url);
+const atomicAuditMigrationUrl = new URL("../supabase/migrations/20261109162231_coo_dependency_atomic_audit_and_truncate_guard.sql", import.meta.url);
 const engineUrl = new URL("../src/coo-dependency-engine.ts", import.meta.url);
 const cooUrl = new URL("../src/coo-platform.ts", import.meta.url);
 const vercelUrl = new URL("../vercel.json", import.meta.url);
@@ -90,6 +91,25 @@ test("dependency decisions and deliverable versions are immutable and auditable"
   assert.match(sql, /log_afe_coo_dependency_status_change/);
   assert.match(ordering, /pg_trigger_depth\(\) > 1/);
   assert.match(ordering, /BEFORE UPDATE OF status/);
+});
+
+test("proposal and DG deliverable decisions are audited transactionally and audit truncation is revoked", async () => {
+  const sql = await readFile(atomicAuditMigrationUrl, "utf8");
+  assert.match(sql, /AFTER INSERT ON public\.afe_coo_dependency_edges/);
+  assert.match(sql, /dependency\.proposed/);
+  assert.match(sql, /AFTER UPDATE OF status ON public\.afe_coo_deliverables/);
+  assert.match(sql, /deliverable\.accepted_by_dg/);
+  assert.match(sql, /REVOKE TRUNCATE ON TABLE public\.afe_coo_dependency_events FROM service_role/);
+});
+
+test("COO analysis counters exclude terminal tasks and analysis runs are bounded for resumable batches", async () => {
+  const source = await readFile(engineUrl, "utf8");
+  const platform = await readFile(cooUrl, "utf8");
+  assert.match(source, /!\["done","cancelled"\]\.includes\(x\.status\) && x\.dependency_analysis_status === "pending"/);
+  assert.match(source, /analysisQueue:/);
+  assert.match(source, /\)\.slice\(0, 5\) : \[\]/);
+  assert.match(platform, /const batchSize=5/);
+  assert.match(platform, /Les lots terminés sont conservés/);
 });
 
 test("dependency API keeps proposals pending DG approval and acceptance is explicit", async () => {
