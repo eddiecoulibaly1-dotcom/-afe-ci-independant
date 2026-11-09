@@ -61,6 +61,13 @@ async function requireRole(workspaceId: string, user: AuthUser, minimum: Role) {
   if (rank[access.role] < rank[minimum]) throw fail("Droit insuffisant pour cette opération.", 403);
   return access;
 }
+async function notifyUser(userId: string, type: string, title: string, message: string, workspaceId: string) {
+  await db("notifications", {
+    method: "POST", headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ user_id: userId, type, title, message, link_type: "workspace", link_id: workspaceId })
+  });
+}
+
 async function recordEvent(workspaceId: string, actorId: string | null, eventType: string, details: Record<string, unknown>, edgeId: string | null = null, deliverableId: string | null = null) {
   await db("afe_coo_dependency_events", {
     method: "POST", headers: { Prefer: "return=minimal" },
@@ -205,6 +212,8 @@ async function analyzeDependencies(workspaceId: string, user: AuthUser, input: a
       if (inserted[0]) {
         proposed.push(inserted[0]);
         existingKeys.add(key);
+        const dg = settings[0]?.dg_user_id || (await getWorkspace(workspaceId)).owner_id;
+        if (dg) await notifyUser(dg, "coo.dependency.proposed", "Nouvelle dépendance à arbitrer", "Le COO a soumis une proposition de dépendance qui attend votre décision.", workspaceId).catch(() => undefined);
         await recordEvent(workspaceId, user.id, "dependency.proposed", {
           dependentKind, dependentId, prerequisiteKind, prerequisiteId, relationType,
           rationale: row.rationale, expectedDeliverable: row.expected_deliverable, confidence: row.confidence
@@ -274,7 +283,8 @@ async function listDependencies(workspaceId: string) {
       rejectedDependencies: edges.filter(x => x.status === "rejected").length,
       deliverablesAwaitingReview: deliverables.filter(x => x.status === "submitted").length,
       openEscalations: escalations.filter(x => x.status !== "resolved").length,
-      crossDepartmentDependencies: enriched.filter(x => x.cross_department).length
+      crossDepartmentDependencies: enriched.filter(x => x.cross_department).length,
+      pendingTaskAnalysis: tasks.filter(x => x.dependency_analysis_status === "pending").length
     }
   };
 }
@@ -441,8 +451,8 @@ export async function handleCooDependencyWorker(req: IncomingMessage, res: Serve
         getWorkspace(workspaceId),
         db<any[]>("afe_coo_escalations?workspace_id=eq." + enc(workspaceId) + "&status=neq.resolved&limit=1000")
       ]);
-      const tasks = await db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&select=id,title,department_id,mission_id&limit=1000");
-      const missions = await db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&select=id,title,department_id,agent_id&limit=500");
+      const tasks = await db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&select=id,title,status,department_id,mission_id,blocked_reason,dependency_analysis_status&limit=1000");
+      const missions = await db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&select=id,title,status,department_id,agent_id&limit=500");
       const departments = await db<any[]>("afe_org_departments?workspace_id=eq." + enc(workspaceId) + "&select=id,name,director_user_id&limit=100");
       const taskMap = new Map(tasks.map(x => [x.id, x]));
       const missionMap = new Map(missions.map(x => [x.id, x]));
@@ -511,6 +521,8 @@ export async function handleCooDependencyWorker(req: IncomingMessage, res: Serve
             edgeId: edge.id, level, elapsedMinutes: elapsed, responsibleDepartmentId,
             responsibleDepartment: responsibleName, responsibleOwnerUserId: responsibleOwner, dgUserId
           }, edge.id);
+          if (level === "director" && responsibleOwner) await notifyUser(responsibleOwner, "coo.dependency.director_escalation", "Livrable en retard dans votre direction", responsibleName + " : un prérequis est en retard depuis " + elapsed + " minutes.", workspaceId).catch(() => undefined);
+          if ((level === "dg" || level === "critical") && dgUserId) await notifyUser(dgUserId, "coo.dependency.dg_escalation", level === "critical" ? "Blocage critique à arbitrer" : "Arbitrage DG requis", "Une dépendance opérationnelle exige votre intervention. Direction productrice : " + responsibleName + ". Retard : " + elapsed + " minutes.", workspaceId).catch(() => undefined);
           escalated++;
         }
       }
