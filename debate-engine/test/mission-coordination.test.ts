@@ -99,3 +99,10 @@ test("mission dependency indexes cover each foreign key without duplicate indexe
  assert.match(sql,/created_by_idx ON public\.afe_agent_mission_dependencies \(created_by\)/);
  assert.match(sql,/DROP INDEX IF EXISTS public\.afe_agent_mission_dependencies_prerequisite_idx/);
 });
+
+test("worker retry paths cannot overwrite a mission paused by dependency control",async()=>{
+ const source=await readFile(workerUrl,"utf8");
+ assert.ok(source.includes("&status=eq.running&select=attempt_count,max_attempts"));
+ assert.ok(source.includes("&status=eq.running&lease_expires_at=gt."));
+ assert.match(source,/if\(!saved\.length\)return false/);
+});
