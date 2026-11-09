@@ -157,8 +157,7 @@ async function canOperate(workspaceId: string, user: AuthUser) {
   const a = await requireAccess(workspaceId, user, "editor");
   const s = await settings(workspaceId, a.workspace.owner_id);
   if (a.role !== "owner" && a.role !== "admin" && s.coo_user_id !== user.id) throw fail("Cette action est réservée au COO désigné ou à la Direction générale.", 403);
-  return { access: a, settings: s };}
-async function validateDepartment(workspaceId: string, departmentId: string, allowIndependent = false) {
+  return { access: a, settings: s };}async function validateDepartment(workspaceId: string, departmentId: string, allowIndependent = false) {
   const rows = await db<any[]>("afe_org_departments?id=eq." + enc(departmentId) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
   const d = rows[0];
   if (!d || !d.active) throw fail("Direction ou département indisponible.", 404);
@@ -317,8 +316,7 @@ function computeDashboard(data: Awaited<ReturnType<typeof snapshot>>) {
     };
   });
   return {    generatedAt: nowIso(),
-    indicators: {
-      totalMissions: data.missions.length, activeMissions: activeMissions.length, completedMissions,
+    indicators: {      totalMissions: data.missions.length, activeMissions: activeMissions.length, completedMissions,
       failedMissions, overdueMissions: overdueMissions.length,
       unassignedMissions: data.missions.filter(m => !m.effective_department_id).length,
       blockedMissions: data.missions.filter(m => Boolean(m.blocked_reason) || m.status === "paused").length,
@@ -477,8 +475,7 @@ async function patchMission(workspaceId: string, user: AuthUser, id: string, inp
 async function handleDashboard(workspaceId: string, user: AuthUser) {
   const a = await requireAccess(workspaceId, user);  await settings(workspaceId, a.workspace.owner_id);
   await ensureDepartments(workspaceId, user.id);
-  const data = await snapshot(workspaceId);
-  await refreshAlerts(workspaceId, data.missions, data.tasks);
+  const data = await snapshot(workspaceId);  await refreshAlerts(workspaceId, data.missions, data.tasks);
   const refreshed = await snapshot(workspaceId);
   return { dashboard: computeDashboard(refreshed), departments: refreshed.departments, missions: refreshed.missions, tasks: refreshed.tasks, alerts: refreshed.alerts.filter(x => x.status !== "resolved"), settings: await settings(workspaceId, a.workspace.owner_id) };
 }
@@ -637,8 +634,7 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
     const workloadByAgent = new Map<string, {activeMissions:number;openTasks:number}>();    for (const agent of agents) workloadByAgent.set(agent.id, {
       activeMissions: activeMissions.filter(m => m.agent_id === agent.id).length,
       openTasks: openTasks.filter(t => t.assigned_agent_id === agent.id).length
-    });
-    const eligible = departments
+    });    const eligible = departments
       .filter(d => !d.is_independent && !d.human_only && !["direction-generale","direction-operations"].includes(d.slug) && d.director_agent_id)
       .map(d => ({ slug: d.slug, name: d.name, mandate: d.mandate, director: agentById.get(d.director_agent_id), workload: workloadByAgent.get(d.director_agent_id) ?? {activeMissions:0,openTasks:0} }))
       .filter(x => x.director && x.director.status === "active" && x.director.department_id === departments.find(d => d.slug === x.slug)?.id && x.workload.activeMissions < 2 && x.workload.openTasks < 10);
@@ -797,8 +793,7 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
       })
     });
     await audit(workspaceId, user.id, partial ? "coo.orchestration.partial_failure" : "coo.orchestration.failed", "coo_run", run.id, {
-      cooAgentId: coo.id, missionsCreated: createdMissions.length,
-      error: (error instanceof Error ? error.message : String(error)).slice(0, 1000)
+      cooAgentId: coo.id, missionsCreated: createdMissions.length,      error: (error instanceof Error ? error.message : String(error)).slice(0, 1000)
     });
     throw error;
   }
@@ -865,6 +860,41 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
       const signed = JSON.parse(raw || "{}"), signedPath = signed.signedURL ?? signed.signedUrl ?? signed.url;
       if (typeof signedPath !== "string") throw fail("URL de téléchargement absente.", 502);
       send(res, 200, { url: signedPath.startsWith("http") ? signedPath : c.url + "/storage/v1" + (signedPath.startsWith("/") ? signedPath : "/" + signedPath) }); return true;
+    }
+    if (resource === "archives" && p[6] && p[7] === "upload-url" && method === "POST" && p.length === 8) {
+      await requireAccess(workspaceId, user, "editor");
+      const found = await db<any[]>("afe_coo_mission_archives?id=eq." + enc(p[6]) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
+      if (!found[0]) throw fail("Dossier d’archive introuvable.", 404);
+      const input = await readBody(req);
+      const fileName = clean(input.fileName, 180), mimeType = clean(input.mimeType, 120), sizeBytes = Number(input.sizeBytes);
+      const allowed = new Set(["application/pdf","text/plain","text/csv","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.ms-powerpoint","application/vnd.openxmlformats-officedocument.presentationml.presentation","image/jpeg","image/png","image/webp"]);
+      if (!fileName || !allowed.has(mimeType) || !Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > 50000000) throw fail("Fichier invalide, type non autorisé ou taille supérieure à 50 Mo.");
+      const safeName = fileName.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120) || "document";
+      const objectPath = "archives/" + workspaceId + "/" + found[0].mission_number + "/" + randomUUID() + "-" + safeName;
+      const c = config(), segments = objectPath.split("/").map(encodeURIComponent).join("/");
+      const response = await fetch(c.url + "/storage/v1/object/upload/sign/afe-ci-team-documents/" + segments, { method: "POST", headers: { apikey: c.key, Authorization: "Bearer " + c.key, "Content-Type": "application/json" }, body: JSON.stringify({ upsert: false }) });
+      const raw = await response.text();
+      if (!response.ok) throw fail("Impossible de préparer le dépôt sécurisé du document.", 502);
+      const signed = JSON.parse(raw || "{}"), signedPath = signed.signedURL ?? signed.signedUrl ?? signed.url;
+      if (typeof signedPath !== "string") throw fail("URL de dépôt signée absente.", 502);
+      send(res, 200, { path: objectPath, uploadUrl: signedPath.startsWith("http") ? signedPath : c.url + "/storage/v1" + (signedPath.startsWith("/") ? signedPath : "/" + signedPath), method: "PUT", expiresInSeconds: 7200 }); return true;
+    }
+    if (resource === "archives" && p[6] && p[7] === "upload-complete" && method === "POST" && p.length === 8) {
+      await requireAccess(workspaceId, user, "editor");
+      const found = await db<any[]>("afe_coo_mission_archives?id=eq." + enc(p[6]) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
+      if (!found[0]) throw fail("Dossier d’archive introuvable.", 404);
+      const input = await readBody(req), path = clean(input.path, 700), title = clean(input.title, 180), mimeType = clean(input.mimeType, 120), sizeBytes = Number(input.sizeBytes);
+      const prefix = "archives/" + workspaceId + "/" + found[0].mission_number + "/";
+      const allowed = new Set(["application/pdf","text/plain","text/csv","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.ms-powerpoint","application/vnd.openxmlformats-officedocument.presentationml.presentation","image/jpeg","image/png","image/webp"]);
+      if (!path.startsWith(prefix) || path.includes("..") || !title || !allowed.has(mimeType) || !Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > 50000000) throw fail("Métadonnées de document invalides.");
+      const c = config(), segments = path.split("/").map(encodeURIComponent).join("/");
+      const verified = await fetch(c.url + "/storage/v1/object/sign/afe-ci-team-documents/" + segments, { method: "POST", headers: { apikey: c.key, Authorization: "Bearer " + c.key, "Content-Type": "application/json" }, body: JSON.stringify({ expiresIn: 60 }) });
+      if (!verified.ok) throw fail("Le fichier n’a pas été confirmé dans le stockage privé. Aucun document n’a été enregistré.", 409);
+      const docs = await db<any[]>("afe_coo_mission_archive_documents", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ workspace_id: workspaceId, archive_id: p[6], title, description: clean(input.description, 2000), storage_path: path, source_storage_path: path, mime_type: mimeType, size_bytes: sizeBytes, uploaded_by: user.id, source_created_at: nowIso(), linked_by: user.id }) });
+      const allDocs = await db<any[]>("afe_coo_mission_archive_documents?archive_id=eq." + enc(p[6]) + "&workspace_id=eq." + enc(workspaceId));
+      await db("afe_coo_mission_archives?id=eq." + enc(p[6]) + "&workspace_id=eq." + enc(workspaceId), { method: "PATCH", body: JSON.stringify({ document_count: allDocs.length, document_status: allDocs.length ? "partial" : "pending", updated_at: nowIso() }) });
+      await audit(workspaceId, user.id, "coo.mission_archive.document_uploaded", "mission_archive", p[6], { title, mimeType, sizeBytes });
+      send(res, 201, { ok: true, document: docs[0], documentCount: allDocs.length }); return true;
     }
     if (resource === "execute-next" && method === "POST") {
       if (process.env.VERCEL_ENV !== "preview") throw fail("Le déclenchement manuel est réservé à l'environnement Preview.", 404);
@@ -957,8 +987,7 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
           await audit(workspaceId, user.id, "coo.mission.revision_requested", "mission", missionId, { note });
           send(res, 200, { ok: true, action, status: "queued" }); return true;
         }
-        if (action === "accept_closure") {
-          if (independentReview?.verdict !== "accepted") throw fail("Clôture refusée : le contrôle indépendant n'a pas rendu un verdict accepted.", 409);
+        if (action === "accept_closure") {          if (independentReview?.verdict !== "accepted") throw fail("Clôture refusée : le contrôle indépendant n'a pas rendu un verdict accepted.", 409);
           const result = mission.result ?? {};
           const taskResults = Array.isArray(result.task_results) ? result.task_results : [];
           const operationalTasks = await db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(missionId) + "&select=id,status");
@@ -1117,8 +1146,7 @@ async function refreshSession(){
  })().finally(()=>{refreshInFlight=null});
  return refreshInFlight;
 }
-async function api(path,options){
- let s=session();
+async function api(path,options){ let s=session();
  if(!s?.access_token){loginPrompt("Authentification requise.");throw Error("Connecte-toi pour accéder à ton espace de travail.");}
  const expiry=Number(s.expires_at||0);
  if(s.refresh_token&&expiry>0&&expiry*1000<Date.now()+60000){try{s=await refreshSession()}catch(e){localStorage.removeItem("afe-v09-session");loginPrompt("Ta session a expiré. Reconnecte-toi.");throw e}}
@@ -1277,8 +1305,7 @@ function renderManual(){
  const download=(blob,name)=>{const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
  $("manualMd").onclick=()=>download(new Blob([plain],{type:"text/markdown;charset=utf-8"}),"AFE-CI-Manuel-Procedures-COO.md");
  $("manualHtml").onclick=()=>download(new Blob(['<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AFE-CI — Manuel COO</title><style>body{font:16px/1.65 Arial,sans-serif;max-width:1000px;margin:35px auto;padding:0 18px;color:#172338}h1,h2,h3{color:#173b58}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccd5df;padding:8px;text-align:left}li{margin:5px 0}</style><body>'+html+'</body></html>'],{type:"text/html;charset=utf-8"}),"AFE-CI-Manuel-Procedures-COO.html");
- $("manualPdf").onclick=()=>{try{const JsPDF=window.jspdf?.jsPDF;if(!JsPDF)throw Error("Le module PDF n’est pas chargé. Actualise la page.");const pdf=new JsPDF({unit:"mm",format:"a4"});let y=16;for(const raw of plain.split("\n")){const line=raw.trimEnd();if(!line){y+=3;continue;}const heading=/^#{1,3} /.test(line),text=pdf.splitTextToSize(line.replace(/^#{1,3} /,"").replace(/\*\*/g,"").replace(/\x60/g,""),180);if(heading){y+=2;pdf.setFont("helvetica","bold");pdf.setFontSize(line.startsWith("# ") ? 17 : line.startsWith("## ") ? 13 : 10);}else{pdf.setFont("helvetica","normal");pdf.setFontSize(9);}for(const part of text){if(y>282){pdf.addPage();y=16;}pdf.text(part,15,y);y+=heading?6:4.5;}}pdf.save("AFE-CI-Manuel-Procedures-COO.pdf");}catch(e){message(e.message,true)}};
- $("manualWord").onclick=async()=>{try{const lib=window.docx;if(!lib?.Document||!lib?.Packer)throw Error("Le module Word n’est pas chargé. Actualise la page.");const paragraphs=plain.split("\n").map(line=>{const h=/^(#{1,3}) /.exec(line);return new lib.Paragraph({children:[new lib.TextRun({text:line.replace(/^#{1,3} /,"")||" ",bold:Boolean(h)||/^\*\*/.test(line),size:h?(h[1].length===1?34:h[1].length===2?28:24):20})],spacing:{after:100}})});const doc=new lib.Document({sections:[{properties:{},children:paragraphs}]});download(await lib.Packer.toBlob(doc),"AFE-CI-Manuel-Procedures-COO.docx");}catch(e){message(e.message,true)}};
+ $("manualPdf").onclick=()=>{try{const JsPDF=window.jspdf?.jsPDF;if(!JsPDF)throw Error("Le module PDF n’est pas chargé. Actualise la page.");const pdf=new JsPDF({unit:"mm",format:"a4"});let y=16;for(const raw of plain.split("\n")){const line=raw.trimEnd();if(!line){y+=3;continue;}const heading=/^#{1,3} /.test(line),text=pdf.splitTextToSize(line.replace(/^#{1,3} /,"").replace(/\*\*/g,"").replace(/\x60/g,""),180);if(heading){y+=2;pdf.setFont("helvetica","bold");pdf.setFontSize(line.startsWith("# ") ? 17 : line.startsWith("## ") ? 13 : 10);}else{pdf.setFont("helvetica","normal");pdf.setFontSize(9);}for(const part of text){if(y>282){pdf.addPage();y=16;}pdf.text(part,15,y);y+=heading?6:4.5;}}pdf.save("AFE-CI-Manuel-Procedures-COO.pdf");}catch(e){message(e.message,true)}}; $("manualWord").onclick=async()=>{try{const lib=window.docx;if(!lib?.Document||!lib?.Packer)throw Error("Le module Word n’est pas chargé. Actualise la page.");const paragraphs=plain.split("\n").map(line=>{const h=/^(#{1,3}) /.exec(line);return new lib.Paragraph({children:[new lib.TextRun({text:line.replace(/^#{1,3} /,"")||" ",bold:Boolean(h)||/^\*\*/.test(line),size:h?(h[1].length===1?34:h[1].length===2?28:24):20})],spacing:{after:100}})});const doc=new lib.Document({sections:[{properties:{},children:paragraphs}]});download(await lib.Packer.toBlob(doc),"AFE-CI-Manuel-Procedures-COO.docx");}catch(e){message(e.message,true)}};
 }
 let selectedArchiveId=null;
 async function renderArchives(){
@@ -1289,9 +1316,10 @@ async function renderArchives(){
  search.oninput=paint;paint();if(selectedArchiveId)await openArchive(selectedArchiveId);
  async function openArchive(id){
   selectedArchiveId=id;const d=await api(base()+"archives/"+encodeURIComponent(id)),a=d.archive,docs=arr(d.documents),available=arr(d.availableDocuments),snapshot=a.mission_snapshot||{},result=snapshot.result||{},target=$("archiveDetail");
-  target.innerHTML='<section class="card"><div class="actions" style="justify-content:space-between"><div><h2>'+esc(a.mission_number)+' · '+esc(a.mission_title)+'</h2><span class="small">Date d’archivage : '+esc(a.archive_date)+' · '+esc(a.department_name||"Direction non renseignée")+' · Agent : '+esc(a.agent_name||"Non renseigné")+'</span></div><button class="btn" id="closeArchiveDetail">Fermer</button></div><div class="grid"><div class="metric"><b>'+esc(arr(a.tasks_snapshot).length)+'</b><span class="small">Tâches figées à la clôture</span></div><div class="metric"><b>'+esc(docs.length)+'</b><span class="small">Documents rattachés</span></div><div class="metric"><b>'+esc(a.document_status==="complete"?"Complet":a.document_status==="partial"?"Partiel":"À compléter")+'</b><span class="small">État documentaire</span></div></div></section><section class="card"><h2>Rapport et résultats de mission</h2><h3>Synthèse</h3><p>'+esc(result.summary||"Aucune synthèse textuelle n’a été enregistrée dans le résultat de mission.")+'</p><h3>Analyse</h3><pre>'+esc(result.analysis||"Aucune analyse enregistrée.")+'</pre><h3>Livrables déclarés</h3>'+(arr(result.deliverables).length?arr(result.deliverables).map((x,i)=>'<div class="row"><strong>Livrable '+(i+1)+'</strong><pre>'+esc(typeof x==="string"?x:JSON.stringify(x,null,2))+'</pre></div>').join(""):'<div class="empty">Aucun livrable déclaré dans le résultat de mission.</div>')+'</section><section class="card"><h2>Photographie des tâches à la clôture</h2>'+(arr(a.tasks_snapshot).length?arr(a.tasks_snapshot).map(t=>'<div class="row"><div><strong>'+esc(t.title||t.id||"Tâche")+'</strong><span class="small">'+esc(t.status||"Statut inconnu")+' · '+esc(t.progress_percent??0)+' %</span></div></div>').join(""):'<div class="empty">Aucune tâche associée au moment de l’archivage.</div>')+'</section><section class="card"><h2>Documents et rapports associés</h2><p class="small">Chaque document est copié dans le stockage privé des archives. Le fichier source reste intact ; la copie archivée est indépendante et téléchargeable même si le document source est ultérieurement déplacé.</p>'+(docs.length?docs.map(doc=>'<div class="row"><div><strong>'+esc(doc.title)+'</strong><span class="small">'+esc(doc.mime_type)+' · '+esc(doc.size_bytes)+' octets · déposé le '+esc(doc.source_created_at||doc.linked_at)+'</span></div><button class="btn" data-download-archive-doc="'+esc(doc.id)+'">Télécharger</button></div>').join(""):'<div class="empty">Aucun document n’a encore été rattaché à ce dossier.</div>')+(available.length?'<div class="form" style="margin-top:12px"><div><label for="archiveDocumentSelect">Rattacher un document déjà enregistré dans le coffre</label><select class="field" id="archiveDocumentSelect"><option value="">Choisir un document…</option>'+available.map(doc=>'<option value="'+esc(doc.id)+'">'+esc(doc.title)+' · '+esc(doc.created_at)+'</option>').join("")+'</select></div><div style="align-self:end"><button class="btn primary" id="linkArchiveDocument">Rattacher au dossier</button></div></div>':'<p class="small">Aucun autre document disponible dans le coffre documentaire de cet espace.</p>')+'</section><section class="card"><h2>Traçabilité et données de clôture</h2><pre>'+esc(JSON.stringify({missionId:a.mission_id,archivedAt:a.archived_at,missionSnapshot:snapshot},null,2))+'</pre></section>';
+  target.innerHTML='<section class="card"><div class="actions" style="justify-content:space-between"><div><h2>'+esc(a.mission_number)+' · '+esc(a.mission_title)+'</h2><span class="small">Date d’archivage : '+esc(a.archive_date)+' · '+esc(a.department_name||"Direction non renseignée")+' · Agent : '+esc(a.agent_name||"Non renseigné")+'</span></div><button class="btn" id="closeArchiveDetail">Fermer</button></div><div class="grid"><div class="metric"><b>'+esc(arr(a.tasks_snapshot).length)+'</b><span class="small">Tâches figées à la clôture</span></div><div class="metric"><b>'+esc(docs.length)+'</b><span class="small">Documents rattachés</span></div><div class="metric"><b>'+esc(a.document_status==="complete"?"Complet":a.document_status==="partial"?"Partiel":"À compléter")+'</b><span class="small">État documentaire</span></div></div></section><section class="card"><h2>Rapport et résultats de mission</h2><h3>Synthèse</h3><p>'+esc(result.summary||"Aucune synthèse textuelle n’a été enregistrée dans le résultat de mission.")+'</p><h3>Analyse</h3><pre>'+esc(result.analysis||"Aucune analyse enregistrée.")+'</pre><h3>Livrables déclarés</h3>'+(arr(result.deliverables).length?arr(result.deliverables).map((x,i)=>'<div class="row"><strong>Livrable '+(i+1)+'</strong><pre>'+esc(typeof x==="string"?x:JSON.stringify(x,null,2))+'</pre></div>').join(""):'<div class="empty">Aucun livrable déclaré dans le résultat de mission.</div>')+'</section><section class="card"><h2>Photographie des tâches à la clôture</h2>'+(arr(a.tasks_snapshot).length?arr(a.tasks_snapshot).map(t=>'<div class="row"><div><strong>'+esc(t.title||t.id||"Tâche")+'</strong><span class="small">'+esc(t.status||"Statut inconnu")+' · '+esc(t.progress_percent??0)+' %</span></div></div>').join(""):'<div class="empty">Aucune tâche associée au moment de l’archivage.</div>')+'</section><section class="card"><h2>Documents et rapports associés</h2><p class="small">Chaque document est copié dans le stockage privé des archives. Le fichier source reste intact ; la copie archivée est indépendante et téléchargeable même si le document source est ultérieurement déplacé.</p>'+(docs.length?docs.map(doc=>'<div class="row"><div><strong>'+esc(doc.title)+'</strong><span class="small">'+esc(doc.mime_type)+' · '+esc(doc.size_bytes)+' octets · déposé le '+esc(doc.source_created_at||doc.linked_at)+'</span></div><button class="btn" data-download-archive-doc="'+esc(doc.id)+'">Télécharger</button></div>').join(""):'<div class="empty">Aucun document n’a encore été rattaché à ce dossier.</div>')+(available.length?'<div class="form" style="margin-top:12px"><div><label for="archiveDocumentSelect">Rattacher un document déjà enregistré dans le coffre</label><select class="field" id="archiveDocumentSelect"><option value="">Choisir un document…</option>'+available.map(doc=>'<option value="'+esc(doc.id)+'">'+esc(doc.title)+' · '+esc(doc.created_at)+'</option>').join("")+'</select></div><div style="align-self:end"><button class="btn primary" id="linkArchiveDocument">Rattacher au dossier</button></div></div>':'<p class="small">Aucun autre document disponible dans le coffre documentaire de cet espace.</p>')+'<div class="form" style="margin-top:14px"><div><label for="archiveFiles">Importer directement les rapports et livrables (PDF, Word, Excel, PowerPoint, images)</label><input class="field" id="archiveFiles" type="file" multiple accept=".pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.webp"></div><div style="align-self:end"><button class="btn primary" id="uploadArchiveFiles">Importer dans les archives</button></div></div></section><section class="card"><h2>Traçabilité et données de clôture</h2><pre>'+esc(JSON.stringify({missionId:a.mission_id,archivedAt:a.archived_at,missionSnapshot:snapshot},null,2))+'</pre></section>';
   $("closeArchiveDetail").onclick=()=>{selectedArchiveId=null;target.innerHTML=""};
   const link=$("linkArchiveDocument");if(link)link.onclick=async()=>{const documentId=$("archiveDocumentSelect").value;if(!documentId){message("Sélectionnez un document.",true);return}link.disabled=true;try{await api(base()+"archives/"+encodeURIComponent(id)+"/documents",{method:"POST",body:JSON.stringify({documentId})});message("Document rattaché au dossier d’archive.");await openArchive(id);await refreshArchiveRows()}catch(e){message(e.message,true)}finally{link.disabled=false}};
+  const uploadButton=$("uploadArchiveFiles");if(uploadButton)uploadButton.onclick=async()=>{const files=Array.from($("archiveFiles").files||[]);if(!files.length){message("Sélectionnez au moins un fichier.",true);return}uploadButton.disabled=true;try{for(const file of files){const init=await api(base()+"archives/"+encodeURIComponent(id)+"/upload-url",{method:"POST",body:JSON.stringify({fileName:file.name,mimeType:file.type,sizeBytes:file.size})});const uploaded=await fetch(init.uploadUrl,{method:"PUT",headers:{"Content-Type":file.type},body:file});if(!uploaded.ok)throw new Error("Échec du téléversement de "+file.name+" ("+uploaded.status+").");await api(base()+"archives/"+encodeURIComponent(id)+"/upload-complete",{method:"POST",body:JSON.stringify({path:init.path,title:file.name,mimeType:file.type,sizeBytes:file.size})})}message(files.length+" document(s) archivé(s) avec succès.");await openArchive(id);await refreshArchiveRows()}catch(e){message(e.message,true)}finally{uploadButton.disabled=false}};
   target.querySelectorAll("[data-download-archive-doc]").forEach(b=>b.onclick=async()=>{try{const signed=await api(base()+"archives/"+encodeURIComponent(id)+"/documents/"+encodeURIComponent(b.dataset.downloadArchiveDoc)+"/signed-url",{method:"POST",body:"{}"});window.open(signed.url,"_blank","noopener,noreferrer")}catch(e){message(e.message,true)}});
  }
  async function refreshArchiveRows(){const fresh=await api(base()+"archives"),q=search.value.trim().toLocaleLowerCase("fr"),next=arr(fresh.archives).filter(a=>[a.mission_number,a.mission_title,a.department_name,a.archive_date].some(v=>String(v??"").toLocaleLowerCase("fr").includes(q)));rows.innerHTML=next.map(a=>'<div class="row"><div><strong>'+esc(a.mission_number)+' · '+esc(a.mission_title)+'</strong><span class="small">Clôturée le '+esc(a.archive_date)+' · '+esc(a.department_name||"Direction non renseignée")+' · '+esc(a.document_count||0)+' document(s)</span></div><button class="btn" data-open-archive="'+esc(a.id)+'">Ouvrir le dossier</button></div>').join("");rows.querySelectorAll("[data-open-archive]").forEach(b=>b.onclick=()=>openArchive(b.dataset.openArchive));}

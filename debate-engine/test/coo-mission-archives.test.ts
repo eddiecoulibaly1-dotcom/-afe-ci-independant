@@ -26,6 +26,14 @@ test("archive documents are independent storage copies with source provenance", 
  assert.match(source, /source_storage_path: source\.storage_path/);
  assert.match(source, /afe_coo_mission_archive_documents/);
 });
+test("archive upload endpoints validate and verify private storage before registering a document", async () => {
+ const source = await readFile(platformUrl, "utf8");
+ assert.match(source, /p\[7\] === "upload-url"/);
+ assert.match(source, /p\[7\] === "upload-complete"/);
+ assert.match(source, /sizeBytes > 50000000/);
+ assert.match(source, /Le fichier n’a pas été confirmé dans le stockage privé/);
+ assert.match(source, /uploadArchiveFiles/);
+});
 test("COO archive API enforces workspace access and signed downloads", async () => {
  const source = await readFile(platformUrl, "utf8");
  assert.match(source, /resource === "archives" && method === "GET"/);
