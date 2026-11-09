@@ -28,7 +28,7 @@ test("dependency node keys are typed and cannot be empty", () => {
 test("hard prerequisites cannot be attached to a department-only node", () => {
   assert.throws(
     () => validateProposedRelation("task", "t1", "department", "d1", "hard_prerequisite"),
-    /prérequis dur/
+    /prérequis technique dur/
   );
   assert.doesNotThrow(
     () => validateProposedRelation("task", "t1", "department", "d1", "input_reference")
