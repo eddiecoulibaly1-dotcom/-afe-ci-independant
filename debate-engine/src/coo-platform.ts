@@ -561,7 +561,7 @@ async function ensureAlertConditionCleared(workspaceId: string, alert: any) {
   }
 }
 
-async function appendAlertEvent(workspaceId: string, alertId: string, actorId: string, eventType: string, details: Record<string, unknown> = {}) {
+async function appendAlertEvent(workspaceId: string, alertId: string, actorId: string | null, eventType: string, details: Record<string, unknown> = {}) {
   await db("afe_coo_alert_events", {
     method: "POST",
     headers: { Prefer: "return=minimal" },
