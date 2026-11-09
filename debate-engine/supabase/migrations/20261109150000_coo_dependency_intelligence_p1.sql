@@ -199,6 +199,7 @@ DECLARE
   v_mission_status text;
   v_mission_id uuid;
 BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.workspace_id::text,0));
   v_dependent_key := public.afe_coo_dependency_node_key(NEW.dependent_kind, NEW.dependent_task_id, NEW.dependent_mission_id, NULL);
   v_prerequisite_key := public.afe_coo_dependency_node_key(NEW.prerequisite_kind, NEW.prerequisite_task_id, NEW.prerequisite_mission_id, NEW.prerequisite_department_id);
 
@@ -320,7 +321,7 @@ BEGIN
           blocked_reason = 'COO_DEPENDENCY_BLOCKED: prérequis DG non satisfait (' || NEW.id::text || ')',
           updated_at = now()
       WHERE id = NEW.dependent_task_id AND workspace_id = NEW.workspace_id
-        AND status NOT IN ('done','cancelled');
+        AND status IN ('todo','in_progress');
     END IF;
     IF v_mission_id IS NOT NULL THEN
       UPDATE public.afe_agent_missions
@@ -328,7 +329,7 @@ BEGIN
           blocked_reason = 'COO_DEPENDENCY_BLOCKED: dépendance DG non satisfaite (' || NEW.id::text || ')',
           updated_at = now()
       WHERE id = v_mission_id AND workspace_id = NEW.workspace_id
-        AND status IN ('queued','planning','running');
+        AND status IN ('queued','planning');
     END IF;
   END IF;
   IF NEW.dependent_kind = 'mission' AND NEW.prerequisite_kind = 'mission' THEN
@@ -442,11 +443,11 @@ DECLARE
   v_mission record;
 BEGIN
   IF NEW.event_type <> 'mission.deliverables.submitted' THEN RETURN NEW; END IF;
-  SELECT m.id, COALESCE(m.department_id, a.department_id), m.workspace_id INTO v_mission
+  SELECT m.id, COALESCE(m.department_id, a.department_id) AS department_id, m.workspace_id INTO v_mission
   FROM public.afe_agent_missions m
   LEFT JOIN public.afe_agents a ON a.id = m.agent_id AND a.workspace_id = m.workspace_id
   WHERE m.id = NEW.mission_id AND m.workspace_id = NEW.workspace_id;
-  IF NOT FOUND THEN RETURN NEW; END IF;
+  IF NOT FOUND OR v_mission.department_id IS NULL THEN RETURN NEW; END IF;
 
   FOR item IN SELECT value FROM jsonb_array_elements(CASE WHEN jsonb_typeof(NEW.payload->'taskDeliverables') = 'array' THEN NEW.payload->'taskDeliverables' ELSE '[]'::jsonb END)
   LOOP
