@@ -122,7 +122,7 @@ test("COO alert lifecycle automatically resolves cleared task and mission condit
 
 test("COO alert resolution is rejected while a linked task or mission remains blocked", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /ensureAlertConditionCleared\(workspaceId, rows\[0\]\)/);
+  assert.match(source, /ensureAlertConditionCleared\(workspaceId, alert\)/);
   assert.match(source, /task\.status === "blocked" \|\| clean\(task\.blocked_reason, 3000\)/);
   assert.match(source, /mission\.status === "paused" \|\| clean\(mission\.blocked_reason, 3000\)/);
   assert.match(source, /ne peut pas être résolue : la tâche est toujours bloquée/);
