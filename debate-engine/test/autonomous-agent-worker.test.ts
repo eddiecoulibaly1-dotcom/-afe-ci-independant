@@ -37,3 +37,8 @@ test("worker retries are bounded and use increasing delay",()=>{
 test("Vercel invokes the worker independently of the browser",()=>{
  assert.deepEqual(config.crons,[{path:"/internal/agent-worker",schedule:"* * * * *"},{path:"/internal/coo-report-worker",schedule:"0 8 * * *"}]);
 });
+
+test("worker reaps abandoned leases before claiming new work and tolerates one transient renewal failure",()=>{
+ assert.ok(worker.includes("rpc/reap_expired_afe_agent_mission_leases"));
+ assert.ok(worker.includes("failures>=2"));
+});
