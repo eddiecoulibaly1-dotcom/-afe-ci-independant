@@ -538,10 +538,28 @@ async function generateReport(workspaceId: string, reportType: "daily" | "weekly
 async function listReports(workspaceId: string) {
   return db<any[]>("afe_coo_reports?workspace_id=eq." + enc(workspaceId) + "&order=created_at.desc&limit=100");
 }
+async function ensureAlertConditionCleared(workspaceId: string, alert: any) {
+  if (alert.alert_type === "task_blocked" && alert.task_id) {
+    const tasks = await db<any[]>("afe_operational_tasks?id=eq." + enc(alert.task_id) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
+    const task = tasks[0];
+    if (task && (task.status === "blocked" || clean(task.blocked_reason, 3000))) {
+      throw fail("Cette alerte ne peut pas être résolue : la tâche est toujours bloquée. Le responsable doit lever le blocage et mettre à jour la tâche avant la clôture.", 409);
+    }
+  }
+  if (alert.alert_type === "mission_blocked" && alert.mission_id) {
+    const missions = await db<any[]>("afe_agent_missions?id=eq." + enc(alert.mission_id) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
+    const mission = missions[0];
+    if (mission && (mission.status === "paused" || clean(mission.blocked_reason, 3000))) {
+      throw fail("Cette alerte ne peut pas être résolue : la mission est toujours suspendue ou conserve un motif de blocage. Le blocage doit être levé avant la clôture.", 409);
+    }
+  }
+}
+
 async function actOnAlert(workspaceId: string, user: AuthUser, id: string, action: string) {
   if (!["acknowledge", "resolve"].includes(action)) throw fail("Action d'alerte invalide.");
   const rows = await db<any[]>("afe_coo_alerts?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
   if (!rows[0]) throw fail("Alerte introuvable.", 404);
+  if (action === "resolve") await ensureAlertConditionCleared(workspaceId, rows[0]);
   const patch = action === "acknowledge"
     ? { status: "acknowledged", acknowledged_by: user.id, acknowledged_at: nowIso(), updated_at: nowIso() }
     : { status: "resolved", resolved_by: user.id, resolved_at: nowIso(), updated_at: nowIso() };
