@@ -1161,7 +1161,7 @@ function reportText(report){
  lines.push(verificationAvailable?"Missions terminées vérifiées : "+fmt(i.completedVerifiedMissions)+", non vérifiées : "+fmt(i.completedUnverifiedMissions):"Vérification des missions terminées : non disponible dans cette version du rapport archivé.");
  const missionCount=Number(i.totalMissions||0),departmentMissionCount=depts.reduce((n,d)=>n+Number(d.missionCount||0),0),findings=[];
  const quality=c.dataQuality||{};
- if(arr(quality.completedWithoutTasks).length)findings.push(arr(quality.completedWithoutTasks).length+" mission(s) terminée(s) sans tâche opérationnelle associée : exécution non démontrée.");
+ if(arr(quality.completedWithoutTasks).length&&!arr(quality.findings).some((x)=>/mission\(s\).*sans tâche opérationnelle associée/i.test(x)))findings.push(arr(quality.completedWithoutTasks).length+" mission(s) terminée(s) sans tâche opérationnelle associée : exécution non démontrée.");
  if(arr(quality.completedWithIncompleteTasks).length)findings.push(arr(quality.completedWithIncompleteTasks).length+" mission(s) terminée(s) avec des tâches non achevées : clôture incohérente.");
  if(Number(quality.unassignedMissionCount||0)>0)findings.push(Number(quality.unassignedMissionCount)+" mission(s) sans direction identifiable après rapprochement avec le responsable IA.");
  arr(quality.findings).filter((x)=>!findings.includes(x)).forEach((x)=>findings.push(x));
@@ -1177,7 +1177,7 @@ function reportHtml(report){
  const metricCards=[["Missions",i.totalMissions],["Terminées",i.completedMissions],["Actives",i.activeMissions],["Tâches",i.totalTasks],["Tâches ouvertes",i.openTasks],["Alertes",i.openAlerts],["Alertes critiques",i.criticalAlerts],["Validations humaines",i.pendingHumanApprovals],["Missions créées sur la période",activity.missionsCreated],["Tâches créées sur la période",activity.tasksCreated]];
  const missionCount=Number(i.totalMissions||0),byDept=depts.reduce((n,d)=>n+Number(d.missionCount||0),0),warnings=[];
  const quality=c.dataQuality||{};
- if(arr(quality.completedWithoutTasks).length)warnings.push(arr(quality.completedWithoutTasks).length+" mission(s) terminée(s) sans tâche associée : exécution non démontrée.");
+ if(arr(quality.completedWithoutTasks).length&&!arr(quality.findings).some((x)=>/mission\(s\).*sans tâche opérationnelle associée/i.test(x)))warnings.push(arr(quality.completedWithoutTasks).length+" mission(s) terminée(s) sans tâche associée : exécution non démontrée.");
  if(Number(quality.unassignedMissionCount||0)>0)warnings.push(Number(quality.unassignedMissionCount)+" mission(s) sans direction identifiable.");
  arr(quality.findings).filter((x)=>!warnings.includes(x)).forEach((x)=>warnings.push(x));
  if(Number(i.completedMissions||0)>0&&Number(i.totalTasks||0)===0)warnings.push("Des missions sont déclarées terminées alors qu'aucune tâche n'est recensée : leur exécution n'est pas démontrée par le suivi des tâches.");
