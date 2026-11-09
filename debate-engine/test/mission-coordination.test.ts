@@ -23,6 +23,7 @@ const platformUrl=new URL("../src/autonomous-agents/platform.ts",import.meta.url
 const workerUrl=new URL("../src/autonomous-agents/worker.ts",import.meta.url);
 const migrationUrl=new URL("../supabase/migrations/20261109102000_coo_mission_dependencies_and_worker_lease_hardening.sql",import.meta.url);
 const recoveryMigrationUrl=new URL("../supabase/migrations/20261109103000_coo_expired_worker_lease_recovery.sql",import.meta.url);
+const legacyRecoveryMigrationUrl=new URL("../supabase/migrations/20261109104000_coo_recover_legacy_unleased_missions.sql",import.meta.url);
 const cooPlatformUrl=new URL("../src/coo-platform.ts",import.meta.url);
 test("mission dependency API is workspace-scoped, auditable and restricted to non-running missions",async()=>{
  const source=await readFile(platformUrl,"utf8");
@@ -58,4 +59,10 @@ test("expired worker leases are reaped with bounded retry or terminal failure",a
  assert.match(sql,/attempt_count>=m\.max_attempts/);
  assert.match(sql,/mission\.lease_expired_retry_scheduled/);
  assert.match(sql,/mission\.lease_expired_failed/);
+});
+
+test("worker reaper also recovers legacy running missions without a lease timestamp",async()=>{
+ const sql=await readFile(legacyRecoveryMigrationUrl,"utf8");
+ assert.match(sql,/lease_expires_at IS NULL OR m\.lease_expires_at<now\(\)/);
+ assert.match(sql,/WORKER_LEASE_EXPIRED/);
 });
