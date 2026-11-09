@@ -117,7 +117,8 @@ test("blocked and paused missions generate a COO alert and dashboard indicator",
 test("COO alert lifecycle automatically resolves cleared task and mission conditions", async () => {
   const source = await readFile(platformUrl, "utf8");
   assert.match(source, /alert\.alert_type\?\.startsWith\("task_"/);
-  assert.match(source, /status: "resolved", resolved_by: null, resolved_at: nowIso\(\)/);
+  assert.match(source, /workflow_status: "pending_verification"/);
+  assert.match(source, /condition_cleared_pending_verification/);
 });
 
 test("COO alert resolution is rejected while a linked task or mission remains blocked", async () => {
@@ -504,4 +505,13 @@ test("COO alert condition reappearance reopens the alert and records a system hi
   assert.match(source, /reopen_count: Number\(found\[0\]\.reopen_count \|\| 0\) \+ 1/);
   assert.match(source, /last_reopened_at: reopenedAt/);
   assert.match(source, /appendAlertEvent\(workspaceId, found\[0\]\.id, null, "condition_reappeared"/);
+});
+
+test("COO automatic condition clearance never bypasses evidence and independent verification", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /await ensureAlertConditionCleared\(workspaceId, alert\)/);
+  assert.match(source, /clean\(alert\.evidence_reference, 2000\)\.length < 10/);
+  assert.match(source, /clean\(alert\.resolution_summary, 4000\)\.length < 20/);
+  assert.match(source, /condition_cleared_pending_verification/);
+  assert.match(source, /found\[0\]\.workflow_status === "pending_verification"/);
 });
