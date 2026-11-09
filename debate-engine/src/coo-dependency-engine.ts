@@ -244,8 +244,8 @@ async function listDependencies(workspaceId: string) {
     db<any[]>("afe_coo_deliverables?workspace_id=eq." + enc(workspaceId) + "&order=submitted_at.desc&limit=1000"),
     db<any[]>("afe_coo_escalations?workspace_id=eq." + enc(workspaceId) + "&order=updated_at.desc&limit=500"),
     db<any[]>("afe_coo_escalation_policies?workspace_id=eq." + enc(workspaceId) + "&limit=1"),
-    db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&select=id,title,status,mission_id,department_id,blocked_reason,due_at,dependency_analysis_status&limit=1000"),
-    db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&select=id,title,status,department_id,agent_id,blocked_reason,due_at&limit=500"),
+    db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&select=id,title,status,mission_id,department_id,blocked_reason,due_at,priority,progress_percent,dependency_analysis_status&limit=1000"),
+    db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&select=id,title,status,department_id,agent_id,blocked_reason,due_at,priority&limit=500"),
     db<any[]>("afe_org_departments?workspace_id=eq." + enc(workspaceId) + "&select=id,name,slug,is_independent,human_only,director_user_id&limit=100")
   ]);
   const taskMap = new Map(tasks.map(x => [x.id, x]));
@@ -277,9 +277,58 @@ async function listDependencies(workspaceId: string) {
       cross_department: Boolean(dependentDepartmentId && prerequisiteDepartmentId && dependentDepartmentId !== prerequisiteDepartmentId)
     };
   });
+  const graphEdges = edges.filter(x => x.status === "active" && x.relation_type === "hard_prerequisite");
+  const graphNodes = new Map<string, any>();
+  const adjacency = new Map<string, string[]>();
+  const indegree = new Map<string, number>();
+  const levelByNode = new Map<string, number>();
+  const nodeFor = (kind: string, id: string) => {
+    const key = kind + ":" + id;
+    if (!graphNodes.has(key)) {
+      const value = node(kind, id);
+      const departmentId = kind === "department" ? id : (value as any)?.department_id;
+      graphNodes.set(key, {
+        key, kind, id, title: (value as any)?.title ?? (value as any)?.name ?? "Élément introuvable",
+        status: (value as any)?.status ?? "reference", priority: Number((value as any)?.priority ?? 3),
+        department: departmentMap.get(departmentId)?.name ?? "Direction non renseignée",
+        departmentId, blockedReason: (value as any)?.blocked_reason ?? null
+      });
+      indegree.set(key, 0);
+      adjacency.set(key, []);
+    }
+    return key;
+  };
+  for (const edge of graphEdges) {
+    const dependentId = edge.dependent_task_id ?? edge.dependent_mission_id;
+    const prerequisiteId = edge.prerequisite_task_id ?? edge.prerequisite_mission_id;
+    if (!dependentId || !prerequisiteId) continue;
+    const dependentKey = nodeFor(edge.dependent_kind, dependentId);
+    const prerequisiteKey = nodeFor(edge.prerequisite_kind, prerequisiteId);
+    adjacency.get(prerequisiteKey)!.push(dependentKey);
+    indegree.set(dependentKey, (indegree.get(dependentKey) ?? 0) + 1);
+  }
+  const ready = [...graphNodes.keys()].filter(key => (indegree.get(key) ?? 0) === 0);
+  const ordered: any[] = [];
+  while (ready.length) {
+    ready.sort((a,b) => graphNodes.get(a).priority - graphNodes.get(b).priority || graphNodes.get(a).title.localeCompare(graphNodes.get(b).title, "fr"));
+    const key = ready.shift()!;
+    const current = graphNodes.get(key);
+    current.stage = levelByNode.get(key) ?? 0;
+    ordered.push(current);
+    for (const next of adjacency.get(key) ?? []) {
+      levelByNode.set(next, Math.max(levelByNode.get(next) ?? 0, current.stage + 1));
+      indegree.set(next, (indegree.get(next) ?? 0) - 1);
+      if (indegree.get(next) === 0) ready.push(next);
+    }
+  }
+  const executionStages = [...new Set(ordered.map(x => x.stage))].sort((a,b) => a-b).map(stage => {
+    const items = ordered.filter(x => x.stage === stage);
+    return { stage: Number(stage) + 1, directions: [...new Set(items.map(x => x.department))], items };
+  });
+  const graphCycleDetected = ordered.length !== graphNodes.size;
   return {
     edges: enriched, deliverables, escalations, policy: policyRows[0] ?? null,
-    departments,
+    departments, executionStages, graphCycleDetected,
     summary: {
       proposalsPendingDg: edges.filter(x => x.status === "pending_dg").length,
       activeHardDependencies: edges.filter(x => x.status === "active" && x.relation_type === "hard_prerequisite").length,
