@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { callModel, callModelExact } from "../providers.js";
 import type { Provider } from "../types.js";
 import { runMissionDeliberation } from "./orchestration.js";
@@ -8,7 +8,7 @@ import { reviewMissionSemantics } from "./semantic-review.js";
 type Claim={mission_id:string;workspace_id:string;agent_id:string;lease_token:string;attempt_count:number};
 type WorkerTick={id:string;startedAt:number;reapedCount:number;dispatchedCount:number};
 async function beginWorkerTick(workerKey:string):Promise<WorkerTick>{
- const id=crypto.randomUUID(),startedAt=Date.now(),stamp=new Date(startedAt).toISOString();
+ const id=randomUUID(),startedAt=Date.now(),stamp=new Date(startedAt).toISOString();
  await db("afe_coo_worker_ticks",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify({
   id,worker_key:workerKey,environment:process.env.VERCEL_ENV??"unknown",status:"running",started_at:stamp,heartbeat_at:stamp
  })});
