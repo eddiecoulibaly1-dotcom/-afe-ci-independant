@@ -257,6 +257,8 @@ test("COO reports reconcile mission totals and flag completed missions without t
   assert.match(reporting, /unassignedMissionCount: unassignedMissions\.length/);
   assert.match(source, /quality\.completedWithoutTasks/);
   assert.match(source, /quality\.unassignedMissionCount/);
+  const duplicateGuard = "arr(quality.findings).some((x)=>/mission\\(s\\).*sans tâche opérationnelle associée/i.test(x))";
+  assert.equal(source.split(duplicateGuard).length - 1, 2, "both PDF/HTML and plain-text report renderers must suppress duplicate completed-without-tasks findings");
 });
 
 
