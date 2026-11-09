@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const migrationUrl = new URL("../supabase/migrations/20261107190000_afe_ci_coo_operations_control_plane.sql", import.meta.url);
 const alertWorkflowUrl = new URL("../supabase/migrations/20261109081327_coo_alert_resolution_workflow.sql", import.meta.url);
+const alertWorkflowIndexesUrl = new URL("../supabase/migrations/20261109081603_coo_alert_workflow_fk_indexes.sql", import.meta.url);
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
 const reportingUrl = new URL("../src/coo-reporting.ts", import.meta.url);
 const indexesUrl = new URL("../supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql", import.meta.url);
@@ -514,4 +515,11 @@ test("COO automatic condition clearance never bypasses evidence and independent 
   assert.match(source, /clean\(alert\.resolution_summary, 4000\)\.length < 20/);
   assert.match(source, /condition_cleared_pending_verification/);
   assert.match(source, /found\[0\]\.workflow_status === "pending_verification"/);
+});
+
+test("COO alert workflow foreign keys have dedicated indexes", async () => {
+  const sql = await readFile(alertWorkflowIndexesUrl, "utf8");
+  for (const index of ["afe_coo_alerts_verified_by_idx","afe_coo_alert_events_alert_id_idx","afe_coo_alert_events_actor_id_idx"]) {
+    assert.ok(sql.includes(index), "Missing alert workflow FK index: " + index);
+  }
 });
