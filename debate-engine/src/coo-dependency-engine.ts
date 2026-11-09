@@ -241,7 +241,7 @@ async function listDependencies(workspaceId: string) {
     db<any[]>("afe_coo_deliverables?workspace_id=eq." + enc(workspaceId) + "&order=submitted_at.desc&limit=1000"),
     db<any[]>("afe_coo_escalations?workspace_id=eq." + enc(workspaceId) + "&order=updated_at.desc&limit=500"),
     db<any[]>("afe_coo_escalation_policies?workspace_id=eq." + enc(workspaceId) + "&limit=1"),
-    db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&select=id,title,status,mission_id,department_id,blocked_reason,due_at,priority,progress_percent,dependency_analysis_status&limit=1000"),
+    db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&select=id,title,status,mission_id,department_id,blocked_reason,due_at,priority,progress_percent,dependency_analysis_status,dependency_analysis_at&limit=1000"),
     db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&select=id,title,status,department_id,agent_id,blocked_reason,due_at,priority&limit=500"),
     db<any[]>("afe_org_departments?workspace_id=eq." + enc(workspaceId) + "&select=id,name,slug,is_independent,human_only,director_user_id&limit=100")
   ]);
