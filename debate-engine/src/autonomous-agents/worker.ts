@@ -139,14 +139,14 @@ async function syncCooTaskResults(claim:Claim,mission:any,output:MissionResult,h
  if(incomplete.length){
   const blockedDetails=tasks.map((task:any)=>({task,result:byId.get(task.id) as MissionTaskResult})).filter(x=>x.result.status==="blocked").map(x=>x.task.title+" — "+(x.result.blockedReason.trim()||"motif non précisé"));
   const reason=(blockedDetails.length?"Blocages à traiter : "+blockedDetails.join(" ; "):"Exécution partielle : "+incomplete.length+" tâche(s) restent à terminer.") ;
-  await db("afe_agent_missions?id=eq."+encodeURIComponent(claim.mission_id)+"&workspace_id=eq."+encodeURIComponent(claim.workspace_id)+"&lease_token=eq."+encodeURIComponent(claim.lease_token),{
+  await db("afe_agent_missions?id=eq."+encodeURIComponent(claim.mission_id)+"&workspace_id=eq."+encodeURIComponent(claim.workspace_id)+"&lease_token=eq."+encodeURIComponent(claim.lease_token)+"&status=eq.running&lease_expires_at=gt."+encodeURIComponent(new Date().toISOString()),{
    method:"PATCH",headers:{"Prefer":"return=minimal"},
    body:JSON.stringify({status:"paused",progress_percent:progress,blocked_reason:reason.slice(0,3000),result:{...output,execution_state:"partial",blocked_task_count:blockedCount,mission_progress_percent:progress},lease_token:null,lease_expires_at:null,updated_at:new Date().toISOString()})
   });
   await db("afe_agent_events",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify({workspace_id:claim.workspace_id,mission_id:claim.mission_id,agent_id:claim.agent_id,actor_type:"worker",event_type:"coo.tasks.incomplete",payload:{blockedCount,incompleteTasks:incomplete,progressPercent:progress,reason}})});
   return{complete:false,blockedCount,reason};
  }
- await db("afe_agent_missions?id=eq."+encodeURIComponent(claim.mission_id)+"&workspace_id=eq."+encodeURIComponent(claim.workspace_id)+"&lease_token=eq."+encodeURIComponent(claim.lease_token),{
+ await db("afe_agent_missions?id=eq."+encodeURIComponent(claim.mission_id)+"&workspace_id=eq."+encodeURIComponent(claim.workspace_id)+"&lease_token=eq."+encodeURIComponent(claim.lease_token)+"&status=eq.running&lease_expires_at=gt."+encodeURIComponent(new Date().toISOString()),{
   method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({progress_percent:100,blocked_reason:null,updated_at:new Date().toISOString()})
  });
  return{complete:true,blockedCount:0,reason:""};
