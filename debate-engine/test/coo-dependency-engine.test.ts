@@ -7,6 +7,7 @@ import {
 
 const migrationUrl = new URL("../supabase/migrations/20261109150000_coo_dependency_intelligence_p1.sql", import.meta.url);
 const guardMigrationUrl = new URL("../supabase/migrations/20261109153000_coo_dependency_execution_guard_and_auto_analysis.sql", import.meta.url);
+const refinementMigrationUrl = new URL("../supabase/migrations/20261109160000_coo_dependency_guard_refinements.sql", import.meta.url);
 const engineUrl = new URL("../src/coo-dependency-engine.ts", import.meta.url);
 const cooUrl = new URL("../src/coo-platform.ts", import.meta.url);
 const vercelUrl = new URL("../vercel.json", import.meta.url);
@@ -70,6 +71,12 @@ test("execution gates prevent direct task or mission status changes from bypassi
   assert.match(sql, /guard_afe_coo_mission_dependency_execution/);
   assert.match(sql, /dependency_analysis_status/);
   assert.match(sql, /COO_DEPENDENCY_BLOCKED:/);
+});
+
+test("task deliverables are uniquely versioned per task and same-mission hard edges cannot deadlock batch execution", async () => {
+  const sql = await readFile(refinementMigrationUrl, "utf8");
+  assert.match(sql, /task-output-' \|\| v_task_id::text/);
+  assert.match(sql, /Hard task dependencies inside the same mission are not supported/);
 });
 
 test("dependency API keeps proposals pending DG approval and acceptance is explicit", async () => {
