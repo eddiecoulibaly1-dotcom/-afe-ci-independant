@@ -35,7 +35,7 @@ test("worker retries are bounded and use increasing delay",()=>{
 });
 
 test("Vercel invokes the worker independently of the browser",()=>{
- assert.deepEqual(config.crons,[{path:"/internal/agent-worker",schedule:"* * * * *"},{path:"/internal/coo-report-worker",schedule:"0 8 * * *"}]);
+ assert.deepEqual(config.crons,[{path:"/internal/agent-worker",schedule:"* * * * *"},{path:"/internal/coo-report-worker",schedule:"0 8 * * *"},{path:"/internal/coo-dependency-worker",schedule:"*/5 * * * *"}]);
 });
 
 test("worker reaps abandoned leases before claiming new work and tolerates one transient renewal failure",()=>{
