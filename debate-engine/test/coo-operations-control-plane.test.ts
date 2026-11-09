@@ -529,3 +529,12 @@ test("COO alert verification requires an assigned owner and a different reviewer
   assert.match(source, /if \(!alert\.assigned_to\) throw fail\("Cette alerte doit d'abord être prise en charge/);
   assert.match(source, /if \(alert\.assigned_to === user\.id\) throw fail\("La vérification doit être effectuée par une personne différente/);
 });
+
+test("COO alerts can be assigned or transferred only to an eligible member of the same workspace", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /if \(action === "assign"\)/);
+  assert.match(source, /await validateMember\(workspaceId, assignedTo\)/);
+  assert.match(source, /members\.filter\(m => rank\[m\.role as Role\] >= rank\.editor\)/);
+  assert.match(source, /Affecter \/ transférer/);
+  assert.match(source, /patch\.assigned_to = assignedTo/);
+});
