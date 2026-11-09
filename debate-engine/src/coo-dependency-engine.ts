@@ -214,10 +214,7 @@ async function analyzeDependencies(workspaceId: string, user: AuthUser, input: a
       if (inserted[0]) {
         proposed.push(inserted[0]);
         existingKeys.add(key);
-        await recordEvent(workspaceId, user.id, "dependency.proposed", {
-          dependentKind, dependentId, prerequisiteKind, prerequisiteId, relationType,
-          rationale: row.rationale, expectedDeliverable: row.expected_deliverable, confidence: row.confidence
-        }, inserted[0].id);
+        // The database AFTER INSERT trigger writes the proposal audit event atomically.
       }
     } catch (error) {
       if ((error as any)?.status === 409) { skipped++; continue; }
@@ -396,11 +393,7 @@ async function decideDeliverable(workspaceId: string, user: AuthUser, deliverabl
   const updated = await db<any[]>("afe_coo_deliverables?id=eq." + enc(deliverableId) + "&workspace_id=eq." + enc(workspaceId), {
     method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch)
   });
-  await recordEvent(workspaceId, user.id, decision === "accept" ? "deliverable.accepted_by_dg" : "deliverable.rejected_by_dg", {
-    decision, note, producerKind: deliverable.producer_kind,
-    producerId: deliverable.producer_task_id ?? deliverable.producer_mission_id,
-    deliverableKey: deliverable.deliverable_key, version: deliverable.version
-  }, null, deliverableId);
+  // The database AFTER UPDATE trigger records the DG decision in the same transaction.
   return updated[0] ?? { ...deliverable, ...patch };
 }
 
