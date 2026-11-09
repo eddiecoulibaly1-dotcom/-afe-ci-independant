@@ -54,3 +54,34 @@ create trigger afe_coo_dg_decision_events_immutable
 before update or delete on public.afe_coo_dg_decision_events
 for each row execute function public.guard_afe_coo_dg_decision_event_immutable();
 revoke all on function public.guard_afe_coo_dg_decision_event_immutable() from public, anon, authenticated;
+
+create or replace function public.capture_afe_coo_dg_decision_event()
+returns trigger language plpgsql set search_path = '' as $$
+declare
+  v_type text;
+  v_actor uuid;
+  v_note text;
+begin
+  if tg_op = 'INSERT' then
+    v_type := 'submitted';
+    v_actor := new.requested_by;
+    v_note := 'Dossier soumis à la Direction générale.';
+    insert into public.afe_coo_dg_decision_events(workspace_id,decision_id,event_type,actor_id,note,snapshot)
+    values(new.workspace_id,new.id,v_type,v_actor,v_note,jsonb_build_object('title',new.title,'decision_type',new.decision_type,'requested_outcome',new.requested_outcome,'version',new.version));
+    return new;
+  end if;
+  if old.status = 'pending' and new.status <> 'pending' then
+    v_type := new.status;
+    v_actor := new.decided_by;
+    v_note := new.decision_note;
+    insert into public.afe_coo_dg_decision_events(workspace_id,decision_id,event_type,actor_id,note,snapshot)
+    values(new.workspace_id,new.id,v_type,v_actor,v_note,jsonb_build_object('previous_status',old.status,'status',new.status,'version',new.version));
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists afe_coo_dg_decision_event_capture on public.afe_coo_dg_decisions;
+create trigger afe_coo_dg_decision_event_capture
+after insert or update of status on public.afe_coo_dg_decisions
+for each row execute function public.capture_afe_coo_dg_decision_event();
+revoke all on function public.capture_afe_coo_dg_decision_event() from public, anon, authenticated;
