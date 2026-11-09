@@ -497,6 +497,8 @@ async function handleSupervision(workspaceId: string, user: AuthUser) {
   const now = Date.now();
   const agentById = new Map(agents.map(a => [a.id, a]));
   const missionById = new Map(missions.map(m => [m.id, m]));
+  const departmentById = new Map(departments.map(d => [d.id, d]));
+  const departmentName = (mission: any) => departmentById.get(mission?.department_id ?? agentById.get(mission?.agent_id)?.department_id)?.name ?? "Direction non affectée";
   const activeAgents = agents.filter(a => a.status === "active");
   const running = missions.filter(m => m.status === "running");
   const paused = missions.filter(m => m.status === "paused");
