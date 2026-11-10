@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const migrationUrl = new URL("../supabase/migrations/20261109180000_coo_dg_decision_workflow.sql", import.meta.url);
+const hardeningUrl = new URL("../supabase/migrations/20261110101500_coo_dg_decision_audit_hardening.sql", import.meta.url);
 const apiUrl = new URL("../src/coo-dg-decisions.ts", import.meta.url);
 const serverUrl = new URL("../src/server.ts", import.meta.url);
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
@@ -17,8 +18,9 @@ test("DG decision migration creates workspace-scoped decisions and append-only a
   assert.match(sql, /DG decision events are append-only/);
   assert.match(sql, /capture_afe_coo_dg_decision_event/);
   assert.match(sql, /after insert or update of status/i);
-  assert.match(sql, /before truncate/i);
-  assert.match(sql, /revoke all on table public\\.afe_coo_dg_decision_events from service_role/i);
+  const hardening = await readFile(hardeningUrl, "utf8");
+  assert.match(hardening, /before truncate/i);
+  assert.match(hardening, /revoke all on table public\\.afe_coo_dg_decision_events from service_role/i);
   assert.match(sql, /BEFORE UPDATE OR DELETE/);
 });
 
@@ -27,9 +29,10 @@ test("DG decision API authenticates workspace membership and reserves decisions 
   assert.match(source, /workspaceRole\(workspaceId,user\)/);
   assert.match(source, /if\(!isOwner\)/);
   assert.match(source, /status=eq\.pending/);
-  assert.match(source, /Le dossier a déjà fait l'objet d'une décision/);
+  assert.match(source, /Ce dossier a déjà fait l'objet d'une décision/);
   assert.match(source, /decided_by:user\.id/);
-  assert.match(source, /event_type:map\[outcome\]/);
+  assert.match(source, /DG_DECISION_SCHEMA_NOT_READY/);
+  assert.match(source, /PGRST205/);
 });
 
 test("COO server routes DG decisions only after bearer authentication", async () => {
