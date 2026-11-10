@@ -21,7 +21,7 @@ test("DG decision migration creates workspace-scoped decisions and append-only a
   const hardening = await readFile(hardeningUrl, "utf8");
   assert.match(hardening, /before truncate/i);
   assert.match(hardening, /revoke all on table public\.afe_coo_dg_decision_events from service_role/i);
-  assert.match(sql, /BEFORE UPDATE OR DELETE/);
+  assert.match(sql, /before update or delete/i);
 });
 
 test("DG decision API authenticates workspace membership and reserves decisions to owner", async () => {
