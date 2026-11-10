@@ -1673,6 +1673,6 @@ const startupSession=session();if(startupSession?.access_token){$("cooLogin").hi
    view.querySelectorAll("[data-dg-decide]").forEach(b=>b.onclick=async()=>{const id=b.dataset.dgDecide,outcome=document.getElementById("dg-outcome-"+id).value,note=document.getElementById("dg-note-"+id).value;if(note.trim().length<8){message("Le motif de décision doit comporter au moins 8 caractères.",true);return;}if(!confirm("Confirmer et enregistrer cette décision DG ? Cette action sera inscrite au journal d’audit."))return;b.disabled=true;try{await api("/team/api/dg-decisions/"+encodeURIComponent(id)+"/decision?workspaceId="+encodeURIComponent(workspaceId),{method:"POST",body:JSON.stringify({outcome,note})});message("Décision DG enregistrée et auditée.");await load()}catch(e){message(e.message,true);b.disabled=false}});
   }catch(e){view.innerHTML='<section class="card error">'+h(e.message)+'</section>'}
  }
- tabs.addEventListener("click",function(e){const b=e.target.closest('[data-tab="dg-decisions"]');if(!b)return;e.preventDefault();e.stopImmediatePropagation();tabs.querySelectorAll("button").forEach(x=>x.classList.toggle("active",x===b));load()},true);
+ const dgTab=tabs.querySelector('[data-tab="dg-decisions"]');if(dgTab)dgTab.onclick=function(e){e.preventDefault();tabs.querySelectorAll("button").forEach(x=>x.classList.toggle("active",x===dgTab));load()};
 })();
 </script></body></html>`;
