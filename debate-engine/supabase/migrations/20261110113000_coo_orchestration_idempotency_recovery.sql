@@ -31,6 +31,28 @@ ALTER TABLE public.afe_operational_tasks
 CREATE UNIQUE INDEX IF NOT EXISTS afe_operational_tasks_workspace_idempotency_uidx
   ON public.afe_operational_tasks(workspace_id, idempotency_key);
 
+-- Track the latest state transition so the recovery cooldown is based on activity, not run creation.
+ALTER TABLE public.afe_coo_runs
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+CREATE OR REPLACE FUNCTION public.touch_afe_coo_run_updated_at()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$;
+
+DROP TRIGGER IF EXISTS afe_coo_runs_touch_updated_at ON public.afe_coo_runs;
+CREATE TRIGGER afe_coo_runs_touch_updated_at
+BEFORE UPDATE ON public.afe_coo_runs
+FOR EACH ROW EXECUTE FUNCTION public.touch_afe_coo_run_updated_at();
+
+REVOKE ALL ON FUNCTION public.touch_afe_coo_run_updated_at() FROM public, anon, authenticated;
+
 -- A partial run is recoverable; terminal statuses remain immutable to replays.
 ALTER TABLE public.afe_coo_runs
   DROP CONSTRAINT IF EXISTS afe_coo_runs_status_check;
