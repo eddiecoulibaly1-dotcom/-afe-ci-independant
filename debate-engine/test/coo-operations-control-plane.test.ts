@@ -216,6 +216,13 @@ test("partial COO dispatch failures remain visible with their created missions a
   assert.match(source, /coo\.orchestration\.partial_failure/);
 });
 
+test("COO UI preserves the same idempotency key after a partial run so the run can be resumed", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.ok(source.includes('if(result.run?.status!=="partial")localStorage.removeItem(storageKey);'));
+  assert.ok(source.includes("La clé est conservée ; relance la même instruction après le délai de reprise."));
+  assert.ok(source.includes('["planning","partial"].includes(resumableRun.status)'));
+});
+
 test("COO execution trigger is Preview-only, DG-owner-only and respects the kill switch", async () => {
   const source = await readFile(platformUrl, "utf8");
   assert.match(source, /resource === "execute-next"/);
