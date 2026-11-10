@@ -223,6 +223,14 @@ test("COO UI preserves the same idempotency key after a partial run so the run c
   assert.ok(source.includes('["planning","partial"].includes(resumableRun.status)'));
 });
 
+test("COO UI recovers the idempotency key from persisted partial runs when browser storage was cleared", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.ok(source.includes('const existingState=await api(base()+"orchestrations");'));
+  assert.ok(source.includes('x.instruction===instruction&&["planning","partial"].includes(x.status)'));
+  assert.ok(source.includes("recoverable?.idempotency_key"));
+  assert.ok(source.includes("Impossible de vérifier l’historique et de sécuriser la clé d’idempotence."));
+});
+
 test("COO execution trigger is Preview-only, DG-owner-only and respects the kill switch", async () => {
   const source = await readFile(platformUrl, "utf8");
   assert.match(source, /resource === "execute-next"/);
