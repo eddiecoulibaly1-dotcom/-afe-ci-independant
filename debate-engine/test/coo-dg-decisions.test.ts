@@ -17,6 +17,8 @@ test("DG decision migration creates workspace-scoped decisions and append-only a
   assert.match(sql, /DG decision events are append-only/);
   assert.match(sql, /capture_afe_coo_dg_decision_event/);
   assert.match(sql, /after insert or update of status/i);
+  assert.match(sql, /before truncate/i);
+  assert.match(sql, /revoke all on table public\\.afe_coo_dg_decision_events from service_role/i);
   assert.match(sql, /BEFORE UPDATE OR DELETE/);
 });
 
