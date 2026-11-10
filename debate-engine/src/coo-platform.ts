@@ -798,19 +798,29 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
   const idempotencyKey = clean(input.idempotencyKey, 160);
   if (!idempotencyKey) throw fail("Clé d'idempotence obligatoire : le client doit réutiliser la même clé après un délai d'attente.", 400);
   const prior = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
-  if (prior[0]) return { run: prior[0], replayed: true, pending: prior[0].status === "planning" };
-  const dayStart = new Date(Date.now() - 86400000).toISOString();
-  const recentRuns = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&created_at=gte." + enc(dayStart) + "&select=id&limit=10");
-  if (recentRuns.length >= 10) throw fail("Plafond de sécurité atteint : maximum 10 orchestrations COO par 24 heures dans cet espace.", 429);
-  const runRows = await db<any[]>("afe_coo_runs?on_conflict=workspace_id%2Cidempotency_key", {
-    method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
-    body: JSON.stringify({ workspace_id: workspaceId, coo_agent_id: coo.id, initiated_by: user.id, instruction, idempotency_key: idempotencyKey, status: "planning" })
-  });
-  let run = runRows[0];
+  let resumableRun = prior[0] ?? null;
+  if (resumableRun && resumableRun.status !== "planning") return { run: resumableRun, replayed: true, pending: false };
+  if (resumableRun && Date.now() - new Date(resumableRun.created_at).getTime() < 180000) return { run: resumableRun, replayed: true, pending: true };
+
+  let run = resumableRun;
   if (!run) {
-    const concurrent = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
-    run = concurrent[0];
-    if (run) return { run, replayed: true, pending: run.status === "planning" };
+    const dayStart = new Date(Date.now() - 86400000).toISOString();
+    const recentRuns = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&created_at=gte." + enc(dayStart) + "&select=id&limit=10");
+    if (recentRuns.length >= 10) throw fail("Plafond de sécurité atteint : maximum 10 orchestrations COO par 24 heures dans cet espace.", 429);
+    const runRows = await db<any[]>("afe_coo_runs?on_conflict=workspace_id%2Cidempotency_key", {
+      method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+      body: JSON.stringify({ workspace_id: workspaceId, coo_agent_id: coo.id, initiated_by: user.id, instruction, idempotency_key: idempotencyKey, status: "planning" })
+    });
+    run = runRows[0];
+    if (!run) {
+      const concurrent = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
+      run = concurrent[0];
+      if (run) return { run, replayed: true, pending: run.status === "planning" };
+    }
+  } else {
+    await db("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
+      method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ status: "planning", error_message: null, completed_at: null })
+    });
   }
   if (!run) throw new Error("Impossible d'enregistrer l'exécution du COO.");
   let generatedPlan: CooPlan | null = null;
