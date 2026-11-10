@@ -5,6 +5,7 @@ import { callModel } from "./providers.js";
 import { runAgentWorkerForWorkspace } from "./autonomous-agents/worker.js";
 import { buildCooDataQuality, buildCooReportActivity, buildCooReportIdempotencyKey, resolveTaskDepartmentId } from "./coo-reporting.js";
 import { consolidateDepartmentWorkstreams } from "./coo-planning.js";
+import { assertCanonicalMaturityPlan, canonicalizeMaturityPlan, isMaturityProgrammeInstruction } from "./coo-maturity-contract.js";
 import { assertDependencyAddition, evaluateDependencyReadiness } from "./mission-coordination.js";
 
 type Role = "owner" | "admin" | "editor" | "viewer";
@@ -794,17 +795,23 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
     requireCooCapability(workspaceId, coo.id, "coo.tasks.create", "write")
   ]);
   const maxTasksPerRun = Math.max(1, Math.min(30, Number(capabilityGrants[3].limits?.max_per_run) || 30));
-  const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID();
+  const idempotencyKey = clean(input.idempotencyKey, 160);
+  if (!idempotencyKey) throw fail("Clé d'idempotence obligatoire : le client doit réutiliser la même clé après un délai d'attente.", 400);
   const prior = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
-  if (prior[0]) return { run: prior[0], replayed: true };
+  if (prior[0]) return { run: prior[0], replayed: true, pending: prior[0].status === "planning" };
   const dayStart = new Date(Date.now() - 86400000).toISOString();
   const recentRuns = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&created_at=gte." + enc(dayStart) + "&select=id&limit=10");
   if (recentRuns.length >= 10) throw fail("Plafond de sécurité atteint : maximum 10 orchestrations COO par 24 heures dans cet espace.", 429);
-  const runRows = await db<any[]>("afe_coo_runs", {
-    method: "POST", headers: { Prefer: "return=representation" },
+  const runRows = await db<any[]>("afe_coo_runs?on_conflict=workspace_id%2Cidempotency_key", {
+    method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
     body: JSON.stringify({ workspace_id: workspaceId, coo_agent_id: coo.id, initiated_by: user.id, instruction, idempotency_key: idempotencyKey, status: "planning" })
   });
-  const run = runRows[0];
+  let run = runRows[0];
+  if (!run) {
+    const concurrent = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
+    run = concurrent[0];
+    if (run) return { run, replayed: true, pending: run.status === "planning" };
+  }
   if (!run) throw new Error("Impossible d'enregistrer l'exécution du COO.");
   let generatedPlan: CooPlan | null = null;
   const createdMissions: Array<{missionId:string;departmentSlug:string;departmentName:string;directorAgent:string;taskCount:number}> = [];
@@ -825,7 +832,10 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
       .filter(d => !d.is_independent && !d.human_only && !["direction-generale","direction-operations"].includes(d.slug) && d.director_agent_id)
       .map(d => ({ slug: d.slug, name: d.name, mandate: d.mandate, director: agentById.get(d.director_agent_id), workload: workloadByAgent.get(d.director_agent_id) ?? {activeMissions:0,openTasks:0} }))
       .filter(x => x.director && x.director.status === "active" && x.director.department_id === departments.find(d => d.slug === x.slug)?.id && x.workload.activeMissions < 2 && x.workload.openTasks < 10);    if (!eligible.length) throw fail("Aucune direction opérationnelle ne dispose d'un directeur IA actif.", 409);
-    const maxWorkstreams = Math.max(1, Math.min(8, Number(cfg.coo_max_workstreams) || 6, Number(capabilityGrants[2].limits?.max_per_run) || 6));
+    const canonicalProgramme = isMaturityProgrammeInstruction(instruction);
+    const configuredMissionLimit = Number(capabilityGrants[2].limits?.max_per_run) || 6;
+    if (canonicalProgramme && configuredMissionLimit < 8) throw fail("Le mandat de capacité COO autorise moins de huit missions par exécution; le référentiel P0–P7 exige huit directions. Aucun chantier n'a été créé.", 409);
+    const maxWorkstreams = canonicalProgramme ? 8 : Math.max(1, Math.min(8, Number(cfg.coo_max_workstreams) || 6, configuredMissionLimit));
     const maxTasks = Math.max(1, Math.min(8, Number(cfg.coo_max_tasks_per_workstream) || 5));
     const provider = coo.model_provider === "gemini" ? "gemini" : "openai";
     const model = coo.model_id || (provider === "gemini" ? (process.env.GEMINI_MODEL || "gemini-3.8-flash") : (process.env.OPENAI_MODEL || "gpt-4.1-mini"));
@@ -858,8 +868,14 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
         required: ["summary","priority","workstreams","decisionsRequired","assumptions"]
       }
     });
+    if (canonicalProgramme) {
+      assertCanonicalMaturityPlan(plan.workstreams, departments);
+      plan.workstreams = canonicalizeMaturityPlan(plan.workstreams);
+      plan.summary = "Programme directeur AFE-CI V1 validé contre le référentiel immuable P0–P7.";
+      plan.assumptions = [...(plan.assumptions ?? []), "Codes P0–P7, intitulés et directions responsables imposés par le référentiel versionné; toute réaffectation est refusée."];
+    }
     const originalWorkstreamCount = plan.workstreams.length;
-    const consolidation = consolidateDepartmentWorkstreams(plan.workstreams);
+    const consolidation = canonicalProgramme ? { workstreams: plan.workstreams, mergedDepartmentSlugs: [] as string[] } : consolidateDepartmentWorkstreams(plan.workstreams);
     if (consolidation.mergedDepartmentSlugs.length > 0) {
       plan.workstreams = consolidation.workstreams;
       plan.assumptions = [...(plan.assumptions ?? []), "Chantiers regroupés par direction pour garantir une seule mission par directeur : " + consolidation.mergedDepartmentSlugs.join(", ") + ". Les tâches et objectifs complémentaires ont été conservés."];
@@ -932,6 +948,12 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
       const createdTasks: Array<{id:string;title:string;description:string}> = [];
       for (const task of stream.tasks) {
         if (!textOk(task.title, 220) || !textOk(task.description, 6000)) throw new Error("Tâche COO invalide dans " + department.name);
+        const existingTask = await db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(mission.id) + "&title=eq." + enc(clean(task.title,220)) + "&limit=1");
+        if (existingTask[0]) {
+          createdTasks.push({ id: existingTask[0].id, title: clean(task.title, 220), description: clean(task.description, 6000) });
+          dispatchRecord.taskCount = createdTasks.length;
+          continue;
+        }
         const taskRows = await db<any[]>("afe_operational_tasks", {
           method: "POST", headers: { Prefer: "return=representation" },
           body: JSON.stringify({
