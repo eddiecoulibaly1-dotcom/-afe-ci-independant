@@ -20,7 +20,7 @@ test("DG decision migration creates workspace-scoped decisions and append-only a
   assert.match(sql, /after insert or update of status/i);
   const hardening = await readFile(hardeningUrl, "utf8");
   assert.match(hardening, /before truncate/i);
-  assert.match(hardening, /revoke all on table public\\.afe_coo_dg_decision_events from service_role/i);
+  assert.match(hardening, /revoke all on table public\.afe_coo_dg_decision_events from service_role/i);
   assert.match(sql, /BEFORE UPDATE OR DELETE/);
 });
 
