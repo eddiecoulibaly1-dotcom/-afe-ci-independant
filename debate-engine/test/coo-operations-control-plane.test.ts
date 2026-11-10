@@ -188,6 +188,8 @@ test("COO orchestration recovery enforces database-level task idempotency", asyn
   assert.match(sql, /ADD COLUMN IF NOT EXISTS idempotency_key text/);
   assert.match(sql, /UNIQUE INDEX IF NOT EXISTS afe_operational_tasks_workspace_idempotency_uidx/);
   assert.match(sql, /ON public\.afe_operational_tasks\(workspace_id, idempotency_key\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now\(\)/);
+  assert.match(sql, /CREATE TRIGGER afe_coo_runs_touch_updated_at/);
 });
 
 test("partial COO dispatch failures remain visible with their created missions and audit event", async () => {
