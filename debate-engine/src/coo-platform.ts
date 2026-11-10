@@ -1517,9 +1517,11 @@ async function renderMissions(){
   const b=$("cooRun"),storageKey="afe-coo-orchestration:"+wid+":"+instruction;
   let idempotencyKey="";
   try{
-    idempotencyKey=localStorage.getItem(storageKey)||crypto.randomUUID();
+    const existingState=await api(base()+"orchestrations");
+    const recoverable=arr(existingState.runs).find(x=>x.instruction===instruction&&["planning","partial"].includes(x.status));
+    idempotencyKey=recoverable?.idempotency_key||localStorage.getItem(storageKey)||crypto.randomUUID();
     localStorage.setItem(storageKey,idempotencyKey);
-  }catch{message("Le navigateur ne permet pas de conserver la clé de sécurité. Réessaie après avoir autorisé le stockage local.",true);return}
+  }catch{message("Impossible de vérifier l’historique et de sécuriser la clé d’idempotence. Ne relance pas cette instruction avant le rétablissement de la connexion.",true);return}
   b.disabled=true;b.textContent="Le COO analyse et planifie…";
   try{
     let result=await api(base()+"orchestrate",{method:"POST",body:JSON.stringify({instruction,idempotencyKey})});
