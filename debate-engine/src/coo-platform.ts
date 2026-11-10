@@ -1,4 +1,4 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthUser } from "./auth.js";
 import { callModel } from "./providers.js";
@@ -45,6 +45,12 @@ function send(res: ServerResponse, status: number, data: unknown) {
   res.end(JSON.stringify(data));
 }
 function fail(message: string, status = 400) { return Object.assign(new Error(message), { status }); }
+function isNetworkOutcomeUnknown(error: unknown): boolean {
+  const name = error instanceof Error ? error.name : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return name === "AbortError" || name === "TimeoutError" ||
+    /fetch failed|network error|socket hang up|ECONNRESET|ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT|UND_ERR_HEADERS_TIMEOUT/i.test(message);
+}
 
 const DEPARTMENTS = [
   { slug: "direction-generale", name: "Direction générale", kind: "executive", reportsTo: null, independent: false, humanOnly: true, mandate: "Autorité humaine de gouvernance. Définit la stratégie, les priorités, les délégations, les arbitrages de ressources et les décisions réservées. Reçoit les rapports du COO." },
@@ -799,8 +805,8 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
   if (!idempotencyKey) throw fail("Clé d'idempotence obligatoire : le client doit réutiliser la même clé après un délai d'attente.", 400);
   const prior = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
   let resumableRun = prior[0] ?? null;
-  if (resumableRun && resumableRun.status !== "planning") return { run: resumableRun, replayed: true, pending: false };
-  if (resumableRun && Date.now() - new Date(resumableRun.created_at).getTime() < 180000) return { run: resumableRun, replayed: true, pending: true };
+  if (resumableRun && ["dispatched","approval_required","cancelled","failed"].includes(resumableRun.status)) return { run: resumableRun, replayed: true, pending: false };
+  if (resumableRun && ["planning","partial"].includes(resumableRun.status) && Date.now() - new Date(resumableRun.updated_at ?? resumableRun.created_at).getTime() < 180000) return { run: resumableRun, replayed: true, pending: true };
 
   let run = resumableRun;
   if (!run) {
@@ -958,25 +964,27 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
       const createdTasks: Array<{id:string;title:string;description:string}> = [];
       for (const task of stream.tasks) {
         if (!textOk(task.title, 220) || !textOk(task.description, 6000)) throw new Error("Tâche COO invalide dans " + department.name);
-        const existingTask = await db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(mission.id) + "&title=eq." + enc(clean(task.title,220)) + "&limit=1");
-        if (existingTask[0]) {
-          createdTasks.push({ id: existingTask[0].id, title: clean(task.title, 220), description: clean(task.description, 6000) });
-          dispatchRecord.taskCount = createdTasks.length;
-          continue;
-        }
-        const taskRows = await db<any[]>("afe_operational_tasks", {
-          method: "POST", headers: { Prefer: "return=representation" },
+        const taskTitle = clean(task.title, 220);
+        const taskIdempotencyKey = mission.id + ":" + createHash("md5").update(taskTitle.toLocaleLowerCase("fr")).digest("hex");
+        const taskRows = await db<any[]>("afe_operational_tasks?on_conflict=workspace_id%2Cidempotency_key", {
+          method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
           body: JSON.stringify({
             workspace_id: workspaceId, mission_id: mission.id, department_id: department.id,
-            title: clean(task.title, 220), description: clean(task.description, 6000),
+            idempotency_key: taskIdempotencyKey,
+            title: taskTitle, description: clean(task.description, 6000),
             priority: Math.max(1, Math.min(5, Number(task.priority) || 3)),
             assigned_agent_id: director.id,
             due_at: new Date(Date.now() + Math.max(1, Math.min(720, Number(task.dueInHours) || Number(stream.dueInHours) || 24)) * 3600000).toISOString(),
             created_by: user.id
           })
         });
-        if (!taskRows[0]?.id) throw new Error("La tâche n'a pas été persistée pour " + department.name);
-        createdTasks.push({ id: taskRows[0].id, title: clean(task.title, 220), description: clean(task.description, 6000) });
+        let persistedTask = taskRows[0];
+        if (!persistedTask?.id) {
+          const existingTask = await db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(taskIdempotencyKey) + "&limit=1");
+          persistedTask = existingTask[0];
+        }
+        if (!persistedTask?.id) throw new Error("La tâche n'a pas été persistée pour " + department.name);
+        createdTasks.push({ id: persistedTask.id, title: taskTitle, description: clean(task.description, 6000) });
         dispatchRecord.taskCount = createdTasks.length;
       }
       await db("afe_agent_missions?id=eq." + enc(mission.id) + "&workspace_id=eq." + enc(workspaceId), {
@@ -1001,18 +1009,26 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
     return { run: updated[0] ?? { ...run, status, plan, missions_created: createdMissions.length }, plan, dispatched: createdMissions };
   } catch (error) {
     const partial = createdMissions.length > 0;
-    await db("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
-      method: "PATCH", headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({
-        status: partial ? "partial" : "failed",
-        plan: generatedPlan ? { ...generatedPlan, dispatched: createdMissions } : {},
-        missions_created: createdMissions.length,
-        error_message: (error instanceof Error ? error.message : String(error)).slice(0, 3000),        completed_at: nowIso()
-      })
-    });
-    await audit(workspaceId, user.id, partial ? "coo.orchestration.partial_failure" : "coo.orchestration.failed", "coo_run", run.id, {
-      cooAgentId: coo.id, missionsCreated: createdMissions.length,      error: (error instanceof Error ? error.message : String(error)).slice(0, 1000)
-    });
+    const outcomeUnknown = isNetworkOutcomeUnknown(error);
+    const recoveryStatus = partial ? "partial" : outcomeUnknown ? "planning" : "failed";
+    try {
+      await db("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
+        method: "PATCH", headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          status: recoveryStatus,
+          plan: generatedPlan ? { ...generatedPlan, dispatched: createdMissions } : {},
+          missions_created: createdMissions.length,
+          error_message: (error instanceof Error ? error.message : String(error)).slice(0, 3000),
+          completed_at: recoveryStatus === "planning" ? null : nowIso()
+        })
+      });
+    } catch { /* Keep the persisted run recoverable when even the status acknowledgement is lost. */ }
+    try {
+      await audit(workspaceId, user.id, partial ? "coo.orchestration.partial_failure" : outcomeUnknown ? "coo.orchestration.outcome_unknown" : "coo.orchestration.failed", "coo_run", run.id, {
+        cooAgentId: coo.id, missionsCreated: createdMissions.length,
+        outcomeUnknown, error: (error instanceof Error ? error.message : String(error)).slice(0, 1000)
+      });
+    } catch { /* Audit transport failure must not replace the original orchestration error. */ }
     throw error;
   }
 }
