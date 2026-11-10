@@ -41,7 +41,9 @@ alter table public.afe_coo_dg_decision_events enable row level security;
 alter table public.afe_coo_dg_decision_events force row level security;
 revoke all on table public.afe_coo_dg_decisions from public, anon, authenticated;
 revoke all on table public.afe_coo_dg_decision_events from public, anon, authenticated;
-grant select,insert,update,delete on table public.afe_coo_dg_decisions to service_role;
+revoke all on table public.afe_coo_dg_decisions from service_role;
+revoke all on table public.afe_coo_dg_decision_events from service_role;
+grant select,insert,update on table public.afe_coo_dg_decisions to service_role;
 grant select,insert on table public.afe_coo_dg_decision_events to service_role;
 create or replace function public.guard_afe_coo_dg_decision_event_immutable()
 returns trigger language plpgsql set search_path = '' as $$
@@ -87,4 +89,18 @@ for each row execute function public.capture_afe_coo_dg_decision_event();
 revoke all on function public.capture_afe_coo_dg_decision_event() from public, anon, authenticated;
 
 -- Make the new server-only tables visible to PostgREST immediately.
+notify pgrst, 'reload schema';
+
+-- Prevent bulk truncation from bypassing the append-only row trigger.
+create or replace function public.guard_afe_coo_dg_decision_events_truncate()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  raise exception 'DG decision events are append-only; TRUNCATE is forbidden';
+end;
+$$;
+drop trigger if exists afe_coo_dg_decision_events_truncate_guard on public.afe_coo_dg_decision_events;
+create trigger afe_coo_dg_decision_events_truncate_guard
+before truncate on public.afe_coo_dg_decision_events
+for each statement execute function public.guard_afe_coo_dg_decision_events_truncate();
+revoke all on function public.guard_afe_coo_dg_decision_events_truncate() from public, anon, authenticated;
 notify pgrst, 'reload schema';
