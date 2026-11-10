@@ -35,7 +35,7 @@ test("rejects reassignment of a canonical workstream to another directorate",()=
 
 test("rejects semantically incomplete workstream content",()=>{
  const bad=plan();bad[2].objective="Plan général d'amélioration";bad[2].tasks=[{title:"Divers",description:"Travaux divers"}];
- assert.throws(()=>assertCanonicalMaturityPlan(bad,departments),/contenu incompatible/);
+ assert.throws(()=>assertCanonicalMaturityPlan(bad,departments),/objectif métier incompatible/);
 });
 
 test("rejects a department whose actual mandate does not cover the canonical workstream",()=>{
