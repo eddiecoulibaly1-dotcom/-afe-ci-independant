@@ -1537,9 +1537,9 @@ async function renderMissions(){
       message("Traitement COO toujours en cours.",false);
       return;
     }
-    localStorage.removeItem(storageKey);
+    if(result.run?.status!=="partial")localStorage.removeItem(storageKey);
     const dispatched=arr(result.dispatched||result.run?.plan?.dispatched);
-    $("cooRunResult").textContent=result.run?.status==="approval_required"?"Plan soumis à décision humaine : "+arr(result.plan?.decisionsRequired).join(" · "):result.run?.status==="failed"||result.run?.status==="partial"?"Traitement "+result.run.status+" : "+(result.run.error_message||"consulte le journal d'orchestration"):"Plan enregistré : "+dispatched.length+" mission(s) confirmée(s).";
+    $("cooRunResult").textContent=result.run?.status==="approval_required"?"Plan soumis à décision humaine : "+arr(result.plan?.decisionsRequired).join(" · "):result.run?.status==="partial"?"Traitement partiel : "+(result.run.error_message||"consulte le journal d'orchestration")+". La clé est conservée ; relance la même instruction après le délai de reprise.":result.run?.status==="failed"?"Traitement échoué : "+(result.run.error_message||"consulte le journal d'orchestration"):"Plan enregistré : "+dispatched.length+" mission(s) confirmée(s).";
     message("État de l'orchestration actualisé.");await render();
   }catch(e){
     $("cooRunResult").textContent="La réponse réseau n'a pas été reçue. La clé de cette demande est conservée : réessaie avec la même instruction, sans la modifier, pour récupérer le résultat sans créer de doublon.";
