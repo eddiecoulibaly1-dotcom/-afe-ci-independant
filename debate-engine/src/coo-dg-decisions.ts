@@ -46,5 +46,11 @@ export async function handleDgDecisionRequest(req:IncomingMessage,res:ServerResp
    send(res,200,{decision:updated[0]});return true;
   }
   fail(res,405,"Méthode ou route non autorisée.");return true;
- }catch(error){send(res,(error as any)?.status??500,{error:error instanceof Error?error.message:"Erreur du circuit DG."});return true;}
+ }catch(error){
+  const message=error instanceof Error?error.message:"";
+  if(/PGRST205|42P01|schema cache|could not find the table/i.test(message)){
+   send(res,503,{code:"DG_DECISION_SCHEMA_NOT_READY",error:"Le circuit DG n'est pas encore initialisé dans cette base. La migration de données requise doit être appliquée et vérifiée avant utilisation."});return true;
+  }
+  send(res,(error as any)?.status??500,{error:message||"Erreur du circuit DG."});return true;
+ }
 }
