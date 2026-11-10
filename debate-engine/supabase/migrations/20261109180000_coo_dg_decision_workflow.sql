@@ -85,3 +85,6 @@ create trigger afe_coo_dg_decision_event_capture
 after insert or update of status on public.afe_coo_dg_decisions
 for each row execute function public.capture_afe_coo_dg_decision_event();
 revoke all on function public.capture_afe_coo_dg_decision_event() from public, anon, authenticated;
+
+-- Make the new server-only tables visible to PostgREST immediately.
+notify pgrst, 'reload schema';
