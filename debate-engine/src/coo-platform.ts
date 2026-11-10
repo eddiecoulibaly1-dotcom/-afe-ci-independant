@@ -405,17 +405,24 @@ async function createTask(workspaceId: string, user: AuthUser, input: any) {
   if (assignedAgentId) await validateAgent(workspaceId, assignedAgentId, departmentId);
   const assignedUserId = clean(input.assignedUserId, 64) || null;
   if (assignedUserId) await validateMember(workspaceId, assignedUserId);
-  const rows = await db<any[]>("afe_operational_tasks", {
-    method: "POST", headers: { Prefer: "return=representation" },
+  const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID();
+  const rows = await db<any[]>("afe_operational_tasks?on_conflict=workspace_id%2Cidempotency_key", {
+    method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
     body: JSON.stringify({
       workspace_id: workspaceId, mission_id: missionId, department_id: departmentId,
+      idempotency_key: idempotencyKey,
       title, description: clean(input.description, 6000),
       priority: Math.max(1, Math.min(5, Number(input.priority) || 3)),
       assigned_agent_id: assignedAgentId, assigned_user_id: assignedUserId,
       due_at: input.dueAt || null, created_by: user.id
     })
   });
-  const task = rows[0];
+  let task = rows[0];
+  if (!task?.id) {
+    const existing = await db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
+    task = existing[0];
+  }
+  if (!task?.id) throw new Error("La tâche n'a pas été persistée.");
   await audit(workspaceId, user.id, "coo.task.created", "task", task.id, { departmentId, missionId, assignedAgentId, assignedUserId });
   if (assignedUserId) await notify(assignedUserId, "coo.task.assigned", "Nouvelle tâche attribuée", title, workspaceId);
   return task;
