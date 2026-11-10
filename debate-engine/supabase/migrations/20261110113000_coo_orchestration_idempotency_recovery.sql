@@ -39,12 +39,12 @@ CREATE OR REPLACE FUNCTION public.touch_afe_coo_run_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = ''
-AS $
+AS $$
 BEGIN
   NEW.updated_at := now();
   RETURN NEW;
 END;
-$;
+$$;
 
 DROP TRIGGER IF EXISTS afe_coo_runs_touch_updated_at ON public.afe_coo_runs;
 CREATE TRIGGER afe_coo_runs_touch_updated_at
