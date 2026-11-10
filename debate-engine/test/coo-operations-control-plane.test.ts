@@ -195,13 +195,13 @@ test("COO orchestration recovery enforces database-level task idempotency", asyn
 
 test("task idempotency fallback protects mission-linked and standalone inserts when callers omit the key", async () => {
   const sql = await readFile(taskIdempotencyFallbackUrl, "utf8");
-  assert.match(sql, /BEFORE INSERT ON public\\.afe_operational_tasks/);
-  assert.match(sql, /NEW\\.mission_id::text \\|\\| ':' \\|\\| md5\\(lower\\(btrim\\(NEW\\.title\\)\\)\\)/);
-  assert.match(sql, /'manual:' \\|\\| gen_random_uuid\\(\\)::text/);
+  assert.ok(sql.includes("BEFORE INSERT ON public.afe_operational_tasks"));
+  assert.ok(sql.includes("NEW.mission_id::text || ':' || md5(lower(btrim(NEW.title)))"));
+  assert.ok(sql.includes("'manual:' || gen_random_uuid()::text"));
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /const idempotencyKey = clean\\(input\\.idempotencyKey, 160\\) \\|\\| randomUUID\\(\\)/);
-  assert.match(source, /idempotency_key: idempotencyKey/);
-  assert.match(source, /resolution=ignore-duplicates,return=representation/);
+  assert.ok(source.includes("const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID()"));
+  assert.ok(source.includes("idempotency_key: idempotencyKey"));
+  assert.ok(source.includes("resolution=ignore-duplicates,return=representation"));
 });
 
 test("partial COO dispatch failures remain visible with their created missions and audit event", async () => {
