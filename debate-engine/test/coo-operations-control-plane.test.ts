@@ -9,6 +9,7 @@ const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
 const reportingUrl = new URL("../src/coo-reporting.ts", import.meta.url);
 const indexesUrl = new URL("../supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql", import.meta.url);
 const idempotencyRecoveryUrl = new URL("../supabase/migrations/20261110113000_coo_orchestration_idempotency_recovery.sql", import.meta.url);
+const taskIdempotencyFallbackUrl = new URL("../supabase/migrations/20261110193310_coo_task_idempotency_fallback.sql", import.meta.url);
 const headsUrl = new URL("../supabase/migrations/20261107210000_afe_ci_coo_department_heads.sql", import.meta.url);
 const serverUrl = new URL("../src/server.ts", import.meta.url);
 const vercelUrl = new URL("../vercel.json", import.meta.url);
@@ -190,6 +191,17 @@ test("COO orchestration recovery enforces database-level task idempotency", asyn
   assert.match(sql, /ON public\.afe_operational_tasks\(workspace_id, idempotency_key\)/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now\(\)/);
   assert.match(sql, /CREATE TRIGGER afe_coo_runs_touch_updated_at/);
+});
+
+test("task idempotency fallback protects mission-linked and standalone inserts when callers omit the key", async () => {
+  const sql = await readFile(taskIdempotencyFallbackUrl, "utf8");
+  assert.match(sql, /BEFORE INSERT ON public\\.afe_operational_tasks/);
+  assert.match(sql, /NEW\\.mission_id::text \\|\\| ':' \\|\\| md5\\(lower\\(btrim\\(NEW\\.title\\)\\)\\)/);
+  assert.match(sql, /'manual:' \\|\\| gen_random_uuid\\(\\)::text/);
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /const idempotencyKey = clean\\(input\\.idempotencyKey, 160\\) \\|\\| randomUUID\\(\\)/);
+  assert.match(source, /idempotency_key: idempotencyKey/);
+  assert.match(source, /resolution=ignore-duplicates,return=representation/);
 });
 
 test("partial COO dispatch failures remain visible with their created missions and audit event", async () => {
