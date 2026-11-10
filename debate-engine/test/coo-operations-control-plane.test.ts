@@ -8,6 +8,7 @@ const alertWorkflowIndexesUrl = new URL("../supabase/migrations/20261109081603_c
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
 const reportingUrl = new URL("../src/coo-reporting.ts", import.meta.url);
 const indexesUrl = new URL("../supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql", import.meta.url);
+const idempotencyRecoveryUrl = new URL("../supabase/migrations/20261110113000_coo_orchestration_idempotency_recovery.sql", import.meta.url);
 const headsUrl = new URL("../supabase/migrations/20261107210000_afe_ci_coo_department_heads.sql", import.meta.url);
 const serverUrl = new URL("../src/server.ts", import.meta.url);
 const vercelUrl = new URL("../vercel.json", import.meta.url);
@@ -179,6 +180,14 @@ test("sensitive COO workstreams are held for human approval before any dispatch"
   assert.match(source, /const status = "dispatched"/);
   assert.match(source, /Routine DG decisions are recorded for follow-up/);
   assert.doesNotMatch(source, /const status = plan\.decisionsRequired\.length \? "approval_required"/);
+});
+
+test("COO orchestration recovery enforces database-level task idempotency", async () => {
+  const sql = await readFile(idempotencyRecoveryUrl, "utf8");
+  assert.match(sql, /duplicate mission tasks exist; reconcile them before applying this migration/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS idempotency_key text/);
+  assert.match(sql, /UNIQUE INDEX IF NOT EXISTS afe_operational_tasks_workspace_idempotency_uidx/);
+  assert.match(sql, /ON public\.afe_operational_tasks\(workspace_id, idempotency_key\)/);
 });
 
 test("partial COO dispatch failures remain visible with their created missions and audit event", async () => {
