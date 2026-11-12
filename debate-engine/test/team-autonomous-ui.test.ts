@@ -41,7 +41,7 @@ test("COO mission dossier exposes submitted evidence, independent findings and h
 });
 test("worker leaves completed deliverables pending COO validation through the atomic transaction", async () => {
   const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", import.meta.url), "utf8");
-  const atomic = await readFile(new URL("../supabase/migrations/20261112160000_afe_agent_mission_execution_atomic_commit.sql", import.meta.url), "utf8");
+  const atomic = await readFile(new URL("../supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql", import.meta.url), "utf8");
   assert.equal((worker.match(/awaitingCooValidation:true/g) ?? []).length, 2);
   assert.ok(worker.includes("rpc/commit_afe_agent_mission_execution"));
   assert.match(atomic, /mission\.awaiting_coo_validation/);
