@@ -177,7 +177,7 @@ export async function runAgentWorkerForWorkspace(workspaceId:string){
       schema:missionResultSchema
     });
     const deliberation=await runMissionDeliberation(mission,agent);if(deliberation){(output as any).deliberation=deliberation;if(deliberation.status==="incomplete"){await heartbeat.assertOwned();await recordIncompleteDeliberation(claim,deliberation);return {claimed:true,completed:false,missionId:claim.mission_id,dispatchedMessages:dispatched??0,retryScheduled:true,reason:"DELIBERATION_INCOMPLETE",coverage:deliberation.coverage};}}validateMissionDeliverables(output);await heartbeat.assertOwned();const reviewReport=await recordMissionReview(claim,mission,output,provider);await heartbeat.assertOwned();const committed=await commitMissionExecution(claim,output,reviewReport);if(!committed.complete)return {claimed:true,completed:false,missionId:claim.mission_id,dispatchedMessages:dispatched??0,paused:true,blockedTasks:committed.blockedCount,reason:committed.reason};
-    return {claimed:true,completed:false,awaitingCooValidation:true,missionId:claim.mission_id,dispatchedMessages:dispatched??0,result:pendingResult};
+    return {claimed:true,completed:false,awaitingCooValidation:true,missionId:claim.mission_id,dispatchedMessages:dispatched??0,result:{...output,coo_review:{status:"pending",closureEligible:false,independentReview:reviewReport}}};
   }catch(error){
     const retryScheduled=await recordFailure(claim,error);
     return {claimed:true,completed:false,missionId:claim.mission_id,dispatchedMessages:dispatched??0,retryScheduled,error:error instanceof Error?error.message:"Erreur d’exécution"};
