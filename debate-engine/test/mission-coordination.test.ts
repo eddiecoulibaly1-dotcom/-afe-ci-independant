@@ -141,7 +141,7 @@ test("worker heartbeat history is durable, server-only and records idle cron tic
 
 test("worker task and final mission writes are fenced atomically by an unexpired running lease",async()=>{
  const worker=await readFile(workerUrl,"utf8");
- const atomic=await readFile(new URL("../supabase/migrations/20261112160000_afe_agent_mission_execution_atomic_commit.sql",import.meta.url),"utf8");
+ const atomic=await readFile(new URL("../supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql",import.meta.url),"utf8");
  assert.match(worker,/rpc\/commit_afe_agent_mission_execution/);
  assert.equal(worker.includes("afe_operational_tasks?id=eq."),false);
  assert.match(atomic,/FOR UPDATE/);
