@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", import.meta.url), "utf8");
 const coo = await readFile(new URL("../src/coo-platform.ts", import.meta.url), "utf8");
-const atomic = await readFile(new URL("../supabase/migrations/20261112160000_afe_agent_mission_execution_atomic_commit.sql", import.meta.url), "utf8");
+const atomic = await readFile(new URL("../supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql", import.meta.url), "utf8");
 
 test("mission evidence review is computed first and persisted atomically with deliverables in both worker paths", () => {
   assert.equal((worker.match(/const reviewReport=await recordMissionReview\(claim,mission,output,provider\)/g) ?? []).length, 2);
