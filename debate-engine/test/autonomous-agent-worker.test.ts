@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const root=new URL("../",import.meta.url);
 const migration=await readFile(new URL("supabase/migrations/20261105233000_autonomous_agents_p1_p6_controls.sql",root),"utf8");
-const atomicMigration=await readFile(new URL("supabase/migrations/20261112160000_afe_agent_mission_execution_atomic_commit.sql",root),"utf8");
+const atomicMigration=await readFile(new URL("supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql",root),"utf8");
 const worker=await readFile(new URL("src/autonomous-agents/worker.ts",root),"utf8");
 const config=JSON.parse(await readFile(new URL("vercel.json",root),"utf8"));
 
