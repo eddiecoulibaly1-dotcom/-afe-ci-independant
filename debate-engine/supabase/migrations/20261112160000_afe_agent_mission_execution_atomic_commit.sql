@@ -118,7 +118,7 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM pg_catalog.jsonb_array_elements(v_results) AS result(item)
-    WHERE result.item ->> 'status' NOT IN ('done', 'in_progress', 'blocked')
+    WHERE COALESCE(result.item ->> 'status', '') NOT IN ('done', 'in_progress', 'blocked')
        OR CASE
             WHEN COALESCE(result.item ->> 'progressPercent', '') ~ '^[0-9]{1,3}$'
             THEN (result.item ->> 'progressPercent')::integer NOT BETWEEN 0 AND 100
