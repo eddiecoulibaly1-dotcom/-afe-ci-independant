@@ -57,7 +57,7 @@ test("COO AI foreign keys have covering indexes", async () => {
 test("COO missions carry task identifiers and workers reconcile task results through the atomic execution transaction", async () => {
   const platform = await readFile(platformUrl, "utf8");
   const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", import.meta.url), "utf8");
-  const atomic = await readFile(new URL("../supabase/migrations/20261112160000_afe_agent_mission_execution_atomic_commit.sql", import.meta.url), "utf8");
+  const atomic = await readFile(new URL("../supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql", import.meta.url), "utf8");
   assert.match(platform, /cooTasks: createdTasks/);
   assert.match(worker, /task_results/);
   assert.match(worker, /rpc\/commit_afe_agent_mission_execution/);
