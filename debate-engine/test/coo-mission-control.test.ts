@@ -52,3 +52,29 @@ test("COO closure requires an accepted independent review and complete operation
   assert.match(coo, /expectedIds\.size !== completed\.length/);
   assert.match(coo, /closureEligible: true/);
 });
+
+
+test("manual mission and task creation persist one intent key across retries and clear it only after success", () => {
+  assert.match(coo, /function pendingIntentKey\(storageKey,payload\)/);
+  assert.match(coo, /saved\?\.fingerprint===fingerprint/);
+  assert.match(coo, /localStorage\.setItem\(storageKey,JSON\.stringify\(\{fingerprint,key\}\)\)/);
+  assert.match(coo, /idempotencyKey:key/);
+  assert.match(coo, /afe-coo-create-mission:/);
+  assert.match(coo, /afe-coo-create-task:/);
+  assert.match(coo, /clearPendingIntentKey\(storageKey,key\)/);
+  assert.match(coo, /La même clé sera conservée pour le prochain essai/);
+});
+
+test("mission and task creation emit audit and assignment side effects only for the winning insert", () => {
+  assert.equal((coo.match(/const inserted = Boolean\(/g) ?? []).length, 2);
+  assert.equal((coo.match(/if \(inserted\) \{/g) ?? []).length, 2);
+  const missionInsert = coo.indexOf("const inserted = Boolean(mission)");
+  const missionAudit = coo.indexOf('event_type: "coo.mission.created"', missionInsert);
+  const missionGate = coo.indexOf("if (inserted)", missionInsert);
+  assert.ok(missionGate > missionInsert && missionAudit > missionGate);
+  const taskInsert = coo.indexOf("const inserted = Boolean(task?.id)");
+  const taskAudit = coo.indexOf('"coo.task.created"', taskInsert);
+  const taskGate = coo.indexOf("if (inserted)", taskInsert);
+  assert.ok(taskGate > taskInsert && taskAudit > taskGate);
+  assert.ok(coo.indexOf('notify(assignedUserId, "coo.task.assigned"', taskGate) > taskGate);
+});
