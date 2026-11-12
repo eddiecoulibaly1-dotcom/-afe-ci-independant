@@ -51,12 +51,16 @@ test("worker leaves completed deliverables pending COO validation through the at
   assert.equal(worker.includes("finish_afe_agent_mission"), false);
 });
 
-test("COO review endpoint requires admin role, distinct requester and explicit decision", async () => {
+test("COO review endpoint requires admin role and delegates the final decision to the atomic review RPC", async () => {
   const platform = await readFile(new URL("../src/autonomous-agents/platform.ts", import.meta.url), "utf8");
+  const reviewMigration = await readFile(new URL("../supabase/migrations/20261112184220_afe_agent_mission_coo_review_atomic_decision.sql", import.meta.url), "utf8");
   assert.match(platform, /p\[6\]==="review"/);
   assert.match(platform, /requireRole\(wid,user,"admin"\)/);
-  assert.match(platform, /mission\.created_by===user\.id/);
-  assert.match(platform, /closureEligible:decision==="accept"/);
-  assert.match(platform, /mission\.coo_review\./);
-  assert.match(platform, /patch\.status="queued"/);
+  assert.match(platform, /rpc\/decide_afe_agent_mission_coo_review/);
+  assert.doesNotMatch(platform, /mission\.created_by===user\.id/);
+  assert.match(reviewMigration, /v_mission\.created_by = p_reviewer_id/);
+  assert.match(reviewMigration, /closureEligible', p_decision = 'accept'/);
+  assert.match(reviewMigration, /mission\.coo_review\.' \|\| p_decision/);
+  assert.match(reviewMigration, /WHEN p_decision = 'return' THEN 'queued'/);
+  assert.doesNotMatch(platform, /patch\.status="queued"/);
 });
