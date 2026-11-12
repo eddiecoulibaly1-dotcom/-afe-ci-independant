@@ -39,11 +39,15 @@ test("COO mission dossier exposes submitted evidence, independent findings and h
   assert.ok(source.includes("/review"));
   assert.ok(source.includes("closureEligible"));
 });
-test("worker leaves completed deliverables pending COO validation instead of closing the mission", async () => {
+test("worker leaves completed deliverables pending COO validation through the atomic transaction", async () => {
   const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", import.meta.url), "utf8");
-  assert.ok(worker.includes("mission.awaiting_coo_validation"));
-  assert.ok(worker.includes('status:"paused",result:pendingResult'));
-  assert.ok(worker.includes("validation indépendante et décision COO requises avant clôture"));
+  const atomic = await readFile(new URL("../supabase/migrations/20261112160000_afe_agent_mission_execution_atomic_commit.sql", import.meta.url), "utf8");
+  assert.equal((worker.match(/awaitingCooValidation:true/g) ?? []).length, 2);
+  assert.ok(worker.includes("rpc/commit_afe_agent_mission_execution"));
+  assert.match(atomic, /mission\.awaiting_coo_validation/);
+  assert.match(atomic, /status = 'paused'/);
+  assert.match(atomic, /'coo_review'/);
+  assert.match(atomic, /validation indépendante et décision COO requises avant clôture/);
   assert.equal(worker.includes("finish_afe_agent_mission"), false);
 });
 
