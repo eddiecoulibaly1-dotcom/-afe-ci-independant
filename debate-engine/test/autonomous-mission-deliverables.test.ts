@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const workerUrl = new URL("../src/autonomous-agents/worker.ts", import.meta.url);
+const atomicMigrationUrl = new URL("../supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql", import.meta.url);
 
 test("mission worker requires a substantive summary, analysis and concrete deliverables before completion", async () => {
   const source = await readFile(workerUrl, "utf8");
@@ -21,37 +22,44 @@ test("a completed operational task must provide a concrete task-level deliverabl
   assert.match(source, /Chaque tâche terminée doit fournir un livrable concret : /);
 });
 
-test("worker records deliverable evidence before task synchronization and COO review", async () => {
+test("worker commits deliverables, review evidence, task updates and mission state through one atomic RPC", async () => {
   const source = await readFile(workerUrl, "utf8");
-  assert.match(source, /async function recordMissionDeliverables/);
-  assert.match(source, /event_type:"mission\.deliverables\.submitted"/);
-  assert.match(source, /taskDeliverables:/);
-  assert.ok((source.match(/await recordMissionDeliverables\(claim,output\)/g) ?? []).length >= 2);
-  assert.equal(source.includes("finish_afe_agent_mission"), false);
-  const submitted = source.indexOf("await recordMissionDeliverables(claim,output)");
-  assert.ok(submitted >= 0 && submitted < source.indexOf("syncCooTaskResults(claim,mission,output,heartbeat)"));
-  assert.match(source, /mission\.awaiting_coo_validation/);
+  const sql = await readFile(atomicMigrationUrl, "utf8");
+  assert.match(source, /async function commitMissionExecution/);
+  assert.match(source, /rpc\/commit_afe_agent_mission_execution/);
+  assert.equal((source.match(/await commitMissionExecution\(claim,output,reviewReport\)/g) ?? []).length, 2);
+  for (const event of ["mission.deliverables.submitted","mission.evidence.reviewed","coo.tasks.incomplete","mission.awaiting_coo_validation"]) {
+    assert.ok(sql.includes(event), "Missing transactionally persisted event " + event);
+  }
+  assert.match(sql, /UPDATE public\.afe_operational_tasks/);
+  assert.match(sql, /UPDATE public\.afe_agent_missions/);
+  assert.equal(source.includes("syncCooTaskResults"), false);
+  assert.equal(source.includes("recordMissionDeliverables"), false);
 });
 
-test("incomplete or blocked COO tasks cannot be silently marked as completed", async () => {
-  const source = await readFile(workerUrl, "utf8");
-  assert.match(source, /Le résultat de mission ne couvre pas toutes les tâches COO attendues/);
-  assert.match(source, /status:"paused"/);
-  assert.match(source, /coo\.tasks\.incomplete/);
-  assert.match(source, /result\.status!=="done"/);
+test("incomplete or blocked COO tasks remain partial and cannot be silently marked as completed", async () => {
+  const sql = await readFile(atomicMigrationUrl, "utf8");
+  assert.match(sql, /TASK_RESULT_COVERAGE_MISMATCH/);
+  assert.match(sql, /TASK_RESULT_VALIDATION_FAILED/);
+  assert.match(sql, /execution_state', 'partial'/);
+  assert.match(sql, /blocked_task_count/);
+  assert.match(sql, /status = 'paused'/);
+  assert.match(sql, /coo\.tasks\.incomplete/);
+  assert.match(sql, /result\.item ->> 'status' <> 'done'/);
 });
 
-test("independent evidence review is recorded before task synchronization in both worker paths", async () => {
+test("independent evidence review is computed before the same atomic commit in both worker paths", async () => {
   const source = await readFile(workerUrl, "utf8");
+  const sql = await readFile(atomicMigrationUrl, "utf8");
   assert.match(source, /import \{ reviewMissionEvidence \} from "\.\/review\.js"/);
   assert.match(source, /const INDEPENDENT_REVIEWER_ID = "system:independent-evidence-gate"/);
-  assert.match(source, /event_type:"mission\.evidence\.reviewed"/);
-  assert.match(source, /semanticReviewerType:"independent_ai_semantic_reviewer"/);
   assert.equal((source.match(/await recordMissionReview\(claim,mission,output,provider\)/g) ?? []).length, 2);
-  assert.match(source, /AI review is advisory evidence/);
+  assert.equal((source.match(/await commitMissionExecution\(claim,output,reviewReport\)/g) ?? []).length, 2);
   const reviewCall = source.indexOf("await recordMissionReview(claim,mission,output,provider)");
-  const taskSync = source.indexOf("const taskSync=await syncCooTaskResults", reviewCall);
-  assert.ok(reviewCall >= 0 && taskSync > reviewCall);
-  assert.equal(source.includes("finish_afe_agent_mission"), false);
-  assert.match(source, /status:"paused",result:pendingResult/);
+  const commitCall = source.indexOf("await commitMissionExecution(claim,output,reviewReport)", reviewCall);
+  assert.ok(reviewCall >= 0 && commitCall > reviewCall);
+  assert.equal(source.includes('event_type:"mission.evidence.reviewed"'), false);
+  assert.match(sql, /mission\.evidence\.reviewed/);
+  assert.match(sql, /semanticReviewerType/);
+  assert.match(sql, /closureEligible', false/);
 });

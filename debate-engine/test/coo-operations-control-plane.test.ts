@@ -8,6 +8,8 @@ const alertWorkflowIndexesUrl = new URL("../supabase/migrations/20261109081603_c
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
 const reportingUrl = new URL("../src/coo-reporting.ts", import.meta.url);
 const indexesUrl = new URL("../supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql", import.meta.url);
+const idempotencyRecoveryUrl = new URL("../supabase/migrations/20261110113000_coo_orchestration_idempotency_recovery.sql", import.meta.url);
+const taskIdempotencyFallbackUrl = new URL("../supabase/migrations/20261110193310_coo_task_idempotency_fallback.sql", import.meta.url);
 const headsUrl = new URL("../supabase/migrations/20261107210000_afe_ci_coo_department_heads.sql", import.meta.url);
 const serverUrl = new URL("../src/server.ts", import.meta.url);
 const vercelUrl = new URL("../vercel.json", import.meta.url);
@@ -181,14 +183,52 @@ test("sensitive COO workstreams are held for human approval before any dispatch"
   assert.doesNotMatch(source, /const status = plan\.decisionsRequired\.length \? "approval_required"/);
 });
 
+test("COO orchestration recovery enforces database-level task idempotency", async () => {
+  const sql = await readFile(idempotencyRecoveryUrl, "utf8");
+  assert.match(sql, /duplicate mission tasks exist; reconcile them before applying this migration/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS idempotency_key text/);
+  assert.match(sql, /UNIQUE INDEX IF NOT EXISTS afe_operational_tasks_workspace_idempotency_uidx/);
+  assert.match(sql, /ON public\.afe_operational_tasks\(workspace_id, idempotency_key\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now\(\)/);
+  assert.match(sql, /CREATE TRIGGER afe_coo_runs_touch_updated_at/);
+});
+
+test("task idempotency fallback protects mission-linked and standalone inserts when callers omit the key", async () => {
+  const sql = await readFile(taskIdempotencyFallbackUrl, "utf8");
+  assert.ok(sql.includes("BEFORE INSERT ON public.afe_operational_tasks"));
+  assert.ok(sql.includes("NEW.mission_id::text || ':' || md5(lower(btrim(NEW.title)))"));
+  assert.ok(sql.includes("'manual:' || gen_random_uuid()::text"));
+  const source = await readFile(platformUrl, "utf8");
+  assert.ok(source.includes("const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID()"));
+  assert.ok(source.includes("idempotency_key: idempotencyKey"));
+  assert.ok(source.includes("resolution=ignore-duplicates,return=representation"));
+});
+
 test("partial COO dispatch failures remain visible with their created missions and audit event", async () => {
   const source = await readFile(platformUrl, "utf8");
   assert.match(source, /const partial = createdMissions\.length > 0/);
-  assert.match(source, /status: partial \? "partial" : "failed"/);
+  assert.match(source, /const recoveryStatus = partial \? "partial" : outcomeUnknown \? "planning" : "failed"/);
+  assert.match(source, /const outcomeUnknown = isNetworkOutcomeUnknown\(error\)/);
+  assert.match(source, /coo\.orchestration\.outcome_unknown/);
   assert.match(source, /missions_created: createdMissions\.length/);
   assert.match(source, /createdMissions\.push\(dispatchRecord\)/);
   assert.match(source, /dispatchRecord\.taskCount = createdTasks\.length/);
   assert.match(source, /coo\.orchestration\.partial_failure/);
+});
+
+test("COO UI preserves the same idempotency key after a partial run so the run can be resumed", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.ok(source.includes('if(result.run?.status!=="partial")localStorage.removeItem(storageKey);'));
+  assert.ok(source.includes("La clé est conservée ; relance la même instruction après le délai de reprise."));
+  assert.ok(source.includes('["planning","partial"].includes(resumableRun.status)'));
+});
+
+test("COO UI recovers the idempotency key from persisted partial runs when browser storage was cleared", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.ok(source.includes('const existingState=await api(base()+"orchestrations");'));
+  assert.ok(source.includes('x.instruction===instruction&&["planning","partial"].includes(x.status)'));
+  assert.ok(source.includes("recoverable?.idempotency_key"));
+  assert.ok(source.includes("Impossible de vérifier l’historique et de sécuriser la clé d’idempotence."));
 });
 
 test("COO execution trigger is Preview-only, DG-owner-only and respects the kill switch", async () => {
@@ -211,14 +251,18 @@ test("COO portfolio offers bounded worker execution and exposes verified mission
 });
 
 
-test("agent worker preserves partial mission results when COO tasks are blocked", async () => {
+test("agent worker preserves partial mission results atomically when COO tasks are blocked", async () => {
   const workerUrl = new URL("../src/autonomous-agents/worker.ts", import.meta.url);
+  const migrationUrl = new URL("../supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql", import.meta.url);
   const source = await readFile(workerUrl, "utf8");
-  assert.match(source, /execution_state:"partial"/);
-  assert.match(source, /blocked_task_count:blockedCount/);
-  assert.match(source, /status:"paused"/);
-  assert.match(source, /blocked_reason:reason\.slice\(0,3000\)/);
-  assert.match(source, /event_type:"coo\.tasks\.incomplete"/);
+  const sql = await readFile(migrationUrl, "utf8");
+  assert.match(source, /rpc\/commit_afe_agent_mission_execution/);
+  assert.match(sql, /execution_state', 'partial'/);
+  assert.match(sql, /blocked_task_count/);
+  assert.match(sql, /status = 'paused'/);
+  assert.match(sql, /blocked_reason = pg_catalog\.left\(v_reason, 3000\)/);
+  assert.match(sql, /coo\.tasks\.incomplete/);
+  assert.match(sql, /lease_token = NULL/);
   assert.match(source, /error:error instanceof Error\?error\.message/);
 });
 
