@@ -251,14 +251,18 @@ test("COO portfolio offers bounded worker execution and exposes verified mission
 });
 
 
-test("agent worker preserves partial mission results when COO tasks are blocked", async () => {
+test("agent worker preserves partial mission results atomically when COO tasks are blocked", async () => {
   const workerUrl = new URL("../src/autonomous-agents/worker.ts", import.meta.url);
+  const migrationUrl = new URL("../supabase/migrations/20261112160000_afe_agent_mission_execution_atomic_commit.sql", import.meta.url);
   const source = await readFile(workerUrl, "utf8");
-  assert.match(source, /execution_state:"partial"/);
-  assert.match(source, /blocked_task_count:blockedCount/);
-  assert.match(source, /status:"paused"/);
-  assert.match(source, /blocked_reason:reason\.slice\(0,3000\)/);
-  assert.match(source, /event_type:"coo\.tasks\.incomplete"/);
+  const sql = await readFile(migrationUrl, "utf8");
+  assert.match(source, /rpc\/commit_afe_agent_mission_execution/);
+  assert.match(sql, /execution_state', 'partial'/);
+  assert.match(sql, /blocked_task_count/);
+  assert.match(sql, /status = 'paused'/);
+  assert.match(sql, /blocked_reason = pg_catalog\.left\(v_reason, 3000\)/);
+  assert.match(sql, /coo\.tasks\.incomplete/);
+  assert.match(sql, /lease_token = NULL/);
   assert.match(source, /error:error instanceof Error\?error\.message/);
 });
 
