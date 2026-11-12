@@ -104,22 +104,23 @@ if(p[4]==="missions"&&p[5]&&p[6]==="review"&&p.length===7&&method==="POST"){
  await requireRole(wid,user,"admin");const id=p[5],input=await body(req);
  const decision=clean(input.decision,32),note=clean(input.note,4000);
  if(!["accept","return","reject"].includes(decision))throw fail("Décision de revue invalide.",400);
- const rows=await db<any[]>("afe_agent_missions?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&limit=1"),mission=rows[0];
- if(!mission)throw fail("Mission introuvable.",404);
- if(mission.status!=="paused"||mission.result?.coo_review?.status!=="pending")throw fail("Cette mission n'attend pas une décision COO.",409);
- if(mission.created_by===user.id)throw fail("Double contrôle requis : le demandeur initial ne peut pas valider sa propre mission.",403);
- if(decision!=="accept"&&note.length<10)throw fail("Un motif détaillé d'au moins 10 caractères est requis pour retourner ou rejeter le travail.",400);
- const now=new Date().toISOString(),reviewStatus=decision==="accept"?"accepted":decision==="return"?"revision_requested":"rejected";
- const nextResult={...(mission.result??{}),coo_review:{status:reviewStatus,closureEligible:decision==="accept",reviewedAt:now,reviewedBy:user.id,note}};
- const patch:any={result:nextResult,updated_at:now,blocked_reason:decision==="accept"?null:note};
- if(decision==="accept")patch.status="completed";
- if(decision==="return"){patch.status="queued";patch.run_after=now;patch.input_context={...(mission.input_context??{}),cooReviewFeedback:{note,reviewedAt:now,reviewedBy:user.id}};}
- if(decision==="reject")patch.status="paused";
- const saved=await db<any[]>("afe_agent_missions?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&status=eq.paused",{method:"PATCH",headers:{"Prefer":"return=representation"},body:JSON.stringify(patch)});
- if(!saved.length)throw fail("La mission a changé d'état. Rechargez le dossier avant de décider.",409);
- await db("afe_agent_events",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify({workspace_id:wid,mission_id:id,agent_id:mission.agent_id,actor_type:"human",actor_id:user.id,event_type:"mission.coo_review."+decision,payload:{decision,note,previousReviewStatus:"pending",reviewStatus,closureEligible:decision==="accept"}})});
- await audit(wid,user,"mission.coo_review."+decision,id,{reviewStatus,closureEligible:decision==="accept"});
- send(res,200,{mission:saved[0],decision,closureEligible:decision==="accept"});return true;
+ let result:any;
+ try{
+  result=await db<any>("rpc/decide_afe_agent_mission_coo_review",{
+   method:"POST",
+   body:JSON.stringify({p_mission_id:id,p_workspace_id:wid,p_reviewer_id:user.id,p_decision:decision,p_note:note})
+  });
+ }catch(error){
+  const message=error instanceof Error?error.message:String(error);
+  if(message.includes("MISSION_NOT_FOUND"))throw fail("Mission introuvable.",404);
+  if(message.includes("MISSION_REQUESTER_CANNOT_REVIEW_OWN_MISSION"))throw fail("Double contrôle requis : le demandeur initial ne peut pas valider sa propre mission.",403);
+  if(message.includes("MISSION_REVIEW_NOTE_REQUIRED"))throw fail("Un motif détaillé d'au moins 10 caractères est requis pour retourner ou rejeter le travail.",400);
+  if(message.includes("INDEPENDENT_REVIEW_NOT_ACCEPTED"))throw fail("La revue indépendante doit être acceptée et ses citations vérifiées avant la clôture.",409);
+  if(message.includes("MISSION_REVIEW_NOT_PENDING"))throw fail("Cette mission n'attend plus une décision COO. Rechargez son dossier.",409);
+  if(message.includes("INVALID_MISSION_REVIEW_DECISION"))throw fail("Décision de revue invalide.",400);
+  throw error;
+ }
+ send(res,200,result);return true;
 }
 if(p[4]==="missions"&&p.length===5){
  if(method==="POST"){const i=await body(req);send(res,202,{mission:await createMission(wid,user,i),execution:"queued_server_side"});return true;}
