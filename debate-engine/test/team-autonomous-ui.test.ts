@@ -64,3 +64,20 @@ test("COO review endpoint requires admin role and delegates the final decision t
   assert.match(reviewMigration, /WHEN p_decision = 'return' THEN 'queued'/);
   assert.doesNotMatch(platform, /patch\.status="queued"/);
 });
+
+
+test("Team & Governance manual mission creation and diagnostic mission creation reuse stable keys", () => {
+  assert.match(source, /function pendingIntentKey\(storageKey,payload\)/);
+  assert.match(source, /afe-team-create-mission:/);
+  assert.match(source, /afe-team-delib-mission:/);
+  assert.match(source, /idempotencyKey:pendingMissionKey/);
+  assert.match(source, /clearPendingIntentKey\(pendingMissionStorageKey,pendingMissionKey\)/);
+  assert.match(source, /clearPendingIntentKey\(storageKey,key\)/);
+});
+
+test("agent mission API resolves concurrent idempotent inserts and emits the queued event only once", () => {
+  assert.match(agents, /afe_agent_missions\?on_conflict=workspace_id%2Cidempotency_key/);
+  assert.match(agents, /resolution=ignore-duplicates,return=representation/);
+  assert.match(agents, /const inserted=Boolean\(m\)/);
+  assert.match(agents, /if\(inserted\)await db\("afe_agent_events"/);
+});
