@@ -23,7 +23,7 @@ test("mission completion is fenced by the current lease token",()=>{
 
 test("task results, mission transition and audit events commit under one row lock and lease fence",()=>{
  assert.match(atomicMigration,/SELECT m\.\* INTO v_mission[\s\S]*FOR UPDATE/);
- assert.match(atomicMigration,/v_mission\.workspace_id/);
+ assert.match(atomicMigration,/m\.workspace_id = p_workspace_id/);
  assert.match(atomicMigration,/v_mission\.agent_id <> p_agent_id/);
  assert.match(atomicMigration,/v_mission\.lease_token IS DISTINCT FROM p_lease_token/);
  assert.match(atomicMigration,/v_mission\.lease_expires_at <= v_now/);
