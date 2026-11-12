@@ -75,9 +75,10 @@ test("Team & Governance manual mission creation and diagnostic mission creation 
   assert.match(source, /clearPendingIntentKey\(storageKey,key\)/);
 });
 
-test("agent mission API resolves concurrent idempotent inserts and emits the queued event only once", () => {
-  assert.match(agents, /afe_agent_missions\?on_conflict=workspace_id%2Cidempotency_key/);
-  assert.match(agents, /resolution=ignore-duplicates,return=representation/);
-  assert.match(agents, /const inserted=Boolean\(m\)/);
-  assert.match(agents, /if\(inserted\)await db\("afe_agent_events"/);
+test("agent mission API delegates creation and queued audit event to one idempotent database transaction", () => {
+  assert.match(agents, /rpc\/afe_create_agent_mission/);
+  assert.match(agents, /p_idempotency_key:key/);
+  assert.match(agents, /p_workspace_id:wid/);
+  assert.doesNotMatch(agents, /afe_agent_missions\?on_conflict=workspace_id%2Cidempotency_key/);
+  assert.doesNotMatch(agents, /if\(inserted\)await db\("afe_agent_events"/);
 });
