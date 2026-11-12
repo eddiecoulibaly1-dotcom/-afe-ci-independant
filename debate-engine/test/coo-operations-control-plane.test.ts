@@ -253,7 +253,7 @@ test("COO portfolio offers bounded worker execution and exposes verified mission
 
 test("agent worker preserves partial mission results atomically when COO tasks are blocked", async () => {
   const workerUrl = new URL("../src/autonomous-agents/worker.ts", import.meta.url);
-  const migrationUrl = new URL("../supabase/migrations/20261112160000_afe_agent_mission_execution_atomic_commit.sql", import.meta.url);
+  const migrationUrl = new URL("../supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql", import.meta.url);
   const source = await readFile(workerUrl, "utf8");
   const sql = await readFile(migrationUrl, "utf8");
   assert.match(source, /rpc\/commit_afe_agent_mission_execution/);
