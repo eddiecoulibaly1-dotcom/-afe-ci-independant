@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const workerUrl = new URL("../src/autonomous-agents/worker.ts", import.meta.url);
-const atomicMigrationUrl = new URL("../supabase/migrations/20261112160000_afe_agent_mission_execution_atomic_commit.sql", import.meta.url);
+const atomicMigrationUrl = new URL("../supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql", import.meta.url);
 
 test("mission worker requires a substantive summary, analysis and concrete deliverables before completion", async () => {
   const source = await readFile(workerUrl, "utf8");
