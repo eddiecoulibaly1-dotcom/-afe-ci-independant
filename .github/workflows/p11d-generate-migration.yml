@@ -1,9 +1,9 @@
 name: Generate P1.1-D migration with Supabase CLI
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/coo-progressive-development-flow
+      - main
     paths:
       - .github/workflows/p11d-generate-migration.yml
 
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout development branch
         uses: actions/checkout@v4
         with:
-          ref: fix/coo-progressive-development-flow
+          ref: ${{ github.event.pull_request.head.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -298,4 +298,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "$FILE"
           git commit -m "db(coo): add atomic mission and task audit transactions"
-          git push origin HEAD:fix/coo-progressive-development-flow
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
