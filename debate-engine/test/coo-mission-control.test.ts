@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", import.meta.url), "utf8");
 const coo = await readFile(new URL("../src/coo-platform.ts", import.meta.url), "utf8");
 const atomic = await readFile(new URL("../supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql", import.meta.url), "utf8");
+const p11d = await readFile(new URL("../supabase/migrations/20261115235223_afe_p11d_atomic_coo_creation_audit.sql", import.meta.url), "utf8");
 
 test("mission evidence review is computed first and persisted atomically with deliverables in both worker paths", () => {
   assert.equal((worker.match(/const reviewReport=await recordMissionReview\(claim,mission,output,provider\)/g) ?? []).length, 2);
@@ -65,16 +66,12 @@ test("manual mission and task creation persist one intent key across retries and
   assert.match(coo, /La même clé sera conservée pour le prochain essai/);
 });
 
-test("mission and task creation emit audit and assignment side effects only for the winning insert", () => {
-  assert.equal((coo.match(/const inserted = Boolean\(/g) ?? []).length, 2);
-  assert.equal((coo.match(/if \(inserted\) \{/g) ?? []).length, 2);
-  const missionInsert = coo.indexOf("const inserted = Boolean(mission)");
-  const missionAudit = coo.indexOf('event_type: "coo.mission.created"', missionInsert);
-  const missionGate = coo.indexOf("if (inserted)", missionInsert);
-  assert.ok(missionGate > missionInsert && missionAudit > missionGate);
-  const taskInsert = coo.indexOf("const inserted = Boolean(task?.id)");
-  const taskAudit = coo.indexOf('"coo.task.created"', taskInsert);
-  const taskGate = coo.indexOf("if (inserted)", taskInsert);
-  assert.ok(taskGate > taskInsert && taskAudit > taskGate);
-  assert.ok(coo.indexOf('notify(assignedUserId, "coo.task.assigned"', taskGate) > taskGate);
+test("mission and task creation delegate audit and assignment side effects to atomic database transactions", () => {
+  assert.match(coo, /rpc\\/afe_create_coo_mission_with_audit/);
+  assert.match(coo, /rpc\\/afe_create_coo_task_with_audit/);
+  assert.doesNotMatch(coo, /const inserted = Boolean\\(|if \\(inserted\\)/);
+  assert.match(p11d, /INSERT INTO public\\.afe_agent_events/);
+  assert.match(p11d, /INSERT INTO public\\.debate_workspace_audit/);
+  assert.match(p11d, /INSERT INTO public\\.notifications/);
+  assert.match(p11d, /pg_advisory_xact_lock/);
 });
