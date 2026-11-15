@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - audit/hardening-v2-finalization
     paths:
       - .github/workflows/p11d-recovery-migration.yml
 
