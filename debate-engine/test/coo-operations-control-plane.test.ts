@@ -590,7 +590,7 @@ test("COO alert reopening invalidates stale closure evidence so a fresh proof is
 });
 
 
-const p11dMigrationUrl = new URL("../supabase/migrations/20261115235203_afe_p11d_atomic_coo_creation_audit.sql", import.meta.url);
+const p11dMigrationUrl = new URL("../supabase/migrations/20261115235223_afe_p11d_atomic_coo_creation_audit.sql", import.meta.url);
 
 test("P1.1-D COO mission creation delegates mission, event and audit to one transaction", async () => {
   const source = await readFile(platformUrl, "utf8");
