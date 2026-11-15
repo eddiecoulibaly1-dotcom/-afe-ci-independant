@@ -48,11 +48,14 @@ test("COO API protects independent arbitration and human validation from operati
 
 test("COO mission and task mutations validate workspace-scoped assignments", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /validateDepartment\(workspaceId, departmentId\)/);
-  assert.match(source, /validateAgent\(workspaceId, assignedAgentId, departmentId\)/);
-  assert.match(source, /validateMember\(workspaceId, assignedUserId\)/);
-  assert.match(source, /coo\.task\.created/);
-  assert.match(source, /coo\.mission\.created/);
+  const migration = await readFile(p11dMigrationUrl, "utf8");
+  assert.match(source, /validateDepartment\\(workspaceId, departmentId\\)/);
+  assert.match(source, /validateAgent\\(workspaceId, assignedAgentId, departmentId\\)/);
+  assert.match(source, /validateMember\\(workspaceId, assignedUserId\\)/);
+  assert.match(source, /rpc\\/afe_create_coo_task_with_audit/);
+  assert.match(source, /rpc\\/afe_create_coo_mission_with_audit/);
+  assert.match(migration, /coo\\.task\\.created/);
+  assert.match(migration, /coo\\.mission\\.created/);
 });
 
 test("COO control plane is routed through the authenticated server and has a dedicated page", async () => {
