@@ -588,3 +588,46 @@ test("COO alert reopening invalidates stale closure evidence so a fresh proof is
   assert.match(source, /evidence_reference: "", resolution_summary: "", verification_note: ""/);
   assert.match(source, /patch\.evidence_reference = ""; patch\.resolution_summary = ""; patch\.verification_note = ""/);
 });
+
+
+const p11dMigrationUrl = new URL("../supabase/migrations/20261115235203_afe_p11d_atomic_coo_creation_audit.sql", import.meta.url);
+
+test("P1.1-D COO mission creation delegates mission, event and audit to one transaction", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const migration = await readFile(p11dMigrationUrl, "utf8");
+  const start = source.indexOf("async function createMission(workspaceId: string, user: AuthUser, input: any)");
+  const end = source.indexOf("async function createTask(workspaceId: string, user: AuthUser, input: any)", start);
+  assert.ok(start >= 0 && end > start);
+  const implementation = source.slice(start, end);
+  assert.match(implementation, /rpc\/afe_create_coo_mission_with_audit/);
+  assert.match(implementation, /p_idempotency_key: idempotencyKey/);
+  assert.doesNotMatch(implementation, /afe_agent_missions\?on_conflict|afe_agent_events|await audit\(/);
+  assert.match(migration, /CREATE OR REPLACE FUNCTION public\.afe_create_coo_mission_with_audit/);
+  assert.match(migration, /pg_advisory_xact_lock/);
+  assert.match(migration, /INSERT INTO public\.afe_agent_events/);
+  assert.match(migration, /INSERT INTO public\.debate_workspace_audit/);
+});
+
+test("P1.1-D COO task creation commits audit and assignment notification atomically", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const migration = await readFile(p11dMigrationUrl, "utf8");
+  const start = source.indexOf("async function createTask(workspaceId: string, user: AuthUser, input: any)");
+  const end = source.indexOf("async function patchTask(workspaceId: string, user: AuthUser, id: string, input: any)", start);
+  assert.ok(start >= 0 && end > start);
+  const implementation = source.slice(start, end);
+  assert.match(implementation, /rpc\/afe_create_coo_task_with_audit/);
+  assert.match(implementation, /p_idempotency_key: idempotencyKey/);
+  assert.doesNotMatch(implementation, /afe_operational_tasks\?on_conflict|await audit\(|await notify\(/);
+  assert.match(migration, /CREATE OR REPLACE FUNCTION public\.afe_create_coo_task_with_audit/);
+  assert.match(migration, /INSERT INTO public\.debate_workspace_audit/);
+  assert.match(migration, /INSERT INTO public\.notifications/);
+  assert.match(migration, /pg_advisory_xact_lock/);
+});
+
+test("P1.1-D transactional RPCs are server-only and do not bypass RLS with SECURITY DEFINER", async () => {
+  const migration = await readFile(p11dMigrationUrl, "utf8");
+  assert.doesNotMatch(migration, /SECURITY DEFINER/i);
+  assert.match(migration, /REVOKE ALL ON FUNCTION public\.afe_create_coo_mission_with_audit/);
+  assert.match(migration, /REVOKE ALL ON FUNCTION public\.afe_create_coo_task_with_audit/);
+  assert.match(migration, /TO service_role/);
+});
