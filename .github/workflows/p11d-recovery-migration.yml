@@ -1,4 +1,4 @@
-name: Generate P1.1-D recovery migration with Supabase CLI
+name: Generate P1.1-D recovery migration with Supabase CLI (retry)
 
 on:
   pull_request:
