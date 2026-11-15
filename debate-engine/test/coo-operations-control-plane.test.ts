@@ -604,6 +604,7 @@ test("P1.1-D COO mission creation delegates mission, event and audit to one tran
   const implementation = source.slice(start, end);
   assert.match(implementation, /rpc\/afe_create_coo_mission_with_audit/);
   assert.match(implementation, /p_idempotency_key: idempotencyKey/);
+  assert.match(implementation, /if \(!idempotencyKey \|\| idempotencyKey.length > 160\)/);
   assert.doesNotMatch(implementation, /afe_agent_missions\?on_conflict|afe_agent_events|await audit\(/);
   assert.match(migration, /CREATE OR REPLACE FUNCTION public\.afe_create_coo_mission_with_audit/);
   assert.match(migration, /pg_advisory_xact_lock/);
@@ -620,6 +621,7 @@ test("P1.1-D COO task creation commits audit and assignment notification atomica
   const implementation = source.slice(start, end);
   assert.match(implementation, /rpc\/afe_create_coo_task_with_audit/);
   assert.match(implementation, /p_idempotency_key: idempotencyKey/);
+  assert.match(implementation, /if \(!idempotencyKey \|\| idempotencyKey.length > 160\)/);
   assert.doesNotMatch(implementation, /afe_operational_tasks\?on_conflict|await audit\(|await notify\(/);
   assert.match(migration, /CREATE OR REPLACE FUNCTION public\.afe_create_coo_task_with_audit/);
   assert.match(migration, /INSERT INTO public\.debate_workspace_audit/);
