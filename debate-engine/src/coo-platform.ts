@@ -945,24 +945,28 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
       if (!director || director.status !== "active" || director.department_id !== department.id) throw new Error("Responsable IA indisponible pour " + department.name);
       if (!textOk(stream.missionTitle, 220) || !textOk(stream.objective, 12000) || !Array.isArray(stream.tasks) || stream.tasks.length < 1 || stream.tasks.length > maxTasks) throw new Error("Chantier COO incomplet ou hors limites.");
       const missionKey = run.id + ":" + department.slug;
-      const missionRows = await db<any[]>("afe_agent_missions?on_conflict=workspace_id%2Cidempotency_key", {
-        method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+      const missionDueAt = new Date(Date.now() + Math.max(1, Math.min(720, Number(stream.dueInHours) || 24)) * 3600000).toISOString();
+      const mission = await db<any>("rpc/afe_create_coo_mission_with_audit", {
+        method: "POST",
         body: JSON.stringify({
-          workspace_id: workspaceId, agent_id: director.id, department_id: department.id,
-          created_by: user.id, title: clean(stream.missionTitle, 220), objective: clean(stream.objective, 12000),
-          input_context: { cooRunId: run.id, cooAgentId: coo.id, instruction, cooSummary: plan.summary, assumptions: plan.assumptions, decisionsRequired: plan.decisionsRequired },
-          priority: Math.max(1, Math.min(5, Number(stream.priority) || plan.priority || 3)),
-          autonomy_level: Math.max(1, Math.min(2, Number(director.autonomy_level) || 1)),
-          due_at: new Date(Date.now() + Math.max(1, Math.min(720, Number(stream.dueInHours) || 24)) * 3600000).toISOString(),
-          progress_percent: 0, idempotency_key: missionKey, orchestration_mode: "leaf", orchestration_summary: { cooRunId: run.id }
+          p_workspace_id: workspaceId,
+          p_agent_id: director.id,
+          p_created_by: user.id,
+          p_department_id: department.id,
+          p_title: clean(stream.missionTitle, 220),
+          p_objective: clean(stream.objective, 12000),
+          p_idempotency_key: missionKey,
+          p_input_context: { cooRunId: run.id, cooAgentId: coo.id, instruction, cooSummary: plan.summary, assumptions: plan.assumptions, decisionsRequired: plan.decisionsRequired },
+          p_priority: Math.max(1, Math.min(5, Number(stream.priority) || plan.priority || 3)),
+          p_autonomy_level: Math.max(1, Math.min(2, Number(director.autonomy_level) || 1)),
+          p_operational_owner_user_id: null,
+          p_due_at: missionDueAt,
+          p_parent_mission_id: null,
+          p_orchestration_mode: "leaf",
+          p_dependency_ids: []
         })
       });
-      let mission = missionRows[0];
-      if (!mission) {
-        const priorMission = await db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(missionKey) + "&limit=1");
-        mission = priorMission[0];
-      }
-      if (!mission) throw new Error("Échec de création du chantier pour " + department.name);
+      if (!mission?.id) throw new Error("Échec de création atomique du chantier pour " + department.name);
       const dispatchRecord = { missionId: mission.id, departmentSlug: department.slug, departmentName: department.name, directorAgent: director.name, taskCount: 0 };
       createdMissions.push(dispatchRecord);
       const createdTasks: Array<{id:string;title:string;description:string}> = [];
@@ -970,24 +974,24 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
         if (!textOk(task.title, 220) || !textOk(task.description, 6000)) throw new Error("Tâche COO invalide dans " + department.name);
         const taskTitle = clean(task.title, 220);
         const taskIdempotencyKey = mission.id + ":" + createHash("md5").update(taskTitle.toLocaleLowerCase("fr")).digest("hex");
-        const taskRows = await db<any[]>("afe_operational_tasks?on_conflict=workspace_id%2Cidempotency_key", {
-          method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+        const taskDueAt = new Date(Date.now() + Math.max(1, Math.min(720, Number(task.dueInHours) || Number(stream.dueInHours) || 24)) * 3600000).toISOString();
+        const persistedTask = await db<any>("rpc/afe_create_coo_task_with_audit", {
+          method: "POST",
           body: JSON.stringify({
-            workspace_id: workspaceId, mission_id: mission.id, department_id: department.id,
-            idempotency_key: taskIdempotencyKey,
-            title: taskTitle, description: clean(task.description, 6000),
-            priority: Math.max(1, Math.min(5, Number(task.priority) || 3)),
-            assigned_agent_id: director.id,
-            due_at: new Date(Date.now() + Math.max(1, Math.min(720, Number(task.dueInHours) || Number(stream.dueInHours) || 24)) * 3600000).toISOString(),
-            created_by: user.id
+            p_workspace_id: workspaceId,
+            p_created_by: user.id,
+            p_department_id: department.id,
+            p_title: taskTitle,
+            p_idempotency_key: taskIdempotencyKey,
+            p_mission_id: mission.id,
+            p_description: clean(task.description, 6000),
+            p_priority: Math.max(1, Math.min(5, Number(task.priority) || 3)),
+            p_assigned_agent_id: director.id,
+            p_assigned_user_id: null,
+            p_due_at: taskDueAt
           })
         });
-        let persistedTask = taskRows[0];
-        if (!persistedTask?.id) {
-          const existingTask = await db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(taskIdempotencyKey) + "&limit=1");
-          persistedTask = existingTask[0];
-        }
-        if (!persistedTask?.id) throw new Error("La tâche n'a pas été persistée pour " + department.name);
+        if (!persistedTask?.id) throw new Error("Échec de création atomique de la tâche pour " + department.name);
         createdTasks.push({ id: persistedTask.id, title: taskTitle, description: clean(task.description, 6000) });
         dispatchRecord.taskCount = createdTasks.length;
       }
