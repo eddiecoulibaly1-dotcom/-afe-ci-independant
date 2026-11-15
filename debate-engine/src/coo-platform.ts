@@ -361,36 +361,30 @@ async function createMission(workspaceId: string, user: AuthUser, input: any) {
   if (!departmentId || !agentId || title.length < 3 || objective.length < 10) throw fail("Direction, agent, titre et objectif détaillé sont obligatoires.");
   await validateDepartment(workspaceId, departmentId);
   const agent = await validateAgent(workspaceId, agentId, departmentId);
-  if (input.operationalOwnerUserId) await validateMember(workspaceId, clean(input.operationalOwnerUserId, 64));
+  const operationalOwnerUserId = clean(input.operationalOwnerUserId, 64) || null;
+  if (operationalOwnerUserId) await validateMember(workspaceId, operationalOwnerUserId);
   const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID();
-  const prior = await db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
-  if (prior[0]) return prior[0];
-  const rows = await db<any[]>("afe_agent_missions?on_conflict=workspace_id%2Cidempotency_key", {
-    method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+  const mission = await db<any>("rpc/afe_create_coo_mission_with_audit", {
+    method: "POST",
     body: JSON.stringify({
-      workspace_id: workspaceId, agent_id: agentId, department_id: departmentId,
-      operational_owner_user_id: input.operationalOwnerUserId || null,
-      created_by: user.id, title, objective,
-      input_context: input.context && typeof input.context === "object" ? input.context : {},
-      priority: Math.max(1, Math.min(5, Number(input.priority) || 3)),
-      autonomy_level: Math.min(agent.autonomy_level, Math.max(1, Math.min(3, Number(input.autonomyLevel) || 1))),
-      due_at: input.dueAt || null, progress_percent: 0, idempotency_key: idempotencyKey
+      p_workspace_id: workspaceId,
+      p_agent_id: agentId,
+      p_created_by: user.id,
+      p_department_id: departmentId,
+      p_title: title,
+      p_objective: objective,
+      p_idempotency_key: idempotencyKey,
+      p_input_context: input.context && typeof input.context === "object" ? input.context : {},
+      p_priority: Math.max(1, Math.min(5, Number(input.priority) || 3)),
+      p_autonomy_level: Math.min(agent.autonomy_level, Math.max(1, Math.min(3, Number(input.autonomyLevel) || 1))),
+      p_operational_owner_user_id: operationalOwnerUserId,
+      p_due_at: input.dueAt || null,
+      p_parent_mission_id: null,
+      p_orchestration_mode: "leaf",
+      p_dependency_ids: []
     })
   });
-  let mission = rows[0];
-  const inserted = Boolean(mission);
-  if (!mission) {
-    const retry = await db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
-    mission = retry[0];
-  }
-  if (!mission) throw new Error("La mission n'a pas été persistée.");
-  if (inserted) {
-    await db("afe_agent_events", {
-      method: "POST", headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ workspace_id: workspaceId, mission_id: mission.id, agent_id: agentId, actor_type: "human", actor_id: user.id, event_type: "coo.mission.created", payload: { title, departmentId, dueAt: input.dueAt ?? null } })
-    });
-    await audit(workspaceId, user.id, "coo.mission.created", "mission", mission.id, { departmentId, agentId });
-  }
+  if (!mission || typeof mission !== "object" || !mission.id) throw new Error("La transaction de création de mission COO n'a retourné aucun enregistrement.");
   return mission;
 }
 async function createTask(workspaceId: string, user: AuthUser, input: any) {
@@ -409,28 +403,23 @@ async function createTask(workspaceId: string, user: AuthUser, input: any) {
   const assignedUserId = clean(input.assignedUserId, 64) || null;
   if (assignedUserId) await validateMember(workspaceId, assignedUserId);
   const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID();
-  const rows = await db<any[]>("afe_operational_tasks?on_conflict=workspace_id%2Cidempotency_key", {
-    method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
+  const task = await db<any>("rpc/afe_create_coo_task_with_audit", {
+    method: "POST",
     body: JSON.stringify({
-      workspace_id: workspaceId, mission_id: missionId, department_id: departmentId,
-      idempotency_key: idempotencyKey,
-      title, description: clean(input.description, 6000),
-      priority: Math.max(1, Math.min(5, Number(input.priority) || 3)),
-      assigned_agent_id: assignedAgentId, assigned_user_id: assignedUserId,
-      due_at: input.dueAt || null, created_by: user.id
+      p_workspace_id: workspaceId,
+      p_created_by: user.id,
+      p_department_id: departmentId,
+      p_title: title,
+      p_idempotency_key: idempotencyKey,
+      p_mission_id: missionId,
+      p_description: clean(input.description, 6000),
+      p_priority: Math.max(1, Math.min(5, Number(input.priority) || 3)),
+      p_assigned_agent_id: assignedAgentId,
+      p_assigned_user_id: assignedUserId,
+      p_due_at: input.dueAt || null
     })
   });
-  let task = rows[0];
-  const inserted = Boolean(task?.id);
-  if (!task?.id) {
-    const existing = await db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
-    task = existing[0];
-  }
-  if (!task?.id) throw new Error("La tâche n'a pas été persistée.");
-  if (inserted) {
-    await audit(workspaceId, user.id, "coo.task.created", "task", task.id, { departmentId, missionId, assignedAgentId, assignedUserId });
-    if (assignedUserId) await notify(assignedUserId, "coo.task.assigned", "Nouvelle tâche attribuée", title, workspaceId);
-  }
+  if (!task || typeof task !== "object" || !task.id) throw new Error("La transaction de création de tâche COO n'a retourné aucun enregistrement.");
   return task;
 }
 async function patchTask(workspaceId: string, user: AuthUser, id: string, input: any) {
