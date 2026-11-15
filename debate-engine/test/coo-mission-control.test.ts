@@ -67,11 +67,11 @@ test("manual mission and task creation persist one intent key across retries and
 });
 
 test("mission and task creation delegate audit and assignment side effects to atomic database transactions", () => {
-  assert.match(coo, /rpc\\/afe_create_coo_mission_with_audit/);
-  assert.match(coo, /rpc\\/afe_create_coo_task_with_audit/);
-  assert.doesNotMatch(coo, /const inserted = Boolean\\(|if \\(inserted\\)/);
-  assert.match(p11d, /INSERT INTO public\\.afe_agent_events/);
-  assert.match(p11d, /INSERT INTO public\\.debate_workspace_audit/);
-  assert.match(p11d, /INSERT INTO public\\.notifications/);
+  assert.match(coo, /rpc\/afe_create_coo_mission_with_audit/);
+  assert.match(coo, /rpc\/afe_create_coo_task_with_audit/);
+  assert.doesNotMatch(coo, /const inserted = Boolean\(|if \(inserted\)/);
+  assert.match(p11d, /INSERT INTO public\.afe_agent_events/);
+  assert.match(p11d, /INSERT INTO public\.debate_workspace_audit/);
+  assert.match(p11d, /INSERT INTO public\.notifications/);
   assert.match(p11d, /pg_advisory_xact_lock/);
 });
