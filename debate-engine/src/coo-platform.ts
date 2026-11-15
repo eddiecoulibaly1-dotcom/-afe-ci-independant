@@ -363,7 +363,8 @@ async function createMission(workspaceId: string, user: AuthUser, input: any) {
   const agent = await validateAgent(workspaceId, agentId, departmentId);
   const operationalOwnerUserId = clean(input.operationalOwnerUserId, 64) || null;
   if (operationalOwnerUserId) await validateMember(workspaceId, operationalOwnerUserId);
-  const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID();
+  const idempotencyKey = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
+  if (!idempotencyKey || idempotencyKey.length > 160) throw fail("Une clé d'idempotence valide est obligatoire pour sécuriser la création.", 400);
   const mission = await db<any>("rpc/afe_create_coo_mission_with_audit", {
     method: "POST",
     body: JSON.stringify({
@@ -402,7 +403,8 @@ async function createTask(workspaceId: string, user: AuthUser, input: any) {
   if (assignedAgentId) await validateAgent(workspaceId, assignedAgentId, departmentId);
   const assignedUserId = clean(input.assignedUserId, 64) || null;
   if (assignedUserId) await validateMember(workspaceId, assignedUserId);
-  const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID();
+  const idempotencyKey = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
+  if (!idempotencyKey || idempotencyKey.length > 160) throw fail("Une clé d'idempotence valide est obligatoire pour sécuriser la création.", 400);
   const task = await db<any>("rpc/afe_create_coo_task_with_audit", {
     method: "POST",
     body: JSON.stringify({
