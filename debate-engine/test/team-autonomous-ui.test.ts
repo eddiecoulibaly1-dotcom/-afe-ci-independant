@@ -39,20 +39,46 @@ test("COO mission dossier exposes submitted evidence, independent findings and h
   assert.ok(source.includes("/review"));
   assert.ok(source.includes("closureEligible"));
 });
-test("worker leaves completed deliverables pending COO validation instead of closing the mission", async () => {
+test("worker leaves completed deliverables pending COO validation through the atomic transaction", async () => {
   const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", import.meta.url), "utf8");
-  assert.ok(worker.includes("mission.awaiting_coo_validation"));
-  assert.ok(worker.includes('status:"paused",result:pendingResult'));
-  assert.ok(worker.includes("validation indépendante et décision COO requises avant clôture"));
+  const atomic = await readFile(new URL("../supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql", import.meta.url), "utf8");
+  assert.equal((worker.match(/awaitingCooValidation:true/g) ?? []).length, 2);
+  assert.ok(worker.includes("rpc/commit_afe_agent_mission_execution"));
+  assert.match(atomic, /mission\.awaiting_coo_validation/);
+  assert.match(atomic, /status = 'paused'/);
+  assert.match(atomic, /'coo_review'/);
+  assert.match(atomic, /validation indépendante et décision COO requises avant clôture/);
   assert.equal(worker.includes("finish_afe_agent_mission"), false);
 });
 
-test("COO review endpoint requires admin role, distinct requester and explicit decision", async () => {
+test("COO review endpoint requires admin role and delegates the final decision to the atomic review RPC", async () => {
   const platform = await readFile(new URL("../src/autonomous-agents/platform.ts", import.meta.url), "utf8");
+  const reviewMigration = await readFile(new URL("../supabase/migrations/20261112184220_afe_agent_mission_coo_review_atomic_decision.sql", import.meta.url), "utf8");
   assert.match(platform, /p\[6\]==="review"/);
   assert.match(platform, /requireRole\(wid,user,"admin"\)/);
-  assert.match(platform, /mission\.created_by===user\.id/);
-  assert.match(platform, /closureEligible:decision==="accept"/);
-  assert.match(platform, /mission\.coo_review\./);
-  assert.match(platform, /patch\.status="queued"/);
+  assert.match(platform, /rpc\/decide_afe_agent_mission_coo_review/);
+  assert.doesNotMatch(platform, /mission\.created_by===user\.id/);
+  assert.match(reviewMigration, /v_mission\.created_by = p_reviewer_id/);
+  assert.match(reviewMigration, /closureEligible', p_decision = 'accept'/);
+  assert.match(reviewMigration, /mission\.coo_review\.' \|\| p_decision/);
+  assert.match(reviewMigration, /WHEN p_decision = 'return' THEN 'queued'/);
+  assert.doesNotMatch(platform, /patch\.status="queued"/);
+});
+
+
+test("Team & Governance manual mission creation and diagnostic mission creation reuse stable keys", () => {
+  assert.match(source, /function pendingIntentKey\(storageKey,payload\)/);
+  assert.match(source, /afe-team-create-mission:/);
+  assert.match(source, /afe-team-delib-mission:/);
+  assert.match(source, /idempotencyKey:pendingMissionKey/);
+  assert.match(source, /clearPendingIntentKey\(pendingMissionStorageKey,pendingMissionKey\)/);
+  assert.match(source, /clearPendingIntentKey\(storageKey,key\)/);
+});
+
+test("agent mission API delegates creation and queued audit event to one idempotent database transaction", () => {
+  assert.match(agents, /rpc\/afe_create_agent_mission/);
+  assert.match(agents, /p_idempotency_key:key/);
+  assert.match(agents, /p_workspace_id:wid/);
+  assert.doesNotMatch(agents, /afe_agent_missions\?on_conflict=workspace_id%2Cidempotency_key/);
+  assert.doesNotMatch(agents, /if\(inserted\)await db\("afe_agent_events"/);
 });

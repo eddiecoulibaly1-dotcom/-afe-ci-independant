@@ -11,6 +11,8 @@ on:
     branches:
       - main
       - audit/hardening-v2-finalization
+      - feature/autonomous-organization-v1
+  # Keep the active Autonomous Organization base branch covered by PR verification.
   workflow_dispatch:
 
 permissions:

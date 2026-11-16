@@ -78,10 +78,11 @@ test("automatic dependency and lease trigger functions have pinned search paths"
  assert.match(sql,/sync_afe_agent_mission_dependency_gate\(\) SET search_path = public/);
  assert.match(sql,/release_afe_agent_mission_dependents\(\) SET search_path = public/);
 });
-test("both worker paths fence incomplete and final writes with the active lease",async()=>{
+test("both worker paths check lease ownership before the atomic mission execution commit",async()=>{
  const source=await readFile(workerUrl,"utf8");
  assert.equal((source.match(/await heartbeat\.assertOwned\(\);await recordIncompleteDeliberation/g)||[]).length,2);
- assert.equal((source.match(/await heartbeat\.assertOwned\(\);const pendingResult/g)||[]).length,2);
+ assert.equal((source.match(/await heartbeat\.assertOwned\(\);const committed=await commitMissionExecution/g)||[]).length,2);
+ assert.equal((source.match(/await commitMissionExecution\(claim,output,reviewReport\)/g)||[]).length,2);
 });
 
 test("global and workspace claim functions require successful prerequisite completion",async()=>{
@@ -138,10 +139,18 @@ test("worker heartbeat history is durable, server-only and records idle cron tic
  assert.match(worker,/startLeaseHeartbeat\(claim,tick\.id\)/);
 });
 
-test("worker task and final mission writes are fenced by an unexpired running lease",async()=>{
+test("worker task and final mission writes are fenced atomically by an unexpired running lease",async()=>{
  const worker=await readFile(workerUrl,"utf8");
- assert.ok((worker.match(/&status=eq\.running&lease_expires_at=gt\./g)||[]).length>=5);
- assert.match(worker,/validateMissionDeliverables\(output\);await heartbeat\.assertOwned\(\);await recordMissionDeliverables/);
+ const atomic=await readFile(new URL("../supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql",import.meta.url),"utf8");
+ assert.match(worker,/rpc\/commit_afe_agent_mission_execution/);
+ assert.equal(worker.includes("afe_operational_tasks?id=eq."),false);
+ assert.match(atomic,/FOR UPDATE/);
+ assert.match(atomic,/v_mission\.lease_token IS DISTINCT FROM p_lease_token/);
+ assert.match(atomic,/v_mission\.lease_expires_at <= v_now/);
+ assert.match(atomic,/UPDATE public\.afe_operational_tasks/);
+ assert.match(atomic,/UPDATE public\.afe_agent_missions/);
+ assert.match(worker,/validateMissionDeliverables\(output\);await heartbeat\.assertOwned\(\);const reviewReport/);
+ assert.match(worker,/await heartbeat\.assertOwned\(\);const committed=await commitMissionExecution/);
 });
 
 test("COO supervision uses real worker heartbeats and distinguishes failed cross-direction prerequisites",async()=>{

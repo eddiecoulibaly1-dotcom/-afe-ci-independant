@@ -19,7 +19,7 @@ async function requireRole(wid:string,user:AuthUser,min:Role="viewer"){const a=a
 async function audit(wid:string,user:AuthUser,type:string,id:string,payload:Record<string,unknown>={}){await db("afe_agent_events",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({workspace_id:wid,actor_type:"human",actor_id:user.id,event_type:type,payload:{entity_id:id,...payload}})});}
 async function agent(wid:string,id:string){const rows=await db<any[]>("afe_agents?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&limit=1");return rows[0]??null;}
 async function seedAgents(wid:string,user:AuthUser){await requireRole(wid,user,"admin");const existing=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&select=slug");const slugs=new Set(existing.map(x=>x.slug));const missing=AGENT_DEPARTMENT_TEMPLATES.filter(t=>!slugs.has(t.slug));if(missing.length){const rows=missing.map(t=>({workspace_id:wid,slug:t.slug,name:t.name,specialty:t.specialty,mandate:t.mandate,autonomy_level:t.defaultAutonomy,status:"draft",created_by:user.id}));await db("afe_agents",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify(rows)});}const all=await db<any[]>("afe_agents?workspace_id=eq."+enc(wid)+"&order=created_at.asc");return all;}
-async function createMission(wid:string,user:AuthUser,input:any){await requireRole(wid,user,"editor");const agentId=clean(input.agentId,64),title=clean(input.title,240),objective=clean(input.objective,20000);if(!agentId||title.length<3||objective.length<10)throw fail("Agent, titre et objectif (10 caractères minimum) sont requis.");const a=await agent(wid,agentId);if(!a||a.status!=="active")throw fail("Agent introuvable ou non actif.",404);const key=clean(input.idempotencyKey,160)||randomUUID();const prior=await db<any[]>("afe_agent_missions?workspace_id=eq."+enc(wid)+"&idempotency_key=eq."+enc(key)+"&limit=1");if(prior[0])return prior[0];const rows=await db<any[]>("afe_agent_missions",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({workspace_id:wid,agent_id:agentId,created_by:user.id,title,objective,input_context:input.context&&typeof input.context==="object"?input.context:{},priority:Math.max(1,Math.min(5,Number(input.priority)||3)),autonomy_level:Math.min(a.autonomy_level,Math.max(1,Math.min(3,Number(input.autonomyLevel)||1))),idempotency_key:key})});const m=rows[0];if(!m)throw new Error("La mission n'a pas été persistée.");await db("afe_agent_events",{method:"POST",headers:{Prefer:"return=minimal"},body:JSON.stringify({workspace_id:wid,mission_id:m.id,agent_id:agentId,actor_type:"human",actor_id:user.id,event_type:"mission.queued",payload:{title}})});return m;}
+async function createMission(wid:string,user:AuthUser,input:any){await requireRole(wid,user,"editor");const agentId=clean(input.agentId,64),title=clean(input.title,240),objective=clean(input.objective,20000);if(!agentId||title.length<3||objective.length<10)throw fail("Agent, titre et objectif (10 caractères minimum) sont requis.");const a=await agent(wid,agentId);if(!a||a.status!=="active")throw fail("Agent introuvable ou non actif.",404);const key=clean(input.idempotencyKey,160)||randomUUID();const result=await db<any>("rpc/afe_create_agent_mission",{method:"POST",body:JSON.stringify({p_workspace_id:wid,p_agent_id:agentId,p_created_by:user.id,p_title:title,p_objective:objective,p_input_context:input.context&&typeof input.context==="object"?input.context:{},p_priority:Math.max(1,Math.min(5,Number(input.priority)||3)),p_autonomy_level:Math.min(a.autonomy_level,Math.max(1,Math.min(3,Number(input.autonomyLevel)||1))),p_idempotency_key:key,p_parent_mission_id:clean(input.parentMissionId,64)||null,p_orchestration_mode:input.orchestrationMode==="coordinator"?"coordinator":"leaf",p_dependency_ids:Array.isArray(input.dependencyIds)?input.dependencyIds:[]})});if(!result||typeof result!=="object"||!("id" in result))throw new Error("La transaction de création de mission n'a retourné aucun enregistrement.");return result;}
 export async function handleAutonomousAgentsRequest(req:IncomingMessage,res:ServerResponse,path:string,user:AuthUser):Promise<boolean>{try{
 const url=new URL(req.url??"/","http://localhost"),p=path.split("/").filter(Boolean),method=req.method??"GET";
 if(p.length<4||p[0]!=="team"||p[1]!=="api"||p[2]!=="workspaces")return false;
@@ -104,22 +104,23 @@ if(p[4]==="missions"&&p[5]&&p[6]==="review"&&p.length===7&&method==="POST"){
  await requireRole(wid,user,"admin");const id=p[5],input=await body(req);
  const decision=clean(input.decision,32),note=clean(input.note,4000);
  if(!["accept","return","reject"].includes(decision))throw fail("Décision de revue invalide.",400);
- const rows=await db<any[]>("afe_agent_missions?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&limit=1"),mission=rows[0];
- if(!mission)throw fail("Mission introuvable.",404);
- if(mission.status!=="paused"||mission.result?.coo_review?.status!=="pending")throw fail("Cette mission n'attend pas une décision COO.",409);
- if(mission.created_by===user.id)throw fail("Double contrôle requis : le demandeur initial ne peut pas valider sa propre mission.",403);
- if(decision!=="accept"&&note.length<10)throw fail("Un motif détaillé d'au moins 10 caractères est requis pour retourner ou rejeter le travail.",400);
- const now=new Date().toISOString(),reviewStatus=decision==="accept"?"accepted":decision==="return"?"revision_requested":"rejected";
- const nextResult={...(mission.result??{}),coo_review:{status:reviewStatus,closureEligible:decision==="accept",reviewedAt:now,reviewedBy:user.id,note}};
- const patch:any={result:nextResult,updated_at:now,blocked_reason:decision==="accept"?null:note};
- if(decision==="accept")patch.status="completed";
- if(decision==="return"){patch.status="queued";patch.run_after=now;patch.input_context={...(mission.input_context??{}),cooReviewFeedback:{note,reviewedAt:now,reviewedBy:user.id}};}
- if(decision==="reject")patch.status="paused";
- const saved=await db<any[]>("afe_agent_missions?id=eq."+enc(id)+"&workspace_id=eq."+enc(wid)+"&status=eq.paused",{method:"PATCH",headers:{"Prefer":"return=representation"},body:JSON.stringify(patch)});
- if(!saved.length)throw fail("La mission a changé d'état. Rechargez le dossier avant de décider.",409);
- await db("afe_agent_events",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify({workspace_id:wid,mission_id:id,agent_id:mission.agent_id,actor_type:"human",actor_id:user.id,event_type:"mission.coo_review."+decision,payload:{decision,note,previousReviewStatus:"pending",reviewStatus,closureEligible:decision==="accept"}})});
- await audit(wid,user,"mission.coo_review."+decision,id,{reviewStatus,closureEligible:decision==="accept"});
- send(res,200,{mission:saved[0],decision,closureEligible:decision==="accept"});return true;
+ let result:any;
+ try{
+  result=await db<any>("rpc/decide_afe_agent_mission_coo_review",{
+   method:"POST",
+   body:JSON.stringify({p_mission_id:id,p_workspace_id:wid,p_reviewer_id:user.id,p_decision:decision,p_note:note})
+  });
+ }catch(error){
+  const message=error instanceof Error?error.message:String(error);
+  if(message.includes("MISSION_NOT_FOUND"))throw fail("Mission introuvable.",404);
+  if(message.includes("MISSION_REQUESTER_CANNOT_REVIEW_OWN_MISSION"))throw fail("Double contrôle requis : le demandeur initial ne peut pas valider sa propre mission.",403);
+  if(message.includes("MISSION_REVIEW_NOTE_REQUIRED"))throw fail("Un motif détaillé d'au moins 10 caractères est requis pour retourner ou rejeter le travail.",400);
+  if(message.includes("INDEPENDENT_REVIEW_NOT_ACCEPTED"))throw fail("La revue indépendante doit être acceptée et ses citations vérifiées avant la clôture.",409);
+  if(message.includes("MISSION_REVIEW_NOT_PENDING"))throw fail("Cette mission n'attend plus une décision COO. Rechargez son dossier.",409);
+  if(message.includes("INVALID_MISSION_REVIEW_DECISION"))throw fail("Décision de revue invalide.",400);
+  throw error;
+ }
+ send(res,200,result);return true;
 }
 if(p[4]==="missions"&&p.length===5){
  if(method==="POST"){const i=await body(req);send(res,202,{mission:await createMission(wid,user,i),execution:"queued_server_side"});return true;}
