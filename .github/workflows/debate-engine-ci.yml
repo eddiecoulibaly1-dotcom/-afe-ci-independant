@@ -11,6 +11,7 @@ on:
     branches:
       - main
       - audit/hardening-v2-finalization
+      - feature/autonomous-organization-v1
   workflow_dispatch:
 
 permissions:
