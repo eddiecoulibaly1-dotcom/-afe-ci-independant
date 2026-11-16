@@ -1,4 +1,4 @@
-name: Generate P1.1-D legacy audit backfill migration
+name: Generate P1.1-D legacy audit backfill migration (trigger)
 
 on:
   pull_request:
