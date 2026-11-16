@@ -1,6 +1,9 @@
 name: P1.1-D focused validation (retry)
 
 on:
+  push:
+    branches:
+      - fix/coo-progressive-development-flow
   pull_request:
     branches:
       - feature/autonomous-organization-v1
