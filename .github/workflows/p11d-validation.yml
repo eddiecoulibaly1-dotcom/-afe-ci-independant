@@ -1,4 +1,4 @@
-name: P1.1-D focused validation
+name: P1.1-D focused validation (retry)
 
 on:
   pull_request:
