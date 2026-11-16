@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - audit/hardening-v2-finalization
+      - feature/autonomous-organization-v1
     paths:
       - .github/workflows/p11d-recovery-migration.yml
 
