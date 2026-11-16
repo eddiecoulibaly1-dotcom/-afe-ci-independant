@@ -543,11 +543,20 @@ async function handleSupervision(workspaceId: string, user: AuthUser) {
     dependencies:dependencyRows, departments:byDepartment };
 }
 async function handleDashboard(workspaceId: string, user: AuthUser) {
-  const a = await requireAccess(workspaceId, user);  await settings(workspaceId, a.workspace.owner_id);
-  await ensureDepartments(workspaceId, user.id);
-  const data = await snapshot(workspaceId);  await refreshAlerts(workspaceId, data.missions, data.tasks);
-  const refreshed = await snapshot(workspaceId);
-  return { dashboard: computeDashboard(refreshed), departments: refreshed.departments, missions: refreshed.missions, tasks: refreshed.tasks, alerts: refreshed.alerts.filter(x => x.status !== "resolved"), settings: await settings(workspaceId, a.workspace.owner_id) };}
+  const a = await requireAccess(workspaceId, user);
+  const cooSettings = await settings(workspaceId, a.workspace.owner_id);
+  // Dashboard reads must stay bounded and side-effect free. Alert reconciliation and
+  // department provisioning belong to their dedicated operational workflows, not GET.
+  const data = await snapshot(workspaceId);
+  return {
+    dashboard: computeDashboard(data),
+    departments: data.departments,
+    missions: data.missions,
+    tasks: data.tasks,
+    alerts: data.alerts.filter(x => x.status !== "resolved"),
+    settings: cooSettings
+  };
+}
 async function generateReport(workspaceId: string, reportType: "daily" | "weekly" | "ad_hoc", periodStart: string, periodEnd: string, actorId?: string) {
   const startMs = Date.parse(periodStart), endMs = Date.parse(periodEnd);
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs > endMs) {
