@@ -1,4 +1,4 @@
-name: Generate P1.1-D backfill migration with Supabase CLI
+name: Generate P1.1-D backfill migration with Supabase CLI (trigger)
 
 on:
   pull_request:
