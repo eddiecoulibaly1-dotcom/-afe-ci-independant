@@ -6,6 +6,7 @@ const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", impo
 const coo = await readFile(new URL("../src/coo-platform.ts", import.meta.url), "utf8");
 const atomic = await readFile(new URL("../supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql", import.meta.url), "utf8");
 const p11d = await readFile(new URL("../supabase/migrations/20261115235223_afe_p11d_atomic_coo_creation_audit.sql", import.meta.url), "utf8");
+const p11dRecovery = await readFile(new URL("../supabase/migrations/20261116000043_afe_p11d_orchestration_atomic_recovery.sql", import.meta.url), "utf8");
 
 test("mission evidence review is computed first and persisted atomically with deliverables in both worker paths", () => {
   assert.equal((worker.match(/const reviewReport=await recordMissionReview\(claim,mission,output,provider\)/g) ?? []).length, 2);
@@ -74,4 +75,18 @@ test("mission and task creation delegate audit and assignment side effects to at
   assert.match(p11d, /INSERT INTO public\.debate_workspace_audit/);
   assert.match(p11d, /INSERT INTO public\.notifications/);
   assert.match(p11d, /pg_advisory_xact_lock/);
+});
+
+
+test("COO automated orchestration creates missions and tasks through the atomic RPCs", () => {
+  const start = coo.indexOf('const missionKey = run.id + ":" + department.slug;');
+  const end = coo.indexOf('const status = "dispatched";', start);
+  assert.ok(start >= 0 && end > start);
+  const dispatch = coo.slice(start, end);
+  assert.match(dispatch, /rpc\/afe_create_coo_mission_with_audit/);
+  assert.match(dispatch, /rpc\/afe_create_coo_task_with_audit/);
+  assert.doesNotMatch(dispatch, /afe_agent_missions\?on_conflict|afe_operational_tasks\?on_conflict/);
+  assert.match(p11dRecovery, /COO_MISSION_IDEMPOTENCY_KEY_CONFLICT/);
+  assert.match(p11dRecovery, /COO_TASK_IDEMPOTENCY_KEY_CONFLICT/);
+  assert.match(p11dRecovery, /notifications_source_key_uidx/);
 });
