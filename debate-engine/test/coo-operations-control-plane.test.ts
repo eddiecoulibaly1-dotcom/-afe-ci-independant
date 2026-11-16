@@ -603,6 +603,7 @@ test("COO alert reopening invalidates stale closure evidence so a fresh proof is
 
 const p11dMigrationUrl = new URL("../supabase/migrations/20261115235223_afe_p11d_atomic_coo_creation_audit.sql", import.meta.url);
 const p11dRecoveryMigrationUrl = new URL("../supabase/migrations/20261116000043_afe_p11d_orchestration_atomic_recovery.sql", import.meta.url);
+const p11dLegacyBackfillMigrationUrl = new URL("../supabase/migrations/20261116000931_afe_p11d_legacy_audit_backfill.sql", import.meta.url);
 
 test("P1.1-D COO mission creation delegates mission, event and audit to one transaction", async () => {
   const source = await readFile(platformUrl, "utf8");
@@ -655,4 +656,15 @@ test("P1.1-D retries repair legacy mission and task audit traces without duplica
   assert.match(recovery, /notifications_source_key_uidx/);
   assert.match(recovery, /source_key = v_source_key/);
   assert.match(recovery, /ON CONFLICT DO NOTHING/);
+});
+
+
+test("P1.1-D legacy backfill is idempotent and limited to COO-owned rows", async () => {
+  const backfill = await readFile(p11dLegacyBackfillMigrationUrl, "utf8");
+  assert.match(backfill, /m\.department_id IS NOT NULL/);
+  assert.match(backfill, /t\.department_id IS NOT NULL/);
+  assert.match(backfill, /NOT EXISTS/);
+  assert.match(backfill, /coo\.mission\.created/);
+  assert.match(backfill, /coo\.task\.created/);
+  assert.match(backfill, /backfilled',true/);
 });
