@@ -668,3 +668,17 @@ test("P1.1-D legacy backfill is idempotent and limited to COO-owned rows", async
   assert.match(backfill, /coo\.task\.created/);
   assert.match(backfill, /backfilled',true/);
 });
+
+
+test("COO dashboard GET is bounded, read-only and does not reconcile alerts or provision departments", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const match = source.match(/async function handleDashboard\\([\\s\\S]*?)\\n}\\nasync function generateReport/);
+  assert.ok(match, "Dashboard handler must remain independently identifiable");
+  const handler = match[0];
+  assert.equal((handler.match(/snapshot\\(workspaceId\\)/g) ?? []).length, 1,
+    "Dashboard should build its response from one consistent snapshot");
+  assert.doesNotMatch(handler, /refreshAlerts\\(/,
+    "GET dashboard must not trigger per-record alert reconciliation");
+  assert.doesNotMatch(handler, /ensureDepartments\\(/,
+    "GET dashboard must not provision or rewrite department records");
+});
