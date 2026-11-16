@@ -196,17 +196,25 @@ test("COO orchestration recovery enforces database-level task idempotency", asyn
   assert.match(sql, /CREATE TRIGGER afe_coo_runs_touch_updated_at/);
 });
 
-test("task idempotency fallback protects mission-linked and standalone inserts when callers omit the key", async () => {
+test("COO manual creation requires stable idempotency keys while the database fallback remains available", async () => {
   const sql = await readFile(taskIdempotencyFallbackUrl, "utf8");
   assert.ok(sql.includes("BEFORE INSERT ON public.afe_operational_tasks"));
   assert.ok(sql.includes("NEW.mission_id::text || ':' || md5(lower(btrim(NEW.title)))"));
   assert.ok(sql.includes("'manual:' || gen_random_uuid()::text"));
   const source = await readFile(platformUrl, "utf8");
-  assert.ok(source.includes("const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID()"));
-  assert.ok(source.includes("idempotency_key: idempotencyKey"));
-  assert.ok(source.includes("resolution=ignore-duplicates,return=representation"));
+  const missionStart = source.indexOf("async function createMission(workspaceId: string, user: AuthUser, input: any)");
+  const taskStart = source.indexOf("async function createTask(workspaceId: string, user: AuthUser, input: any)");
+  const patchStart = source.indexOf("async function patchTask(workspaceId: string, user: AuthUser, id: string, input: any)", taskStart);
+  assert.ok(missionStart >= 0 && taskStart > missionStart && patchStart > taskStart);
+  const mission = source.slice(missionStart, taskStart);
+  const task = source.slice(taskStart, patchStart);
+  assert.match(mission, /if \(!idempotencyKey \|\| idempotencyKey.length > 160\)/);
+  assert.match(task, /if \(!idempotencyKey \|\| idempotencyKey.length > 160\)/);
+  assert.match(mission, /p_idempotency_key: idempotencyKey/);
+  assert.match(task, /p_idempotency_key: idempotencyKey/);
+  assert.doesNotMatch(mission + task, /clean\(input\.idempotencyKey, 160\) \|\| randomUUID\(\)/);
 });
-
+ 
 test("partial COO dispatch failures remain visible with their created missions and audit event", async () => {
   const source = await readFile(platformUrl, "utf8");
   assert.match(source, /const partial = createdMissions\.length > 0/);
