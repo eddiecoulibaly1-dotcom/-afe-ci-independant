@@ -102,22 +102,34 @@ async function recordMissionReview(claim:Claim,mission:any,output:MissionResult,
  // Persist the review together with task results and mission transition in one fenced transaction.
  return combined;
 }
+function isRetryableCommitError(error:unknown){
+ const message=error instanceof Error?error.message:String(error);
+ return /fetch failed|timeout|timed out|AbortError|TimeoutError|Supabase 5\\d\\d/i.test(message);
+}
 async function commitMissionExecution(claim:Claim,output:MissionResult,reviewReport:any){
- const committed=await db<{
-  complete:boolean;blockedCount:number;progressPercent:number;reason:string;awaitingCooValidation:boolean
- }>("rpc/commit_afe_agent_mission_execution",{
-  method:"POST",
-  body:JSON.stringify({
-   p_mission_id:claim.mission_id,
-   p_workspace_id:claim.workspace_id,
-   p_agent_id:claim.agent_id,
-   p_lease_token:claim.lease_token,
-   p_result:output,
-   p_review:reviewReport
-  })
- });
- if(!committed||typeof committed.complete!=="boolean")throw new Error("La transaction de clôture du worker n'a retourné aucun résultat exploitable.");
- return committed;
+ const payload={
+  p_mission_id:claim.mission_id,
+  p_workspace_id:claim.workspace_id,
+  p_agent_id:claim.agent_id,
+  p_lease_token:claim.lease_token,
+  p_result:output,
+  p_review:reviewReport
+ };
+ let lastError:unknown;
+ for(let attempt=0;attempt<2;attempt++){
+  try{
+   const committed=await db<{
+    complete:boolean;blockedCount:number;progressPercent:number;reason:string;awaitingCooValidation:boolean
+   }>("rpc/commit_afe_agent_mission_execution",{method:"POST",body:JSON.stringify(payload)});
+   if(!committed||typeof committed.complete!=="boolean")throw new Error("La transaction de clôture du worker n'a pas retourné de résultat exploitable.");
+   return committed;
+  }catch(error){
+   lastError=error;
+   if(attempt===0&&isRetryableCommitError(error))await new Promise(resolve=>setTimeout(resolve,300));
+   else throw error;
+  }
+ }
+ throw lastError instanceof Error?lastError:new Error(String(lastError));
 }
 async function recordFailure(claim:Claim,error:unknown){
  const message=(error instanceof Error?error.message:String(error)).slice(0,3500);
