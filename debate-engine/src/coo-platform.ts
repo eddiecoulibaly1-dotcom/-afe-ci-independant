@@ -475,7 +475,7 @@ function buildAuditChangeDetails(entityType: "mission" | "task", before: any, af
   const suppliedCorrelation = clean(input.auditCorrelationId ?? input.correlationId, 160);
   return {
     schemaVersion: 1,
-    origin: clean(input.auditOrigin, 80) || "coo-api",
+    origin: "coo-api",
     actor: { userId: actor.id, type: "human_or_authenticated_api" },
     correlationId: suppliedCorrelation || null,
     operationId: `coo-${entityType}-${before.id}-${Date.now()}`,
