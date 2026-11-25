@@ -688,8 +688,8 @@ test("COO task completion requires concrete evidence or a documented exception",
   assert.match(source, /function validateCompletionEvidence\(input: any\)/);
   assert.match(source, /Clôture refusée : fournissez une preuve concrète ou une exception justifiée d'au moins 30 caractères/);
   assert.match(source, /Object\.assign\(patch, validateCompletionEvidence\(input\)\)/);
-  assert.match(source, /completionEvidenceProvided: Boolean\(patch\.completion_evidence\)/);
-  assert.match(source, /completionExceptionProvided: Boolean\(patch\.completion_exception_reason\)/);
+  assert.match(source, /completionEvidenceChanged: entityType === "task" && Boolean\(after\.completion_evidence\)/);
+  assert.match(source, /completionExceptionChanged: entityType === "task" && Boolean\(after\.completion_exception_reason\)/);
   assert.match(source, /completion_evidence: \{ title, description, reference, url, submitted_at: nowIso\(\) \}/);
 });
 
