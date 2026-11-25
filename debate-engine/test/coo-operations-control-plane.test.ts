@@ -692,3 +692,25 @@ test("COO task completion requires concrete evidence or a documented exception",
   assert.match(source, /completionExceptionProvided: Boolean\(patch\.completion_exception_reason\)/);
   assert.match(source, /completion_evidence: \{ title, description, reference, url, submitted_at: nowIso\(\) \}/);
 });
+
+const e2StatusMigrationUrl = new URL("../supabase/migrations/20261125120000_afe_coo_status_invariants_e2.sql", import.meta.url);
+
+test("E2 task status invariants require blocked reasons and normalize completion and reopen transitions", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const patchStart = source.indexOf("async function patchTask(");
+  const patchEnd = source.indexOf("async function patchMission(", patchStart);
+  const patch = source.slice(patchStart, patchEnd);
+  assert.match(patch, /Une tâche bloquée doit obligatoirement comporter un motif de blocage/);
+  assert.match(patch, /patch\.progress_percent = Math\.min\(Number\(patch\.progress_percent \?\? old\.progress_percent \?\? 0\), 99\)/);
+  assert.match(patch, /patch\.status === "done".*patch\.progress_percent = 100/);
+  assert.match(patch, /patch\.status === "todo" \|\| patch\.status === "in_progress" \|\| patch\.status === "cancelled"/);
+});
+
+test("E2 worker completion path writes structured E1 evidence atomically", async () => {
+  const sql = await readFile(e2StatusMigrationUrl, "utf8");
+  assert.match(sql, /completion_evidence = CASE/);
+  assert.match(sql, /'title', t\.title/);
+  assert.match(sql, /'description', pg_catalog\.left\(parsed\.deliverable, 6000\)/);
+  assert.match(sql, /completion_exception_reason = NULL/);
+  assert.match(sql, /commit_afe_agent_mission_execution/);
+});
