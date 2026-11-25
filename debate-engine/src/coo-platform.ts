@@ -424,6 +424,23 @@ async function createTask(workspaceId: string, user: AuthUser, input: any) {
   if (!task || typeof task !== "object" || !task.id) throw new Error("La transaction de création de tâche COO n'a retourné aucun enregistrement.");
   return task;
 }
+function validateCompletionEvidence(input: any) {
+  const evidence = input.completionEvidence && typeof input.completionEvidence === "object" ? input.completionEvidence : null;
+  const exceptionReason = clean(input.completionExceptionReason, 4000);
+  if (evidence) {
+    const title = clean(evidence.title, 240);
+    const description = clean(evidence.description, 6000);
+    const reference = clean(evidence.reference, 1000);
+    const url = clean(evidence.url, 2000);
+    if (title.length < 3 || (description.length < 20 && reference.length < 5 && url.length < 8)) {
+      throw fail("La preuve de clôture doit comporter un titre et une description substantielle, une référence ou un lien.", 400);
+    }
+    if (url && !/^https?:\\/\//i.test(url)) throw fail("Le lien de preuve doit être une URL HTTP(S) valide.", 400);
+    return { completion_evidence: { title, description, reference, url, submitted_at: nowIso() }, completion_exception_reason: null };
+  }
+  if (exceptionReason.length >= 30) return { completion_evidence: null, completion_exception_reason: exceptionReason };
+  throw fail("Clôture refusée : fournissez une preuve concrète ou une exception justifiée d'au moins 30 caractères.", 409);
+}
 async function patchTask(workspaceId: string, user: AuthUser, id: string, input: any) {
   const oldRows = await db<any[]>("afe_operational_tasks?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
   const old = oldRows[0];
@@ -433,6 +450,7 @@ async function patchTask(workspaceId: string, user: AuthUser, id: string, input:
     if (!["todo", "in_progress", "blocked", "done", "cancelled"].includes(input.status)) throw fail("Statut de tâche invalide.");
     patch.status = input.status;
     if (input.status === "done") {
+      Object.assign(patch, validateCompletionEvidence(input));
       patch.progress_percent = 100;
       patch.completed_at = nowIso();
       patch.blocked_reason = null;
@@ -475,7 +493,7 @@ async function patchTask(workspaceId: string, user: AuthUser, id: string, input:
   const rows = await db<any[]>("afe_operational_tasks?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId), {
     method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch)
   });
-  await audit(workspaceId, user.id, "coo.task.updated", "task", id, { fields: Object.keys(patch) });
+  await audit(workspaceId, user.id, "coo.task.updated", "task", id, { fields: Object.keys(patch), completionEvidenceProvided: Boolean(patch.completion_evidence), completionExceptionProvided: Boolean(patch.completion_exception_reason) });
   return rows[0] ?? { id, ...patch };
 }
 async function patchMission(workspaceId: string, user: AuthUser, id: string, input: any) {
