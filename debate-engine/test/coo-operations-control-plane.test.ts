@@ -714,3 +714,31 @@ test("E2 worker completion path writes structured E1 evidence atomically", async
   assert.match(sql, /completion_exception_reason = NULL/);
   assert.match(sql, /commit_afe_agent_mission_execution/);
 });
+
+test("E3 reconciliation derives mission progress from non-cancelled operational tasks and flags mismatches", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const start = source.indexOf("function reconcileMissionProgress(");
+  const end = source.indexOf("function computeDashboard(", start);
+  assert.ok(start >= 0 && end > start, "reconciliation helper must exist before dashboard calculation");
+  const helper = source.slice(start, end);
+  assert.match(helper, /status !== "cancelled"/);
+  assert.match(helper, /task\.status === "done" \? 100/);
+  assert.match(helper, /Math\.round\(missionTasks\.reduce/);
+  assert.match(helper, /storedProgressPercent !== expectedProgressPercent/);
+  assert.match(helper, /Mission completed while operational tasks remain incomplete/);
+  assert.match(helper, /Mission reports 100% while tasks are incomplete/);
+});
+
+test("E3 dashboard exposes reconciliation status and discrepancy counts without mutating data", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const start = source.indexOf("function computeDashboard(");
+  const end = source.indexOf("async function createMission(", start);
+  const dashboard = source.slice(start, end);
+  assert.match(dashboard, /progressDiscrepancyMissions: reconciliationDiscrepancies\.length/);
+  assert.match(dashboard, /progressReconciliation: \{ checkedMissionCount:/);
+  assert.match(dashboard, /status: reconciliationDiscrepancies\.length \? "needs_attention" : "consistent"/);
+  const handlerStart = source.indexOf("function handleDashboard(");
+  const handlerEnd = source.indexOf("async function generateReport(", handlerStart);
+  const handler = source.slice(handlerStart, handlerEnd);
+  assert.doesNotMatch(handler, /PATCH|refreshAlerts\(|reconcileMissionProgress\([^)]*\)\s*=/, "dashboard reconciliation must remain read-only");
+});
