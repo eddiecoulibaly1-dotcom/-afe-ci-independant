@@ -795,3 +795,27 @@ test("E5 closure reads prerequisite missions and verifies completed status", asy
   assert.match(closure, /select=id,status/);
   assert.match(closure, /validateMissionClosureLifecycle/);
 });
+
+test("E6 mission and task patches use optimistic concurrency guards", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const taskStart = source.indexOf("async function patchTask(");
+  const missionStart = source.indexOf("async function patchMission(", taskStart);
+  const task = source.slice(taskStart, missionStart);
+  const missionEnd = source.indexOf("async function handleSupervision(", missionStart);
+  const mission = source.slice(missionStart, missionEnd);
+  assert.match(task, /&status=eq\." \+ enc\(String\(old\.status\)\)/);
+  assert.match(task, /&updated_at=eq\." \+ enc\(String\(old\.updated_at\)\)/);
+  assert.match(task, /if \(!rows\[0\]\) throw fail\("Modification concurrente détectée/);
+  assert.match(mission, /&updated_at=eq\." \+ enc\(String\(found\[0\]\.updated_at\)\)/);
+  assert.match(mission, /if \(!rows\[0\]\) throw fail\("Modification concurrente détectée/);
+});
+
+test("E6 closure is guarded by compare-and-set status and timestamp", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const start = source.indexOf('if (action === "accept_closure")');
+  const end = source.indexOf('throw fail("Action de contrôle inconnue.', start);
+  const closure = source.slice(start, end);
+  assert.match(closure, /status=neq\.completed/);
+  assert.match(closure, /updated_at=eq\." \+ enc\(String\(mission\.updated_at\)\)/);
+  assert.match(closure, /if \(!closureRows\[0\]\) throw fail\("Clôture concurrente détectée/);
+});
