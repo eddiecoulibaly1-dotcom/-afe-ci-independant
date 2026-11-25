@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const root=new URL("../",import.meta.url);
 const migration=await readFile(new URL("supabase/migrations/20261105233000_autonomous_agents_p1_p6_controls.sql",root),"utf8");
 const atomicMigration=await readFile(new URL("supabase/migrations/20261112144356_afe_agent_mission_execution_atomic_commit.sql",root),"utf8");
+const e7Migration=await readFile(new URL("supabase/migrations/20261125130000_afe_coo_execution_receipts_e7.sql",root),"utf8");
 const worker=await readFile(new URL("src/autonomous-agents/worker.ts",root),"utf8");
 const config=JSON.parse(await readFile(new URL("vercel.json",root),"utf8"));
 
@@ -75,4 +76,20 @@ test("Vercel invokes the worker independently of the browser",()=>{
 test("worker reaps abandoned leases before claiming new work and tolerates one transient renewal failure",()=>{
  assert.ok(worker.includes("rpc/reap_expired_afe_agent_mission_leases"));
  assert.ok(worker.includes("failures>=2"));
+});
+
+test("E7 worker execution commit is replay-safe with a durable mission+lease receipt",()=>{
+ assert.match(e7Migration,/PRIMARY KEY \(mission_id, lease_token\)/);
+ assert.match(e7Migration,/SELECT r\.response INTO v_receipt[\s\S]*IF FOUND THEN RETURN v_receipt/);
+ assert.match(e7Migration,/INSERT INTO public\.afe_agent_mission_execution_receipts[\s\S]*RETURN v_response/);
+ assert.match(e7Migration,/FOR UPDATE/);
+ assert.match(e7Migration,/REVOKE ALL ON TABLE public\.afe_agent_mission_execution_receipts FROM PUBLIC, anon, authenticated/);
+});
+
+test("E7 worker retries one ambiguous commit with the same lease-token operation identity",()=>{
+ assert.match(worker,/function isRetryableCommitError/);
+ assert.match(worker,/for\(let attempt=0;attempt<2;attempt\+\+\)/);
+ assert.match(worker,/p_lease_token:claim\.lease_token/);
+ assert.match(worker,/rpc\/commit_afe_agent_mission_execution/);
+ assert.match(worker,/setTimeout\(resolve,300\)/);
 });
