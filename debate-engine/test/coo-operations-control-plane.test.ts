@@ -742,3 +742,29 @@ test("E3 dashboard exposes reconciliation status and discrepancy counts without 
   const handler = source.slice(handlerStart, handlerEnd);
   assert.doesNotMatch(handler, /PATCH|refreshAlerts\(|reconcileMissionProgress\([^)]*\)\s*=/, "dashboard reconciliation must remain read-only");
 });
+
+test("E4 mission and task updates record before-after changes with actor, origin and correlation", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const start = source.indexOf("function buildAuditChangeDetails(");
+  const end = source.indexOf("async function patchTask(", start);
+  assert.ok(start >= 0 && end > start, "E4 audit detail builder must be present");
+  const builder = source.slice(start, end);
+  assert.match(builder, /schemaVersion: 1/);
+  assert.match(builder, /origin: "coo-api"/);
+  assert.match(builder, /actor: \{ userId: actor\.id/);
+  assert.match(builder, /correlationId: suppliedCorrelation \|\| null/);
+  assert.match(builder, /operationId:/);
+  assert.match(builder, /changes\[field\] = \{ before: before\[field\], after: nextValue \}/);
+  assert.match(builder, /justification:/);
+  assert.match(source, /coo\.task\.updated", "task", id, auditDetails/);
+  assert.match(source, /coo\.mission\.updated", "mission", id, auditDetails/);
+});
+
+test("E4 audit attribution cannot be overridden by client-provided origin", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const start = source.indexOf("function buildAuditChangeDetails(");
+  const end = source.indexOf("async function patchTask(", start);
+  const builder = source.slice(start, end);
+  assert.match(builder, /origin: "coo-api"/);
+  assert.doesNotMatch(builder, /clean\(input\.auditOrigin/);
+});
