@@ -754,7 +754,7 @@ test("E4 mission and task updates record before-after changes with actor, origin
   assert.match(builder, /actor: \{ userId: actor\.id/);
   assert.match(builder, /correlationId: suppliedCorrelation \|\| null/);
   assert.match(builder, /operationId:/);
-  assert.match(builder, /changes\[field\] = \{ before: before\[field\], after: nextValue \}/);
+  assert.match(builder, /changes\\[field\\] = \\{ before: before\\[field\\] \\?\\? null, after: nextValue \\?\\? null \\}/);
   assert.match(builder, /justification:/);
   assert.match(source, /coo\.task\.updated", "task", id, auditDetails/);
   assert.match(source, /coo\.mission\.updated", "mission", id, auditDetails/);
