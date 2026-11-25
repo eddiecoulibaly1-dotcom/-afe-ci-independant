@@ -558,9 +558,10 @@ async function patchTask(workspaceId: string, user: AuthUser, id: string, input:
     if (aid) await validateAgent(workspaceId, aid, old.department_id);
     patch.assigned_agent_id = aid || null;
   }
-  const rows = await db<any[]>("afe_operational_tasks?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId), {
+  const rows = await db<any[]>("afe_operational_tasks?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId) + "&status=eq." + enc(String(old.status)) + "&updated_at=eq." + enc(String(old.updated_at)), {
     method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch)
   });
+  if (!rows[0]) throw fail("Modification concurrent détectée : la tâche a changé depuis sa lecture. Rechargez-la avant de réessayer.", 409);
   const auditDetails = buildAuditChangeDetails("task", old, rows[0] ?? { ...old, ...patch }, user, input);
   await audit(workspaceId, user.id, "coo.task.updated", "task", id, auditDetails);
   return rows[0] ?? { id, ...patch };
@@ -576,9 +577,10 @@ async function patchMission(workspaceId: string, user: AuthUser, id: string, inp
     patch.progress_percent = p;
   }
   if (input.blockedReason !== undefined) patch.blocked_reason = clean(input.blockedReason, 3000) || null;
-  const rows = await db<any[]>("afe_agent_missions?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId), {
+  const rows = await db<any[]>("afe_agent_missions?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId) + "&updated_at=eq." + enc(String(found[0].updated_at)), {
     method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch)
   });
+  if (!rows[0]) throw fail("Modification concurrente détectée : la mission a changé depuis sa lecture. Rechargez-la avant de réessayer.", 409);
   const auditDetails = buildAuditChangeDetails("mission", found[0], rows[0] ?? { ...found[0], ...patch }, user, input);
   await audit(workspaceId, user.id, "coo.mission.updated", "mission", id, auditDetails);
   return rows[0] ?? { id, ...patch };
@@ -1404,7 +1406,8 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
           if (expectedIds.size !== completed.length || [...expectedIds].some(id => !completed.some((t: any) => String(t.taskId) === id))) throw fail("Clôture refusée : toutes les tâches attendues doivent être terminées à 100 % avec un livrable concret.", 409);
           if (!Array.isArray(result.deliverables) || result.deliverables.length < 1) throw fail("Clôture refusée : aucun livrable de mission n'est enregistré.", 409);
           const decision = { status: "accepted", decidedBy: user.id, decidedAt: nowIso(), reviewerVerdict: independentReview.verdict, closureEligible: true, note };
-          await db("afe_agent_missions?id=eq." + enc(missionId) + "&workspace_id=eq." + enc(workspaceId), { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ status: "completed", progress_percent: 100, blocked_reason: null, result: { ...result, coo_review: decision }, updated_at: nowIso() }) });
+          const closureRows = await db<any[]>("afe_agent_missions?id=eq." + enc(missionId) + "&workspace_id=eq." + enc(workspaceId) + "&status=neq.completed&updated_at=eq." + enc(String(mission.updated_at)), { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ status: "completed", progress_percent: 100, blocked_reason: null, result: { ...result, coo_review: decision }, updated_at: nowIso() }) });
+          if (!closureRows[0]) throw fail("Clôture concurrente détectée : la mission a changé ou a déjà été clôturée. Rechargez son état.", 409);
           const decisionEventRows = await db<any[]>("afe_agent_events", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ workspace_id: workspaceId, mission_id: missionId, agent_id: mission.agent_id, actor_type: "human", actor_id: user.id, event_type: "coo.mission.human_decision", payload: decision }) });
           const archiveRows = await db<any[]>("afe_coo_mission_archives?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(missionId) + "&limit=1");
           if (archiveRows[0] && decisionEventRows[0]) {
