@@ -312,7 +312,23 @@ async function snapshot(workspaceId: string) {
   });
   return { departments, missions: decoratedMissions, tasks: decoratedTasks, agents, alerts, approvals };
 }
+function reconcileMissionProgress(mission: any, tasks: any[]) {
+  const missionTasks = tasks.filter(t => t.mission_id === mission.id && t.status !== "cancelled");
+  if (!missionTasks.length) {
+    const reasons = mission.status === "completed" ? ["Mission completed without operational tasks"] : [];
+    return { taskCount: 0, expectedProgressPercent: null, storedProgressPercent: Number(mission.progress_percent ?? 0), discrepancy: reasons.length > 0, discrepancyReasons: reasons };
+  }
+  const expectedProgressPercent = Math.round(missionTasks.reduce((sum, task) => sum + (task.status === "done" ? 100 : Math.max(0, Math.min(99, Number(task.progress_percent ?? 0)))), 0) / missionTasks.length);
+  const storedProgressPercent = Number(mission.progress_percent ?? 0);
+  const reasons: string[] = [];
+  if (storedProgressPercent !== expectedProgressPercent) reasons.push("Mission progress differs from task-derived progress");
+  if (mission.status === "completed" && missionTasks.some(task => task.status !== "done")) reasons.push("Mission completed while operational tasks remain incomplete");
+  if (mission.status !== "completed" && storedProgressPercent === 100 && missionTasks.some(task => task.status !== "done")) reasons.push("Mission reports 100% while tasks are incomplete");
+  return { taskCount: missionTasks.length, expectedProgressPercent, storedProgressPercent, discrepancy: reasons.length > 0, discrepancyReasons: [...new Set(reasons)] };
+}
 function computeDashboard(data: Awaited<ReturnType<typeof snapshot>>) {
+  const reconciliations = data.missions.map(m => ({ missionId: m.id, title: m.title, status: m.status, reconciliation: reconcileMissionProgress(m, data.tasks) }));
+  const reconciliationDiscrepancies = reconciliations.filter(x => x.reconciliation.discrepancy);
   const activeMissions = data.missions.filter(m => !["completed", "failed", "cancelled"].includes(m.status));
   const overdueMissions = activeMissions.filter(m => m.due_at && new Date(m.due_at).getTime() < Date.now());
   const openTasks = data.tasks.filter(t => !["done", "cancelled"].includes(t.status));
@@ -345,12 +361,16 @@ function computeDashboard(data: Awaited<ReturnType<typeof snapshot>>) {
       departmentsWithActivity: deptPerformance.filter(d => d.active && (d.missionCount > 0 || d.taskCount > 0)).length,
       openAlerts: openAlerts.filter(a => a.status === "open").length,
       criticalAlerts: openAlerts.filter(a => a.severity === "critical").length,
-      pendingHumanApprovals: data.approvals.length
+      pendingHumanApprovals: data.approvals.length,
+      progressDiscrepancyMissions: reconciliationDiscrepancies.length,
+      reconciledMissions: reconciliations.filter(x => x.reconciliation.taskCount > 0).length,
+      missionsWithoutOperationalTasks: reconciliations.filter(x => x.reconciliation.taskCount === 0).length
     },
     departmentPerformance: deptPerformance,
     priorityAlerts: openAlerts.filter(a => a.status === "open").slice(0, 12),
     missionsAtRisk: [...overdueMissions, ...data.missions.filter(m => m.status === "failed")].slice(0, 12),
-    recentTasks: data.tasks.slice(0, 12)
+    recentTasks: data.tasks.slice(0, 12),
+    progressReconciliation: { checkedMissionCount: reconciliations.length, discrepancyCount: reconciliationDiscrepancies.length, discrepancies: reconciliationDiscrepancies.slice(0, 50), status: reconciliationDiscrepancies.length ? "needs_attention" : "consistent" }
   };
 }
 async function createMission(workspaceId: string, user: AuthUser, input: any) {
