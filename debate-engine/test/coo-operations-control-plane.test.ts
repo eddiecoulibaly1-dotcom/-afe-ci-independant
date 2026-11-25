@@ -682,3 +682,14 @@ test("COO dashboard GET is bounded, read-only and does not reconcile alerts or p
   assert.doesNotMatch(handler, /ensureDepartments\\(/,
     "GET dashboard must not provision or rewrite department records");
 });
+
+
+test("COO task completion requires concrete evidence or a documented exception", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /function validateCompletionEvidence\(input: any\)/);
+  assert.match(source, /Clôture refusée : fournissez une preuve concrète ou une exception justifiée d'au moins 30 caractères/);
+  assert.match(source, /Object\.assign\(patch, validateCompletionEvidence\(input\)\)/);
+  assert.match(source, /completionEvidenceProvided: Boolean\(patch\.completion_evidence\)/);
+  assert.match(source, /completionExceptionProvided: Boolean\(patch\.completion_exception_reason\)/);
+  assert.match(source, /completion_evidence: \{ title, description, reference, url, submitted_at: nowIso\(\) \}/);
+});
