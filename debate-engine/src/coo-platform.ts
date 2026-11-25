@@ -312,6 +312,15 @@ async function snapshot(workspaceId: string) {
   });
   return { departments, missions: decoratedMissions, tasks: decoratedTasks, agents, alerts, approvals };
 }
+function validateMissionClosureLifecycle(mission: any, operationalTasks: any[], prerequisiteMissions: any[]) {
+  if (mission.status === "completed") return "Mission déjà clôturée.";
+  if (["paused", "failed", "cancelled"].includes(String(mission.status))) return "La mission doit être reprise et rétablie dans un état actif avant sa clôture.";
+  if (clean(mission.blocked_reason, 3000)) return "Le motif de blocage de la mission doit être levé avant la clôture.";
+  if (!operationalTasks.length) return "La clôture exige au moins une tâche opérationnelle.";
+  if (operationalTasks.some((task: any) => task.status !== "done")) return "Toutes les tâches opérationnelles doivent être terminées avant la clôture.";
+  if (prerequisiteMissions.some((prerequisite: any) => prerequisite.status !== "completed")) return "Toutes les missions prérequises doivent être clôturées avant cette mission.";
+  return null;
+}
 function reconcileMissionProgress(mission: any, tasks: any[]) {
   const missionTasks = tasks.filter(t => t.mission_id === mission.id && t.status !== "cancelled");
   if (!missionTasks.length) {
@@ -1382,7 +1391,13 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
           const result = mission.result ?? {};
           const taskResults = Array.isArray(result.task_results) ? result.task_results : [];
           const operationalTasks = await db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(missionId) + "&select=id,status");
-          if (operationalTasks.some((task: any) => task.status !== "done")) throw fail("Clôture refusée : une ou plusieurs tâches opérationnelles ne sont pas au statut terminé.", 409);
+          const dependencies = await db<any[]>("afe_agent_mission_dependencies?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(missionId) + "&select=depends_on_mission_id");
+          const prerequisiteIds = dependencies.map((dependency: any) => dependency.depends_on_mission_id).filter(Boolean);
+          const prerequisiteMissions = prerequisiteIds.length
+            ? await db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&id=in.(" + prerequisiteIds.map(enc).join(",") + ")&select=id,status")
+            : [];
+          const lifecycleError = validateMissionClosureLifecycle(mission, operationalTasks, prerequisiteMissions);
+          if (lifecycleError) throw fail("Clôture refusée : " + lifecycleError, 409);
           const expected = Array.isArray(mission.input_context?.cooTasks) ? mission.input_context.cooTasks : [];
           const expectedIds = new Set(expected.map((t: any) => String(t.id)));
           const completed = taskResults.filter((t: any) => t.status === "done" && Number(t.progressPercent) === 100 && clean(t.deliverable, 4000).length >= 20);
