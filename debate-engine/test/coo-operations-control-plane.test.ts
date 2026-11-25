@@ -756,8 +756,9 @@ test("E4 mission and task updates record before-after changes with actor, origin
   assert.match(builder, /operationId:/);
   assert.match(builder, /changes\[field\] = \{ before: before\[field\] \?\? null, after: nextValue \?\? null \}/);
   assert.match(builder, /justification:/);
-  assert.match(source, /coo\.task\.updated", "task", id, auditDetails/);
-  assert.match(source, /coo\.mission\.updated", "mission", id, auditDetails/);
+  assert.match(source, /afe_coo_patch_task_with_audit/);
+  assert.match(source, /afe_coo_patch_mission_with_audit/);
+  assert.match(source, /p_audit_details: auditDetails/);
 });
 
 test("E4 audit attribution cannot be overridden by client-provided origin", async () => {
