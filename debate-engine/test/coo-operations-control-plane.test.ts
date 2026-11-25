@@ -796,18 +796,24 @@ test("E5 closure reads prerequisite missions and verifies completed status", asy
   assert.match(closure, /validateMissionClosureLifecycle/);
 });
 
-test("E6 mission and task patches use optimistic concurrency guards", async () => {
+test("E8 mission and task patches use atomic RPC with optimistic concurrency and audit", async () => {
   const source = await readFile(platformUrl, "utf8");
   const taskStart = source.indexOf("async function patchTask(");
   const missionStart = source.indexOf("async function patchMission(", taskStart);
   const task = source.slice(taskStart, missionStart);
   const missionEnd = source.indexOf("async function handleSupervision(", missionStart);
   const mission = source.slice(missionStart, missionEnd);
-  assert.match(task, /&status=eq\." \+ enc\(String\(old\.status\)\)/);
-  assert.match(task, /&updated_at=eq\." \+ enc\(String\(old\.updated_at\)\)/);
-  assert.ok(task.includes("if (!rows[0]) throw fail(") && task.includes("concurrent détectée"));
-  assert.match(mission, /&updated_at=eq\." \+ enc\(String\(found\[0\]\.updated_at\)\)/);
-  assert.ok(mission.includes("if (!rows[0]) throw fail(") && mission.includes("concurrente détectée"));
+  assert.match(task, /afe_coo_patch_task_with_audit/);
+  assert.match(task, /p_expected_status: String\(old\.status\)/);
+  assert.match(task, /p_expected_updated_at: old\.updated_at/);
+  assert.match(task, /buildAuditChangeDetails\("task"/);
+  assert.match(task, /concurrent détectée/);
+  assert.match(mission, /afe_coo_patch_mission_with_audit/);
+  assert.match(mission, /p_expected_updated_at: found\[0\]\.updated_at/);
+  assert.match(mission, /buildAuditChangeDetails\("mission"/);
+  assert.match(mission, /concurrente détectée/);
+  assert.doesNotMatch(task, /await audit\(workspaceId, user\.id, "coo\.task\.updated"/);
+  assert.doesNotMatch(mission, /await audit\(workspaceId, user\.id, "coo\.mission\.updated"/);
 });
 
 test("E6 closure is guarded by compare-and-set status and timestamp", async () => {
