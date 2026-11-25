@@ -768,3 +768,30 @@ test("E4 audit attribution cannot be overridden by client-provided origin", asyn
   assert.match(builder, /origin: "coo-api"/);
   assert.doesNotMatch(builder, /clean\(input\.auditOrigin/);
 });
+
+test("E5 mission closure lifecycle rejects blocked, terminal-invalid and incomplete states", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const start = source.indexOf("function validateMissionClosureLifecycle(");
+  const end = source.indexOf("function reconcileMissionProgress(", start);
+  assert.ok(start >= 0 && end > start, "E5 lifecycle guard helper must exist");
+  const helper = source.slice(start, end);
+  assert.match(helper, /mission\.status === "completed"/);
+  assert.match(helper, /\["paused", "failed", "cancelled"\]/);
+  assert.match(helper, /blocked_reason/);
+  assert.match(helper, /!operationalTasks\.length/);
+  assert.match(helper, /task\.status !== "done"/);
+  assert.match(helper, /prerequisite\.status !== "completed"/);
+  assert.match(source, /validateMissionClosureLifecycle\(mission, operationalTasks, prerequisiteMissions\)/);
+  assert.match(source, /Clôture refusée : " \+ lifecycleError/);
+});
+
+test("E5 closure reads prerequisite missions and verifies completed status", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const start = source.indexOf('if (action === "accept_closure")');
+  const end = source.indexOf('throw fail("Action de contrôle inconnue.', start);
+  const closure = source.slice(start, end);
+  assert.match(closure, /afe_agent_mission_dependencies/);
+  assert.match(closure, /afe_agent_missions\?workspace_id=eq/);
+  assert.match(closure, /select=id,status/);
+  assert.match(closure, /validateMissionClosureLifecycle/);
+});
