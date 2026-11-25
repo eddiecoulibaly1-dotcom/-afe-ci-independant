@@ -805,9 +805,9 @@ test("E6 mission and task patches use optimistic concurrency guards", async () =
   const mission = source.slice(missionStart, missionEnd);
   assert.match(task, /&status=eq\." \+ enc\(String\(old\.status\)\)/);
   assert.match(task, /&updated_at=eq\." \+ enc\(String\(old\.updated_at\)\)/);
-  assert.match(task, /if \(!rows\[0\]\) throw fail\("Modification concurrente détectée/);
+  assert.ok(task.includes("if (!rows[0]) throw fail(\"Modification concurrente détectée"));
   assert.match(mission, /&updated_at=eq\." \+ enc\(String\(found\[0\]\.updated_at\)\)/);
-  assert.match(mission, /if \(!rows\[0\]\) throw fail\("Modification concurrente détectée/);
+  assert.ok(mission.includes("if (!rows[0]) throw fail(\"Modification concurrente détectée"));
 });
 
 test("E6 closure is guarded by compare-and-set status and timestamp", async () => {
