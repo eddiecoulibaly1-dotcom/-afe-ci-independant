@@ -455,6 +455,9 @@ async function patchTask(workspaceId: string, user: AuthUser, id: string, input:
       patch.completed_at = nowIso();
       patch.blocked_reason = null;
     } else if (input.status === "blocked") {
+      const reason = input.blockedReason !== undefined ? clean(input.blockedReason, 3000) : clean(old.blocked_reason, 3000);
+      if (!reason) throw fail("Une tâche bloquée doit obligatoirement comporter un motif de blocage.");
+      patch.blocked_reason = reason;
       patch.completed_at = null;
     } else if (input.status === "todo" || input.status === "in_progress") {
       patch.completed_at = null;
@@ -478,7 +481,17 @@ async function patchTask(workspaceId: string, user: AuthUser, id: string, input:
   }
   // Status invariants always win over a stale percentage sent by the UI.
   if (patch.status === "done") { patch.progress_percent = 100; patch.completed_at = patch.completed_at ?? nowIso(); patch.blocked_reason = null; }
-  if (patch.status === "blocked") patch.completed_at = null;
+  if (patch.status === "blocked") {
+    const reason = clean(patch.blocked_reason ?? old.blocked_reason, 3000);
+    if (!reason) throw fail("Une tâche bloquée doit obligatoirement comporter un motif de blocage.");
+    patch.blocked_reason = reason;
+    patch.completed_at = null;
+    patch.progress_percent = Math.min(Number(patch.progress_percent ?? old.progress_percent ?? 0), 99);
+  }
+  if (patch.status === "todo" || patch.status === "in_progress" || patch.status === "cancelled") {
+    patch.completed_at = null;
+    patch.blocked_reason = null;
+  }
   if (input.dueAt !== undefined) patch.due_at = input.dueAt || null;
   if (input.assignedUserId !== undefined) {
     const uid = clean(input.assignedUserId, 64);
