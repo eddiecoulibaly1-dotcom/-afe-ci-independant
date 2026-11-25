@@ -461,6 +461,32 @@ function validateCompletionEvidence(input: any) {
   if (exceptionReason.length >= 30) return { completion_evidence: null, completion_exception_reason: exceptionReason };
   throw fail("Clôture refusée : fournissez une preuve concrète ou une exception justifiée d'au moins 30 caractères.", 409);
 }
+function buildAuditChangeDetails(entityType: "mission" | "task", before: any, after: any, actor: AuthUser, input: any) {
+  const trackedFields = entityType === "task"
+    ? ["status", "progress_percent", "completed_at", "blocked_reason", "completion_evidence", "completion_exception_reason", "due_at", "assigned_agent_id", "assigned_user_id", "priority"]
+    : ["status", "progress_percent", "blocked_reason", "due_at", "priority", "agent_id", "department_id"];
+  const changes: Record<string, { before: unknown; after: unknown }> = {};
+  for (const field of trackedFields) {
+    const nextValue = after[field] !== undefined ? after[field] : before[field];
+    if (JSON.stringify(before[field] ?? null) !== JSON.stringify(nextValue ?? null)) {
+      changes[field] = { before: before[field] ?? null, after: nextValue ?? null };
+    }
+  }
+  const suppliedCorrelation = clean(input.auditCorrelationId ?? input.correlationId, 160);
+  return {
+    schemaVersion: 1,
+    origin: clean(input.auditOrigin, 80) || "coo-api",
+    actor: { userId: actor.id, type: "human_or_authenticated_api" },
+    correlationId: suppliedCorrelation || null,
+    operationId: `coo-${entityType}-${before.id}-${Date.now()}`,
+    changedFields: Object.keys(changes),
+    changes,
+    justification: clean(input.auditJustification ?? input.justification, 3000) || null,
+    completionEvidenceChanged: entityType === "task" && Boolean(after.completion_evidence),
+    completionExceptionChanged: entityType === "task" && Boolean(after.completion_exception_reason),
+    recordedAt: nowIso()
+  };
+}
 async function patchTask(workspaceId: string, user: AuthUser, id: string, input: any) {
   const oldRows = await db<any[]>("afe_operational_tasks?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
   const old = oldRows[0];
@@ -526,7 +552,8 @@ async function patchTask(workspaceId: string, user: AuthUser, id: string, input:
   const rows = await db<any[]>("afe_operational_tasks?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId), {
     method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch)
   });
-  await audit(workspaceId, user.id, "coo.task.updated", "task", id, { fields: Object.keys(patch), completionEvidenceProvided: Boolean(patch.completion_evidence), completionExceptionProvided: Boolean(patch.completion_exception_reason) });
+  const auditDetails = buildAuditChangeDetails("task", old, rows[0] ?? { ...old, ...patch }, user, input);
+  await audit(workspaceId, user.id, "coo.task.updated", "task", id, auditDetails);
   return rows[0] ?? { id, ...patch };
 }
 async function patchMission(workspaceId: string, user: AuthUser, id: string, input: any) {
@@ -543,7 +570,8 @@ async function patchMission(workspaceId: string, user: AuthUser, id: string, inp
   const rows = await db<any[]>("afe_agent_missions?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId), {
     method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch)
   });
-  await audit(workspaceId, user.id, "coo.mission.updated", "mission", id, { fields: Object.keys(patch) });
+  const auditDetails = buildAuditChangeDetails("mission", found[0], rows[0] ?? { ...found[0], ...patch }, user, input);
+  await audit(workspaceId, user.id, "coo.mission.updated", "mission", id, auditDetails);
   return rows[0] ?? { id, ...patch };
 }
 async function handleSupervision(workspaceId: string, user: AuthUser) {
