@@ -435,7 +435,7 @@ function validateCompletionEvidence(input: any) {
     if (title.length < 3 || (description.length < 20 && reference.length < 5 && url.length < 8)) {
       throw fail("La preuve de clôture doit comporter un titre et une description substantielle, une référence ou un lien.", 400);
     }
-    if (url && !/^https?:\\/\//i.test(url)) throw fail("Le lien de preuve doit être une URL HTTP(S) valide.", 400);
+    if (url && !/^https?:\/\//i.test(url)) throw fail("Le lien de preuve doit être une URL HTTP(S) valide.", 400);
     return { completion_evidence: { title, description, reference, url, submitted_at: nowIso() }, completion_exception_reason: null };
   }
   if (exceptionReason.length >= 30) return { completion_evidence: null, completion_exception_reason: exceptionReason };
