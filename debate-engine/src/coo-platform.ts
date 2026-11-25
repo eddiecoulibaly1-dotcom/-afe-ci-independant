@@ -558,13 +558,17 @@ async function patchTask(workspaceId: string, user: AuthUser, id: string, input:
     if (aid) await validateAgent(workspaceId, aid, old.department_id);
     patch.assigned_agent_id = aid || null;
   }
-  const rows = await db<any[]>("afe_operational_tasks?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId) + "&status=eq." + enc(String(old.status)) + "&updated_at=eq." + enc(String(old.updated_at)), {
-    method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch)
-  });
-  if (!rows[0]) throw fail("Modification concurrent détectée : la tâche a changé depuis sa lecture. Rechargez-la avant de réessayer.", 409);
-  const auditDetails = buildAuditChangeDetails("task", old, rows[0] ?? { ...old, ...patch }, user, input);
-  await audit(workspaceId, user.id, "coo.task.updated", "task", id, auditDetails);
-  return rows[0] ?? { id, ...patch };
+  const proposedAfter = { ...old, ...patch };
+  const auditDetails = buildAuditChangeDetails("task", old, proposedAfter, user, input);
+  try {
+    return await db<any>("rpc/afe_coo_patch_task_with_audit", {
+      method: "POST",
+      body: JSON.stringify({ p_workspace_id: workspaceId, p_task_id: id, p_expected_status: String(old.status), p_expected_updated_at: old.updated_at, p_patch: patch, p_actor_id: user.id, p_audit_details: auditDetails })
+    });
+  } catch (error) {
+    if ((error as any)?.status === 400 || (error as any)?.status === 409 || String((error as any)?.message ?? "").includes("COO_TASK_CONFLICT_OR_NOT_FOUND")) throw fail("Modification concurrent détectée : la tâche a changé depuis sa lecture. Rechargez-la avant de réessayer.", 409);
+    throw error;
+  }
 }
 async function patchMission(workspaceId: string, user: AuthUser, id: string, input: any) {
   const found = await db<any[]>("afe_agent_missions?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
@@ -577,13 +581,17 @@ async function patchMission(workspaceId: string, user: AuthUser, id: string, inp
     patch.progress_percent = p;
   }
   if (input.blockedReason !== undefined) patch.blocked_reason = clean(input.blockedReason, 3000) || null;
-  const rows = await db<any[]>("afe_agent_missions?id=eq." + enc(id) + "&workspace_id=eq." + enc(workspaceId) + "&updated_at=eq." + enc(String(found[0].updated_at)), {
-    method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch)
-  });
-  if (!rows[0]) throw fail("Modification concurrente détectée : la mission a changé depuis sa lecture. Rechargez-la avant de réessayer.", 409);
-  const auditDetails = buildAuditChangeDetails("mission", found[0], rows[0] ?? { ...found[0], ...patch }, user, input);
-  await audit(workspaceId, user.id, "coo.mission.updated", "mission", id, auditDetails);
-  return rows[0] ?? { id, ...patch };
+  const proposedAfter = { ...found[0], ...patch };
+  const auditDetails = buildAuditChangeDetails("mission", found[0], proposedAfter, user, input);
+  try {
+    return await db<any>("rpc/afe_coo_patch_mission_with_audit", {
+      method: "POST",
+      body: JSON.stringify({ p_workspace_id: workspaceId, p_mission_id: id, p_expected_updated_at: found[0].updated_at, p_patch: patch, p_actor_id: user.id, p_audit_details: auditDetails })
+    });
+  } catch (error) {
+    if ((error as any)?.status === 400 || (error as any)?.status === 409 || String((error as any)?.message ?? "").includes("COO_MISSION_CONFLICT_OR_NOT_FOUND")) throw fail("Modification concurrente détectée : la mission a changé depuis sa lecture. Rechargez-la avant de réessayer.", 409);
+    throw error;
+  }
 }
 async function handleSupervision(workspaceId: string, user: AuthUser) {
   await requireAccess(workspaceId, user);
