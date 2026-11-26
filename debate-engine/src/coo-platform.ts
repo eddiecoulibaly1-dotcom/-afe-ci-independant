@@ -899,7 +899,7 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
       body: JSON.stringify({ status: "planning", plan, error_message: null, completed_at: null })
     });
     // Routine DG decisions are recorded for follow-up; only explicitly sensitive actions block dispatch.
-    if (sensitiveItems.length > 0) {
+    if (sensitiveItems.length > 0 && requiredDecisionPending) {
       const updated = await db<any[]>("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
         method: "PATCH", headers: { Prefer: "return=representation" },
         body: JSON.stringify({ status: "approval_required", plan, missions_created: 0, completed_at: nowIso() })
