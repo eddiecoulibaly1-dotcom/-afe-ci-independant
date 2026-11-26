@@ -4,7 +4,7 @@ import type { AuthUser } from "./auth.js";
 import { callModel } from "./providers.js";
 import { runAgentWorkerForWorkspace } from "./autonomous-agents/worker.js";
 import { buildCooDataQuality, buildCooReportActivity, buildCooReportIdempotencyKey, resolveTaskDepartmentId } from "./coo-reporting.js";
-import { consolidateDepartmentWorkstreams, reconcileCooRun } from "./coo-planning.js";
+import { consolidateDepartmentWorkstreams, reconcileCooRun, createCooDecisionRegister, applyCooDecisionRegister, hasPendingRequiredCooDecisions, hasRejectedRequiredCooDecisions } from "./coo-planning.js";
 import { assertDependencyAddition, evaluateDependencyReadiness } from "./mission-coordination.js";
 
 type Role = "owner" | "admin" | "editor" | "viewer";
@@ -756,6 +756,10 @@ type CooPlan = {
   assumptions: string[];
 };
 
+function sensitiveItemsForPlan(plan: CooPlan) {
+  const sensitiveAction = /\b(?:payer|autoriser un paiement|effectuer un paiement|initier un virement|transférer des fonds|engager une dépense|signer un contrat|conclure un contrat|publier un contenu|déployer en production|mettre en production|lancer une migration|modifier les accès|changer les habilitations|supprimer définitivement|effacer définitivement)\b/i;
+  return (plan.workstreams ?? []).flatMap(stream => [stream.missionTitle, stream.objective, ...(stream.tasks ?? []).flatMap(task => [task.title, task.description])]).filter(value => sensitiveAction.test(String(value ?? "")));
+}
 type CooCapability = "coo.organization.read" | "coo.workload.read" | "coo.missions.create" | "coo.tasks.create";
 async function requireCooCapability(workspaceId: string, agentId: string, toolKey: CooCapability, permission: "read" | "write") {
   const rows = await db<any[]>(
@@ -797,7 +801,9 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
   const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID();
   const prior = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
   const priorRun = prior[0] ?? null;
-  if (priorRun && ["dispatched","approval_required","cancelled"].includes(priorRun.status)) return { run: priorRun, replayed: true };
+  const priorDecisionRegister = Array.isArray(priorRun?.plan?.decisionRegister) ? priorRun.plan.decisionRegister : [];
+  const priorApprovalPending = priorRun?.status === "approval_required" && (priorDecisionRegister.length === 0 || hasPendingRequiredCooDecisions(priorDecisionRegister) || hasRejectedRequiredCooDecisions(priorDecisionRegister));
+  if (priorRun && (["dispatched","cancelled"].includes(priorRun.status) || priorApprovalPending)) return { run: priorRun, replayed: true };
   const dayStart = new Date(Date.now() - 86400000).toISOString();
   if (!priorRun) {
     const recentRuns = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&created_at=gte." + enc(dayStart) + "&select=id&limit=10");
@@ -880,11 +886,13 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
     if (!Array.isArray(plan.workstreams) || plan.workstreams.length < 1 || plan.workstreams.length > maxWorkstreams) throw new Error("Le plan du COO dépasse les limites de délégation.");
     const plannedTaskCount = plan.workstreams.reduce((total, stream) => total + (Array.isArray(stream.tasks) ? stream.tasks.length : 0), 0);
     if (plannedTaskCount > maxTasksPerRun) throw new Error("Le plan dépasse le plafond de tâches autorisé par les capacités COO.");
-    const sensitiveAction = /\b(?:payer|autoriser un paiement|effectuer un paiement|initier un virement|transférer des fonds|engager une dépense|signer un contrat|conclure un contrat|publier un contenu|déployer en production|mettre en production|lancer une migration|modifier les accès|changer les habilitations|supprimer définitivement|effacer définitivement)\b/i;
-    const sensitiveItems = plan.workstreams.flatMap(stream => [stream.missionTitle, stream.objective, ...stream.tasks.flatMap(task => [task.title, task.description])]).filter(value => sensitiveAction.test(value));
+    const sensitiveItems = sensitiveItemsForPlan(plan);
     if (sensitiveItems.length) {
       plan.decisionsRequired = [...new Set([...(plan.decisionsRequired ?? []), "Approbation humaine obligatoire : le plan contient une action potentiellement sensible ou irréversible."])];
     }
+    if (!Array.isArray(plan.decisionRegister)) plan.decisionRegister = createCooDecisionRegister(run.id, plan.decisionsRequired ?? [], sensitiveItems);
+    const decisionRegister = Array.isArray(plan.decisionRegister) ? plan.decisionRegister : [];
+    const requiredDecisionPending = hasPendingRequiredCooDecisions(decisionRegister) || hasRejectedRequiredCooDecisions(decisionRegister);
     // Persist the validated plan before dispatch so a timeout or crash can resume without regenerating it.
     await db("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
       method: "PATCH", headers: { Prefer: "return=minimal" },
@@ -1107,6 +1115,41 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
       const result = await orchestrateCooInstruction(workspaceId, user, await readBody(req));
       send(res, 201, result); return true;
     }
+    if (resource === "orchestrations" && p[6] && p[7] === "decisions" && p[8] && method === "POST" && p.length === 9) {
+      await requireAccess(workspaceId, user, "owner");
+      const runRows = await db<any[]>("afe_coo_runs?id=eq." + enc(p[6]) + "&workspace_id=eq." + enc(workspaceId) + "&limit=1");
+      const run = runRows[0];
+      if (!run) throw fail("Orchestration introuvable.", 404);
+      const input = await readBody(req);
+      const decision = clean(input?.decision, 8);
+      const note = clean(input?.note, 2000);
+      if (!["approve","reject"].includes(decision)) throw fail("Décision invalide : approve ou reject attendu.");
+      if (note.length < 8) throw fail("La note DG doit contenir au moins 8 caractères.");
+      const plan = run.plan ?? {};
+      const existingRegister = Array.isArray(plan.decisionRegister) ? plan.decisionRegister : createCooDecisionRegister(run.id, plan.decisionsRequired ?? [], sensitiveItemsForPlan(plan));
+      const applied = applyCooDecisionRegister(existingRegister, p[8], decision as "approve" | "reject", note, user.id, nowIso());
+      if (!applied.target) throw fail("Décision DG introuvable dans le registre.", 404);
+      if (applied.changed) {
+        const nextPlan = { ...plan, decisionRegister: applied.entries };
+        const rejectedRequired = Boolean(applied.target.required && decision === "reject");
+        const updatedRun = await db<any[]>("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
+          method: "PATCH", headers: { Prefer: "return=representation" },
+          body: JSON.stringify({ plan: nextPlan, status: rejectedRequired ? "cancelled" : run.status, completed_at: rejectedRequired ? nowIso() : run.completed_at })
+        });
+        await db("afe_agent_events", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({
+          workspace_id: workspaceId, agent_id: run.coo_agent_id, actor_type: "human", actor_id: user.id,
+          event_type: "coo.orchestration.dg_decision", payload: { cooRunId: run.id, decisionId: p[8], decision, required: Boolean(applied.target.required), note, status: applied.target.status }
+        }) });
+        await audit(workspaceId, user.id, "coo.orchestration.dg_decision", "coo_run", run.id, { decisionId: p[8], decision, required: Boolean(applied.target.required), status: applied.target.status });
+        const requiredEntries = applied.entries.filter(entry => entry.required);
+        const resumeEligible = decision === "approve" && requiredEntries.length > 0 && !hasPendingRequiredCooDecisions(applied.entries) && !hasRejectedRequiredCooDecisions(applied.entries);
+        const resume = resumeEligible ? await orchestrateCooInstruction(workspaceId, user, { instruction: run.instruction, idempotencyKey: run.idempotency_key }) : null;
+        send(res, 200, { ok: true, decision: applied.target, run: updatedRun[0] ?? { ...run, plan: nextPlan, status: rejectedRequired ? "cancelled" : run.status }, resume });
+        return true;
+      }
+      send(res, 200, { ok: true, replayed: true, decision: applied.target, run });
+      return true;
+    }
     if (resource === "orchestrations" && method === "GET") {
       await requireAccess(workspaceId, user);
       const runs = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&order=created_at.desc&limit=50");
@@ -1125,7 +1168,13 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
         db<any[]>("afe_org_departments?workspace_id=eq." + enc(workspaceId) + "&select=id,slug&limit=500")
       ]);
       const departmentSlugs = Object.fromEntries(departments.map(department => [String(department.id), String(department.slug)]));
-      const reconciledRuns = runs.map(run => ({ ...run, reconciliation: reconcileCooRun(run, missions, tasks, departmentSlugs) }));
+      const reconciledRuns = runs.map(run => {
+        const plan = run.plan ?? {};
+        if (!Array.isArray(plan.decisionRegister) && run.status === "approval_required") {
+          plan.decisionRegister = createCooDecisionRegister(run.id, plan.decisionsRequired ?? [], sensitiveItemsForPlan(plan));
+        }
+        return { ...run, plan, reconciliation: reconcileCooRun(run, missions, tasks, departmentSlugs) };
+      });
       const reconciliationSummary = {
         checkedRuns: reconciledRuns.length,
         consistent: reconciledRuns.filter(run => run.reconciliation.status === "consistent").length,
