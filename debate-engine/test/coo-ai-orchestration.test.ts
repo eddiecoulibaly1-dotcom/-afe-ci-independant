@@ -196,7 +196,7 @@ test("E9.2-D9 final audit: orchestration, governance, validation, reconciliation
   const migration = await readFile(atomicityUrl, "utf8");
   const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", import.meta.url), "utf8");
   assert.match(source, /rpc\/dispatch_coo_workstream_atomic/);
-  assert.match(source, /rpc\/apply_coo_task_results_atomic/);
+  assert.match(worker, /rpc\/apply_coo_task_results_atomic/);
   assert.match(source, /priorApprovalPending/);
   assert.match(source, /validateCooPlan/);
   assert.match(source, /reconcileCooRun/);
