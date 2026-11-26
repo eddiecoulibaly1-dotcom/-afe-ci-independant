@@ -754,6 +754,7 @@ type CooPlan = {
   }>;
   decisionsRequired: string[];
   assumptions: string[];
+  decisionRegister?: CooDecisionRegisterEntry[];
 };
 
 function sensitiveItemsForPlan(plan: CooPlan) {
