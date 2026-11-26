@@ -43,7 +43,7 @@ BEGIN
       RAISE EXCEPTION 'COO_DEPENDENCY_PREREQUISITE_TERMINAL_INVALID' USING ERRCODE='P0001';
     END IF;
 
-    SELECT id INTO v_dependency FROM public.afe_agent_mission_dependencies
+    SELECT * INTO v_dependency FROM public.afe_agent_mission_dependencies
     WHERE workspace_id=p_workspace_id AND mission_id=p_mission_id
       AND depends_on_mission_id=p_depends_on_mission_id LIMIT 1;
     IF FOUND THEN
