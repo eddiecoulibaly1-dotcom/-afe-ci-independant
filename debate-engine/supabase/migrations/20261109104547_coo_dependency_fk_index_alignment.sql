@@ -1,4 +1,0 @@
-DROP INDEX IF EXISTS public.afe_agent_mission_dependencies_prerequisite_idx;
-CREATE INDEX IF NOT EXISTS afe_agent_mission_dependencies_mission_fk_idx ON public.afe_agent_mission_dependencies (mission_id,workspace_id);
-CREATE INDEX IF NOT EXISTS afe_agent_mission_dependencies_prerequisite_fk_idx ON public.afe_agent_mission_dependencies (depends_on_mission_id,workspace_id);
-CREATE INDEX IF NOT EXISTS afe_agent_mission_dependencies_created_by_idx ON public.afe_agent_mission_dependencies (created_by) WHERE created_by IS NOT NULL;
