@@ -102,7 +102,8 @@ test("E9.2-D5 orchestration history exposes a read-only Run-Mission-Task reconci
   const source = await readFile(platformUrl, "utf8");
   const planning = await readFile(new URL("../src/coo-planning.ts", import.meta.url), "utf8");
   assert.match(source, /reconcileCooRun\(run, missions, tasks, departmentSlugs\)/);
-  assert.match(source, /input_context->>cooRunId=eq\./);
+  assert.match(source, /input_context->>cooRunId=in\.\(/);
+  assert.doesNotMatch(source, /runIds\.map\(runId => db/);
   assert.match(source, /coo_task_key/);
   assert.match(source, /reconciliationSummary/);
   assert.match(source, /data-tab="orchestrations">Historique COO/);
