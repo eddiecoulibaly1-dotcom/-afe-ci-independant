@@ -183,11 +183,12 @@ test("sensitive COO workstreams are held for human approval before any dispatch"
 
 test("partial COO dispatch failures remain visible with their created missions and audit event", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /const partial = createdMissions\.length > 0/);
+  assert.match(source, /const partial = createdMissions\.length > 0 \|\| Number\(run\.missions_created\) > 0/);
   assert.match(source, /status: partial \? "partial" : "failed"/);
   assert.match(source, /missions_created: createdMissions\.length/);
-  assert.match(source, /createdMissions\.push\(dispatchRecord\)/);
-  assert.match(source, /dispatchRecord\.taskCount = createdTasks\.length/);
+  assert.match(source, /createdMissions\.findIndex\(x=>x\.departmentSlug===department\.slug\)/);
+  assert.match(source, /rpc\/dispatch_coo_workstream_atomic/);
+  assert.match(source, /taskCount:atomicTasks\.length/);
   assert.match(source, /coo\.orchestration\.partial_failure/);
 });
 
