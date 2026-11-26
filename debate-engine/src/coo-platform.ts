@@ -815,7 +815,7 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
   if (!run) throw new Error("Impossible d'enregistrer ou de récupérer l'exécution COO.");
   if (priorRun) await db("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), { method:"PATCH", headers:{Prefer:"return=minimal"}, body:JSON.stringify({status:"planning",error_message:null,completed_at:null}) });
   let generatedPlan: CooPlan | null = (priorRun?.plan?.workstreams?.length ? priorRun.plan : null);
-  const createdMissions: Array<{missionId:string;departmentSlug:string;departmentName:string;directorAgent:string;taskCount:number}> = [];
+  const createdMissions: Array<{missionId:string;departmentSlug:string;departmentName:string;directorAgent:string;taskCount:number}> = priorRun?.plan?.dispatched ? [...priorRun.plan.dispatched] : [];
   try {
     const [departments, agents] = await Promise.all([
       db<any[]>("afe_org_departments?workspace_id=eq." + enc(workspaceId) + "&active=eq.true&order=name.asc"),
@@ -937,7 +937,9 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
       });
       const atomicMission=atomicResult?.mission,atomicTasks=atomicResult?.cooTasks;
       if(!atomicMission?.id||!Array.isArray(atomicTasks)||atomicTasks.length!==stream.tasks.length) throw new Error("La transaction atomique n'a pas retourné le chantier et toutes ses tâches pour "+department.name);
-      createdMissions.push({missionId:atomicMission.id,departmentSlug:department.slug,departmentName:department.name,directorAgent:director.name,taskCount:atomicTasks.length});
+      const dispatchEntry={missionId:atomicMission.id,departmentSlug:department.slug,departmentName:department.name,directorAgent:director.name,taskCount:atomicTasks.length};
+      const existingDispatchIndex=createdMissions.findIndex(x=>x.departmentSlug===department.slug);
+      if(existingDispatchIndex>=0)createdMissions[existingDispatchIndex]=dispatchEntry;else createdMissions.push(dispatchEntry);
     }
     const status = "dispatched"; // Non-blocking DG decisions remain recorded in the plan; sensitive actions were gated above.
     const updated = await db<any[]>("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
@@ -951,7 +953,7 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
     await audit(workspaceId, user.id, "coo.orchestration.dispatched", "coo_run", run.id, { cooAgentId: coo.id, missionsCreated: createdMissions.length });
     return { run: updated[0] ?? { ...run, status, plan, missions_created: createdMissions.length }, plan, dispatched: createdMissions };
   } catch (error) {
-    const partial = createdMissions.length > 0;
+    const partial = createdMissions.length > 0 || Number(run.missions_created) > 0;
     await db("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
       method: "PATCH", headers: { Prefer: "return=minimal" },
       body: JSON.stringify({
