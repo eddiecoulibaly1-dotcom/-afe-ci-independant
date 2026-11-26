@@ -4,7 +4,7 @@ import type { AuthUser } from "./auth.js";
 import { callModel } from "./providers.js";
 import { runAgentWorkerForWorkspace } from "./autonomous-agents/worker.js";
 import { buildCooDataQuality, buildCooReportActivity, buildCooReportIdempotencyKey, resolveTaskDepartmentId } from "./coo-reporting.js";
-import { consolidateDepartmentWorkstreams, reconcileCooRun, createCooDecisionRegister, applyCooDecisionRegister, hasPendingRequiredCooDecisions, hasRejectedRequiredCooDecisions } from "./coo-planning.js";
+import { consolidateDepartmentWorkstreams, reconcileCooRun, createCooDecisionRegister, applyCooDecisionRegister, hasPendingRequiredCooDecisions, hasRejectedRequiredCooDecisions, type CooDecisionRegisterEntry } from "./coo-planning.js";
 import { assertDependencyAddition, evaluateDependencyReadiness } from "./mission-coordination.js";
 
 type Role = "owner" | "admin" | "editor" | "viewer";
@@ -1147,7 +1147,10 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
         send(res, 200, { ok: true, decision: applied.target, run: updatedRun[0] ?? { ...run, plan: nextPlan, status: rejectedRequired ? "cancelled" : run.status }, resume });
         return true;
       }
-      send(res, 200, { ok: true, replayed: true, decision: applied.target, run });
+      const requiredEntries = existingRegister.filter(entry => entry.required);
+      const resumeEligible = run.status === "approval_required" && applied.target.decision === "approve" && requiredEntries.length > 0 && !hasPendingRequiredCooDecisions(existingRegister) && !hasRejectedRequiredCooDecisions(existingRegister);
+      const resume = resumeEligible ? await orchestrateCooInstruction(workspaceId, user, { instruction: run.instruction, idempotencyKey: run.idempotency_key }) : null;
+      send(res, 200, { ok: true, replayed: true, decision: applied.target, run, resume });
       return true;
     }
     if (resource === "orchestrations" && method === "GET") {
