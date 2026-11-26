@@ -159,3 +159,80 @@ export function reconcileCooRun(
     issues
   };
 }
+
+export type CooDecisionRegisterEntry = {
+  id: string;
+  label: string;
+  detail: string;
+  required: boolean;
+  status: "pending" | "approved" | "rejected";
+  decision: "approve" | "reject" | null;
+  note: string;
+  decidedBy: string | null;
+  decidedAt: string | null;
+};
+
+export function createCooDecisionRegister(
+  runId: string,
+  decisionsRequired: string[] = [],
+  sensitiveItems: string[] = []
+): CooDecisionRegisterEntry[] {
+  const routine = decisionsRequired.filter(text => !/approbation humaine obligatoire/i.test(String(text ?? "")));
+  const register: CooDecisionRegisterEntry[] = routine.map((label, index) => ({
+    id: runId + ":dg:" + index,
+    label: String(label).trim().slice(0, 1200),
+    detail: "",
+    required: false,
+    status: "pending",
+    decision: null,
+    note: "",
+    decidedBy: null,
+    decidedAt: null
+  })).filter(entry => entry.label.length > 0);
+  const sensitive = sensitiveItems.map(item => String(item).trim()).filter(Boolean);
+  if (sensitive.length) register.push({
+    id: runId + ":dg:sensitive",
+    label: "Approbation DG obligatoire — délégation d’actions sensibles",
+    detail: sensitive.map((item, index) => (index + 1) + ". " + item).join("\n").slice(0, 12000),
+    required: true,
+    status: "pending",
+    decision: null,
+    note: "",
+    decidedBy: null,
+    decidedAt: null
+  });
+  return register;
+}
+
+export function applyCooDecisionRegister(
+  entries: CooDecisionRegisterEntry[],
+  decisionId: string,
+  decision: "approve" | "reject",
+  note: string,
+  decidedBy: string,
+  decidedAt: string
+): { entries: CooDecisionRegisterEntry[]; changed: boolean; target: CooDecisionRegisterEntry | null } {
+  const target = entries.find(entry => entry.id === decisionId) ?? null;
+  if (!target) return { entries, changed: false, target: null };
+  if (target.status !== "pending") {
+    if (target.decision === decision) return { entries, changed: false, target };
+    throw new Error("Une décision DG déjà enregistrée ne peut pas être inversée.");
+  }
+  const updated = entries.map(entry => entry.id === decisionId ? {
+    ...entry,
+    status: decision === "approve" ? "approved" as const : "rejected" as const,
+    decision,
+    note: note.trim().slice(0, 2000),
+    decidedBy,
+    decidedAt
+  } : entry);
+  return { entries: updated, changed: true, target: updated.find(entry => entry.id === decisionId) ?? null };
+}
+
+export function hasPendingRequiredCooDecisions(entries: CooDecisionRegisterEntry[]): boolean {
+  return entries.some(entry => entry.required && entry.status !== "approved");
+}
+
+export function hasRejectedRequiredCooDecisions(entries: CooDecisionRegisterEntry[]): boolean {
+  return entries.some(entry => entry.required && entry.status === "rejected");
+}
