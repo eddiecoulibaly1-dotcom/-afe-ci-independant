@@ -116,7 +116,7 @@ test("E9.2-D5 reconciliation flags a partial run without treating expected missi
 
 test("E9.2-D5 reconciliation detects mission/run drift, missing task rows and count contradictions", () => {
   const run = {
-    id: "run-3", status: "dispatched", missions_created: 2,
+    id: "run-3", status: "dispatched", missions_created: 3,
     plan: {
       workstreams: [{ departmentSlug: "ops", tasks: [{ title: "A" }, { title: "B" }] }],
       dispatched: [{ missionId: "mission-3", departmentSlug: "ops", taskCount: 2 }]
