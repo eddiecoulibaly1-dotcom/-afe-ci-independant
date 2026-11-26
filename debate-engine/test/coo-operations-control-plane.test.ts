@@ -826,3 +826,23 @@ test("E6 closure is guarded by compare-and-set status and timestamp", async () =
   assert.match(closure, /updated_at=eq\." \+ enc\(String\(mission\.updated_at\)\)/);
   assert.match(closure, /if \(!closureRows\[0\]\) throw fail\("Clôture concurrente détectée/);
 });
+
+
+const e92MigrationUrl = new URL("../supabase/migrations/20261126100000_afe_coo_atomic_mission_dependencies_e9_2.sql", import.meta.url);
+test("E9.2 mission dependency add/remove use atomic RPC with audit, workspace lock and cycle guard", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const migration = await readFile(e92MigrationUrl, "utf8");
+  const start = source.indexOf('if(action==="add")');
+  const end = source.indexOf('throw fail("Action de dépendance inconnue.', start);
+  assert.ok(start >= 0 && end > start);
+  const handler = source.slice(start, end);
+  assert.match(handler, /afe_coo_manage_mission_dependency_atomic/);
+  assert.doesNotMatch(handler, /await audit\(/);
+  assert.match(migration, /pg_advisory_xact_lock/);
+  assert.match(migration, /WITH RECURSIVE reach/);
+  assert.match(migration, /COO_DEPENDENCY_CYCLE_DETECTED/);
+  assert.match(migration, /INSERT INTO public\.debate_workspace_audit/);
+  assert.match(migration, /DELETE FROM public\.afe_agent_mission_dependencies/);
+  assert.match(migration, /REVOKE ALL/);
+  assert.match(migration, /TO service_role/);
+});

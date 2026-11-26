@@ -1348,22 +1348,19 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
         if(action==="add"){
           const prerequisiteId=clean(input.dependsOnMissionId,64);
           if(!prerequisiteId)throw fail("Sélectionne la mission prérequise.",400);
-          const prerequisite=(await db<any[]>("afe_agent_missions?id=eq."+enc(prerequisiteId)+"&workspace_id=eq."+enc(workspaceId)+"&limit=1"))[0];
-          if(!prerequisite)throw fail("La mission prérequise doit appartenir au même espace.",404);
-          if(["failed","cancelled"].includes(prerequisite.status))throw fail("Un prérequis en échec ou annulé doit d'abord être rétabli.",409);
-          const existing=await db<any[]>("afe_agent_mission_dependencies?workspace_id=eq."+enc(workspaceId)+"&select=mission_id,depends_on_mission_id");
-          try{assertDependencyAddition(missionId,prerequisiteId,existing.map(x=>({missionId:x.mission_id,dependsOnMissionId:x.depends_on_mission_id})));}catch(e){throw fail(e instanceof Error?e.message:"Dépendance invalide.",409);}
-          const inserted=await db<any[]>("afe_agent_mission_dependencies",{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify({workspace_id:workspaceId,mission_id:missionId,depends_on_mission_id:prerequisiteId,created_by:user.id})});
-          await audit(workspaceId,user.id,"coo.mission.dependency.added","mission",missionId,{dependsOnMissionId:prerequisiteId,dependencyId:inserted[0]?.id});
-          send(res,201,{dependency:inserted[0]});return true;
+          try{assertDependencyAddition(missionId,prerequisiteId,edges.map(x=>({missionId:x.mission_id,dependsOnMissionId:x.depends_on_mission_id})));}catch(e){throw fail(e instanceof Error?e.message:"Dépendance invalide.",409);}
+          let result:any;
+          try{result=await db<any>("rpc/afe_coo_manage_mission_dependency_atomic",{method:"POST",body:JSON.stringify({p_workspace_id:workspaceId,p_mission_id:missionId,p_action:"add",p_depends_on_mission_id:prerequisiteId,p_dependency_id:null,p_actor_id:user.id})});}
+          catch(e){const m=e instanceof Error?e.message:String(e);if(m.includes("COO_DEPENDENCY_CYCLE_DETECTED"))throw fail("Cette dépendance créerait un cycle dans le graphe des missions.",409);if(m.includes("COO_DEPENDENCY_MISSION_STATE_INVALID"))throw fail("Les dépendances ne peuvent être modifiées que lorsque la mission est en attente ou suspendue.",409);if(m.includes("COO_DEPENDENCY_PREREQUISITE_TERMINAL_INVALID"))throw fail("Un prérequis en échec ou annulé doit d'abord être rétabli.",409);if(m.includes("COO_DEPENDENCY_PREREQUISITE_NOT_FOUND"))throw fail("La mission prérequise doit appartenir au même espace.",404);throw e;}
+          send(res,result?.added?201:200,{dependency:result?.dependency,alreadyExists:!result?.added});return true;
         }
         if(action==="remove"){
           const dependencyId=clean(input.dependencyId,64);
           if(!dependencyId)throw fail("Identifiant de dépendance requis.",400);
-          const removed=await db<any[]>("afe_agent_mission_dependencies?id=eq."+enc(dependencyId)+"&workspace_id=eq."+enc(workspaceId)+"&mission_id=eq."+enc(missionId)+"&select=id,depends_on_mission_id",{method:"DELETE",headers:{Prefer:"return=representation"}});
-          if(!removed.length)throw fail("Dépendance introuvable.",404);
-          await audit(workspaceId,user.id,"coo.mission.dependency.removed","mission",missionId,{dependsOnMissionId:removed[0].depends_on_mission_id,dependencyId});
-          send(res,200,{removed:true});return true;
+          let result:any;
+          try{result=await db<any>("rpc/afe_coo_manage_mission_dependency_atomic",{method:"POST",body:JSON.stringify({p_workspace_id:workspaceId,p_mission_id:missionId,p_action:"remove",p_depends_on_mission_id:null,p_dependency_id:dependencyId,p_actor_id:user.id})});}
+          catch(e){const m=e instanceof Error?e.message:String(e);if(m.includes("COO_DEPENDENCY_NOT_FOUND"))throw fail("Dépendance introuvable.",404);if(m.includes("COO_DEPENDENCY_MISSION_STATE_INVALID"))throw fail("Les dépendances ne peuvent être modifiées que lorsque la mission est en attente ou suspendue.",409);throw e;}
+          send(res,200,{removed:true,dependency:result?.dependency});return true;
         }
         throw fail("Action de dépendance inconnue.",400);
       }
