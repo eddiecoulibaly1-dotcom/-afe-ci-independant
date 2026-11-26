@@ -211,14 +211,17 @@ test("COO portfolio offers bounded worker execution and exposes verified mission
 });
 
 
-test("agent worker preserves partial mission results when COO tasks are blocked", async () => {
+test("agent worker preserves partial mission results when COO tasks are blocked through the atomic RPC", async () => {
   const workerUrl = new URL("../src/autonomous-agents/worker.ts", import.meta.url);
+  const migrationUrl = new URL("../supabase/migrations/20261126100000_coo_orchestration_atomicity_and_resume.sql", import.meta.url);
   const source = await readFile(workerUrl, "utf8");
-  assert.match(source, /execution_state:"partial"/);
-  assert.match(source, /blocked_task_count:blockedCount/);
-  assert.match(source, /status:"paused"/);
-  assert.match(source, /blocked_reason:reason\.slice\(0,3000\)/);
-  assert.match(source, /event_type:"coo\.tasks\.incomplete"/);
+  const migration = await readFile(migrationUrl, "utf8");
+  assert.match(source, /rpc\/apply_coo_task_results_atomic/);
+  assert.match(source, /p_lease_token:claim\.lease_token/);
+  assert.match(migration, /execution_state/);
+  assert.match(migration, /blocked_task_count/);
+  assert.match(migration, /status='running' AND lease_token=p_lease_token/);
+  assert.match(migration, /coo\.tasks\.incomplete/);
   assert.match(source, /error:error instanceof Error\?error\.message/);
 });
 
