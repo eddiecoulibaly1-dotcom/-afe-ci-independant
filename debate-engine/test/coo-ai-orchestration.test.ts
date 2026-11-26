@@ -79,7 +79,7 @@ test("COO dispatch is transactional and task identities are unique for resumable
   assert.match(source, /task_key: missionKey \+ ":task:" \+ index/);
   assert.match(source, /Persist the validated plan before dispatch/);
   assert.match(source, /priorRun\?\.plan\?\.workstreams\?\.length/);
-  assert.match(source, /\["dispatched","approval_required","cancelled"\]/);
+  assert.match(source, /\["dispatched","cancelled"\]\.includes\(priorRun\.status\)/);\n  assert.match(source, /priorApprovalPending/);
 });
 
 
