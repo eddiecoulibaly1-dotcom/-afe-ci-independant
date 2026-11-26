@@ -74,7 +74,7 @@ test("COO dispatch is transactional and task identities are unique for resumable
   const source = await readFile(platformUrl, "utf8");
   assert.match(migration, /dispatch_coo_workstream_atomic/);
   assert.match(migration, /UNIQUE INDEX IF NOT EXISTS afe_operational_tasks_coo_task_key_uq/);
-  assert.match(migration, /ON CONFLICT \(workspace_id,mission_id,coo_task_key\)/);
+  assert.match(migration, /ON CONFLICT\(workspace_id,mission_id,coo_task_key\) WHERE coo_task_key IS NOT NULL/);
   assert.match(source, /rpc\/dispatch_coo_workstream_atomic/);
   assert.match(source, /task_key: missionKey \+ ":task:" \+ index/);
   assert.match(source, /Persist the validated plan before dispatch/);
