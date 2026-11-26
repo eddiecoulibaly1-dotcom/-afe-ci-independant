@@ -1164,13 +1164,13 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
       const runs = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&order=created_at.desc&limit=50");
       const runIds = runs.map(run => String(run.id)).filter(Boolean);
       const dispatchIds = [...new Set(runs.flatMap(run => Array.isArray(run.plan?.dispatched) ? run.plan.dispatched.map((entry:any) => String(entry?.missionId ?? "")).filter(Boolean) : []))];
-      const runMissionRows = await Promise.all(runIds.map(runId => db<any[]>(
-        "afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&input_context->>cooRunId=eq." + enc(runId) + "&select=id,status,input_context,department_id&limit=50"
-      )));
+      const runMissionRows = runIds.length ? await db<any[]>(
+        "afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&input_context->>cooRunId=in.(" + runIds.map(enc).join(",") + ")&select=id,status,input_context,department_id&limit=1000"
+      ) : [];
       const dispatchMissionRows = dispatchIds.length ? await db<any[]>(
         "afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&id=in.(" + dispatchIds.map(enc).join(",") + ")&select=id,status,input_context,department_id&limit=500"
       ) : [];
-      const missions = [...new Map([...runMissionRows.flat(), ...dispatchMissionRows].map(mission => [String(mission.id), mission])).values()];
+      const missions = [...new Map([...runMissionRows, ...dispatchMissionRows].map(mission => [String(mission.id), mission])).values()];
       const missionIds = missions.map(mission => String(mission.id)).filter(Boolean);
       const [tasks, departments] = await Promise.all([
         missionIds.length ? db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&mission_id=in.(" + missionIds.map(enc).join(",") + ")&select=id,mission_id,coo_task_key&limit=5000") : Promise.resolve([]),
