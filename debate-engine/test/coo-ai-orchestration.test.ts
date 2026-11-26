@@ -33,7 +33,7 @@ test("COO orchestrator calls a model, restricts delegation to active non-indepen
 
 test("COO orchestration blocks only sensitive actions requiring a reserved human decision", async () => {
   const source = await readFile(platformUrl, "utf8");
-  assert.match(source, /if \(sensitiveItems\.length > 0\)/);
+  assert.match(source, /if \(sensitiveItems\.length > 0 && requiredDecisionPending\)/);
   assert.match(source, /Approbation humaine obligatoire/);
   assert.match(source, /Routine DG decisions are recorded for follow-up/);
   assert.match(source, /const status = "dispatched"/);
