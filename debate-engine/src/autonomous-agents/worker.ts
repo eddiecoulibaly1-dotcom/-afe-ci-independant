@@ -120,7 +120,7 @@ async function syncCooTaskResults(claim:Claim,mission:any,output:MissionResult,h
  const results=Array.isArray(output.task_results)?output.task_results:[];
  const byId=new Map(results.map(x=>[x.taskId,x]));
  if(byId.size!==tasks.length||tasks.some((x:any)=>!byId.has(x.id)))throw new Error("Le résultat de mission ne couvre pas toutes les tâches COO attendues.");
- let blockedCount=0;const incomplete:string[]=[];
+ let blockedCount=0;
  for(const task of tasks){
   const result=byId.get(task.id) as MissionTaskResult;
   if(!["done","in_progress","blocked"].includes(result.status))throw new Error("Statut de tâche invalide : "+task.id);
@@ -128,28 +128,15 @@ async function syncCooTaskResults(claim:Claim,mission:any,output:MissionResult,h
   if(result.status==="done"&&progress!==100)throw new Error("Une tâche déclarée terminée doit être à 100 % : "+task.id);
   if(result.status==="done"&&(!result.deliverable||result.deliverable.trim().length<20))throw new Error("Une tâche terminée doit fournir un livrable concret : "+task.id);
   if(result.status==="blocked"&&!result.blockedReason.trim())throw new Error("Une tâche bloquée doit avoir un motif : "+task.id);
-  if(result.status!=="done"){incomplete.push(task.title);if(result.status==="blocked")blockedCount++;}
-  await heartbeat.assertOwned();
-  await db("afe_operational_tasks?id=eq."+encodeURIComponent(task.id)+"&workspace_id=eq."+encodeURIComponent(claim.workspace_id),{
-   method:"PATCH",headers:{"Prefer":"return=minimal"},
-   body:JSON.stringify({status:result.status,progress_percent:progress,blocked_reason:result.status==="blocked"?result.blockedReason.slice(0,3000):null,completed_at:result.status==="done"?new Date().toISOString():null,updated_at:new Date().toISOString()})
-  });
+  if(result.status==="blocked")blockedCount++;
  }
- const progress=Math.round(tasks.reduce((sum:any,task:any)=>sum+Math.max(0,Math.min(100,Math.trunc(Number((byId.get(task.id) as MissionTaskResult).progressPercent)||0))),0)/tasks.length);
- if(incomplete.length){
-  const blockedDetails=tasks.map((task:any)=>({task,result:byId.get(task.id) as MissionTaskResult})).filter(x=>x.result.status==="blocked").map(x=>x.task.title+" — "+(x.result.blockedReason.trim()||"motif non précisé"));
-  const reason=(blockedDetails.length?"Blocages à traiter : "+blockedDetails.join(" ; "):"Exécution partielle : "+incomplete.length+" tâche(s) restent à terminer.") ;
-  await db("afe_agent_missions?id=eq."+encodeURIComponent(claim.mission_id)+"&workspace_id=eq."+encodeURIComponent(claim.workspace_id)+"&lease_token=eq."+encodeURIComponent(claim.lease_token)+"&status=eq.running&lease_expires_at=gt."+encodeURIComponent(new Date().toISOString()),{
-   method:"PATCH",headers:{"Prefer":"return=minimal"},
-   body:JSON.stringify({status:"paused",progress_percent:progress,blocked_reason:reason.slice(0,3000),result:{...output,execution_state:"partial",blocked_task_count:blockedCount,mission_progress_percent:progress},lease_token:null,lease_expires_at:null,updated_at:new Date().toISOString()})
-  });
-  await db("afe_agent_events",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify({workspace_id:claim.workspace_id,mission_id:claim.mission_id,agent_id:claim.agent_id,actor_type:"worker",event_type:"coo.tasks.incomplete",payload:{blockedCount,incompleteTasks:incomplete,progressPercent:progress,reason}})});
-  return{complete:false,blockedCount,reason};
- }
- await db("afe_agent_missions?id=eq."+encodeURIComponent(claim.mission_id)+"&workspace_id=eq."+encodeURIComponent(claim.workspace_id)+"&lease_token=eq."+encodeURIComponent(claim.lease_token)+"&status=eq.running&lease_expires_at=gt."+encodeURIComponent(new Date().toISOString()),{
-  method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({progress_percent:100,blocked_reason:null,updated_at:new Date().toISOString()})
+ await heartbeat.assertOwned();
+ const applied=await db<any>("rpc/apply_coo_task_results_atomic",{
+  method:"POST",headers:{Prefer:"return=representation"},
+  body:JSON.stringify({p_workspace_id:claim.workspace_id,p_mission_id:claim.mission_id,p_lease_token:claim.lease_token,p_mission_result:output,p_task_results:results})
  });
- return{complete:true,blockedCount:0,reason:""};
+ if(typeof applied?.complete!=="boolean")throw new Error("La transaction de synchronisation COO n'a pas retourné son état.");
+ return{complete:applied.complete,blockedCount:Number(applied.blockedCount)||0,reason:String(applied.reason??"")};
 }
 async function recordFailure(claim:Claim,error:unknown){
  const message=(error instanceof Error?error.message:String(error)).slice(0,3500);
