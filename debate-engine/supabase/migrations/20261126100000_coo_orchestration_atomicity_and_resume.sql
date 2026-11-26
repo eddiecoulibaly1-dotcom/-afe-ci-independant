@@ -8,7 +8,7 @@ CREATE OR REPLACE FUNCTION public.dispatch_coo_workstream_atomic(
  p_due_at timestamptz,p_mission_key text,p_tasks jsonb
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE m public.afe_agent_missions%ROWTYPE; d public.afe_org_departments%ROWTYPE; a public.afe_agents%ROWTYPE; r public.afe_coo_runs%ROWTYPE;
- task jsonb;tid uuid;tkey text;tasks jsonb:='[]'::jsonb;n integer:=0;
+ task jsonb;tid uuid;tkey text;tasks jsonb:='[]'::jsonb;n integer:=0;old_tasks jsonb;idx integer:=0;
 BEGIN
  IF p_tasks IS NULL OR jsonb_typeof(p_tasks)<>'array' OR jsonb_array_length(p_tasks)<1 OR jsonb_array_length(p_tasks)>8 THEN RAISE EXCEPTION 'Tasks array must contain 1..8 entries';END IF;
  SELECT * INTO r FROM public.afe_coo_runs WHERE id=p_run_id AND workspace_id=p_workspace_id FOR UPDATE;
@@ -22,12 +22,20 @@ BEGIN
  ON CONFLICT(workspace_id,idempotency_key) DO NOTHING;
  SELECT * INTO m FROM public.afe_agent_missions WHERE workspace_id=p_workspace_id AND idempotency_key=p_mission_key FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Mission persistence failed';END IF;
+ old_tasks:=m.input_context->'cooTasks';
  FOR task IN SELECT value FROM jsonb_array_elements(p_tasks) LOOP
-  tkey:=task->>'task_key';
+  idx:=idx+1;tkey:=task->>'task_key';
   IF length(tkey)<4 OR length(tkey)>180 THEN RAISE EXCEPTION 'Invalid task key';END IF;
-  INSERT INTO public.afe_operational_tasks(workspace_id,mission_id,department_id,title,description,priority,assigned_agent_id,due_at,created_by,coo_task_key)
-  VALUES(p_workspace_id,m.id,p_department_id,task->>'title',COALESCE(task->>'description',''),GREATEST(1,LEAST(5,COALESCE((task->>'priority')::integer,3))),p_director_id,COALESCE((task->>'due_at')::timestamptz,p_due_at),p_created_by,tkey)
-  ON CONFLICT(workspace_id,mission_id,coo_task_key) WHERE coo_task_key IS NOT NULL DO NOTHING;
+  tid:=NULL;
+  IF jsonb_typeof(old_tasks)='array' AND jsonb_array_length(old_tasks)>=idx THEN
+   tid:=(old_tasks->(idx-1)->>'id')::uuid;
+   UPDATE public.afe_operational_tasks SET coo_task_key=tkey WHERE id=tid AND workspace_id=p_workspace_id AND mission_id=m.id AND coo_task_key IS NULL;
+  END IF;
+  IF tid IS NULL OR NOT EXISTS(SELECT 1 FROM public.afe_operational_tasks WHERE id=tid AND workspace_id=p_workspace_id AND mission_id=m.id AND coo_task_key=tkey) THEN
+   INSERT INTO public.afe_operational_tasks(workspace_id,mission_id,department_id,title,description,priority,assigned_agent_id,due_at,created_by,coo_task_key)
+   VALUES(p_workspace_id,m.id,p_department_id,task->>'title',COALESCE(task->>'description',''),GREATEST(1,LEAST(5,COALESCE((task->>'priority')::integer,3))),p_director_id,COALESCE((task->>'due_at')::timestamptz,p_due_at),p_created_by,tkey)
+   ON CONFLICT(workspace_id,mission_id,coo_task_key) WHERE coo_task_key IS NOT NULL DO NOTHING;
+  END IF;
   SELECT id INTO tid FROM public.afe_operational_tasks WHERE workspace_id=p_workspace_id AND mission_id=m.id AND coo_task_key=tkey;
   IF tid IS NULL THEN RAISE EXCEPTION 'Task persistence failed';END IF;
   tasks:=tasks||jsonb_build_array(jsonb_build_object('id',tid,'title',task->>'title','description',COALESCE(task->>'description',''),'taskKey',tkey));n:=n+1;
