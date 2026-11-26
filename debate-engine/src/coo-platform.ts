@@ -1127,7 +1127,7 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
       if (!["approve","reject"].includes(decision)) throw fail("Décision invalide : approve ou reject attendu.");
       if (note.length < 8) throw fail("La note DG doit contenir au moins 8 caractères.");
       const plan = run.plan ?? {};
-      const existingRegister = Array.isArray(plan.decisionRegister) ? plan.decisionRegister : createCooDecisionRegister(run.id, plan.decisionsRequired ?? [], sensitiveItemsForPlan(plan));
+      const existingRegister: CooDecisionRegisterEntry[] = Array.isArray(plan.decisionRegister) ? plan.decisionRegister : createCooDecisionRegister(run.id, plan.decisionsRequired ?? [], sensitiveItemsForPlan(plan));
       const applied = applyCooDecisionRegister(existingRegister, p[8], decision as "approve" | "reject", note, user.id, nowIso());
       if (!applied.target) throw fail("Décision DG introuvable dans le registre.", 404);
       if (applied.changed) {
@@ -1142,13 +1142,13 @@ export async function handleCooRequest(req: IncomingMessage, res: ServerResponse
           event_type: "coo.orchestration.dg_decision", payload: { cooRunId: run.id, decisionId: p[8], decision, required: Boolean(applied.target.required), note, status: applied.target.status }
         }) });
         await audit(workspaceId, user.id, "coo.orchestration.dg_decision", "coo_run", run.id, { decisionId: p[8], decision, required: Boolean(applied.target.required), status: applied.target.status });
-        const requiredEntries = applied.entries.filter(entry => entry.required);
+        const requiredEntries = applied.entries.filter((entry: CooDecisionRegisterEntry) => entry.required);
         const resumeEligible = decision === "approve" && requiredEntries.length > 0 && !hasPendingRequiredCooDecisions(applied.entries) && !hasRejectedRequiredCooDecisions(applied.entries);
         const resume = resumeEligible ? await orchestrateCooInstruction(workspaceId, user, { instruction: run.instruction, idempotencyKey: run.idempotency_key }) : null;
         send(res, 200, { ok: true, decision: applied.target, run: updatedRun[0] ?? { ...run, plan: nextPlan, status: rejectedRequired ? "cancelled" : run.status }, resume });
         return true;
       }
-      const requiredEntries = existingRegister.filter(entry => entry.required);
+      const requiredEntries = existingRegister.filter((entry: CooDecisionRegisterEntry) => entry.required);
       const resumeEligible = run.status === "approval_required" && applied.target.decision === "approve" && requiredEntries.length > 0 && !hasPendingRequiredCooDecisions(existingRegister) && !hasRejectedRequiredCooDecisions(existingRegister);
       const resume = resumeEligible ? await orchestrateCooInstruction(workspaceId, user, { instruction: run.instruction, idempotencyKey: run.idempotency_key }) : null;
       send(res, 200, { ok: true, replayed: true, decision: applied.target, run, resume });
