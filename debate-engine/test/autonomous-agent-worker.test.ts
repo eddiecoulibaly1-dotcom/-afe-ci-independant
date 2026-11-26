@@ -42,3 +42,9 @@ test("worker reaps abandoned leases before claiming new work and tolerates one t
  assert.ok(worker.includes("rpc/reap_expired_afe_agent_mission_leases"));
  assert.ok(worker.includes("failures>=2"));
 });
+
+test("COO task results are synchronized through one lease-fenced atomic RPC", async()=>{
+ assert.match(worker,/rpc\/apply_coo_task_results_atomic/);
+ assert.match(worker,/p_lease_token:claim\.lease_token/);
+ assert.doesNotMatch(worker,/afe_operational_tasks\?id=eq\./);
+});
