@@ -189,3 +189,24 @@ test("E9.2-D8 atomic RPCs remain private to service role and failure paths rejec
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.apply_coo_task_results_atomic/);
   for (const failure of ["Mission persistence failed","Task persistence failed","Lease lost","Task results coverage mismatch","Invalid task status","Completed task requires full progress and deliverable","Blocked task requires reason"]) assert.ok(migration.includes(failure), "Missing failure guard " + failure);
 });
+
+test("E9.2-D9 final audit: orchestration, governance, validation, reconciliation and atomic worker protections coexist", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const planning = await readFile(new URL("../src/coo-planning.ts", import.meta.url), "utf8");
+  const migration = await readFile(atomicityUrl, "utf8");
+  const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", import.meta.url), "utf8");
+  assert.match(source, /rpc\/dispatch_coo_workstream_atomic/);
+  assert.match(source, /rpc\/apply_coo_task_results_atomic/);
+  assert.match(source, /priorApprovalPending/);
+  assert.match(source, /validateCooPlan/);
+  assert.match(source, /reconcileCooRun/);
+  assert.match(source, /coo\.orchestration\.dg_decision/);
+  assert.match(planning, /export function reconcileCooRun/);
+  assert.match(planning, /export function createCooDecisionRegister/);
+  assert.match(planning, /export function validateCooPlan/);
+  assert.match(migration, /UNIQUE INDEX IF NOT EXISTS afe_operational_tasks_coo_task_key_uq/);
+  assert.match(migration, /FOR UPDATE/);
+  assert.match(migration, /lease_token=p_lease_token/);
+  assert.match(worker, /syncCooTaskResults/);
+  assert.doesNotMatch(worker, /afe_operational_tasks\?id=eq\./);
+});
