@@ -4,7 +4,7 @@ import type { AuthUser } from "./auth.js";
 import { callModel } from "./providers.js";
 import { runAgentWorkerForWorkspace } from "./autonomous-agents/worker.js";
 import { buildCooDataQuality, buildCooReportActivity, buildCooReportIdempotencyKey, resolveTaskDepartmentId } from "./coo-reporting.js";
-import { consolidateDepartmentWorkstreams, reconcileCooRun, createCooDecisionRegister, applyCooDecisionRegister, hasPendingRequiredCooDecisions, hasRejectedRequiredCooDecisions, type CooDecisionRegisterEntry } from "./coo-planning.js";
+import { consolidateDepartmentWorkstreams, reconcileCooRun, createCooDecisionRegister, applyCooDecisionRegister, hasPendingRequiredCooDecisions, hasRejectedRequiredCooDecisions, validateCooPlan, type CooDecisionRegisterEntry } from "./coo-planning.js";
 import { assertDependencyAddition, evaluateDependencyReadiness } from "./mission-coordination.js";
 
 type Role = "owner" | "admin" | "editor" | "viewer";
@@ -873,6 +873,9 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
         required: ["summary","priority","workstreams","decisionsRequired","assumptions"]
       }
     }));
+    if (!plan || typeof plan !== "object" || !Array.isArray(plan.workstreams) || plan.workstreams.some((stream:any) => !stream || typeof stream !== "object" || typeof stream.departmentSlug !== "string" || typeof stream.missionTitle !== "string" || typeof stream.objective !== "string" || !Array.isArray(stream.tasks) || stream.tasks.some((task:any) => !task || typeof task !== "object"))) {
+      throw fail("Structure du plan COO invalide : chantiers, objectifs ou tâches manquants.", 422);
+    }
     const originalWorkstreamCount = plan.workstreams.length;
     const consolidation = consolidateDepartmentWorkstreams(plan.workstreams);
     if (consolidation.mergedDepartmentSlugs.length > 0) {
@@ -887,6 +890,8 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
     if (!Array.isArray(plan.workstreams) || plan.workstreams.length < 1 || plan.workstreams.length > maxWorkstreams) throw new Error("Le plan du COO dépasse les limites de délégation.");
     const plannedTaskCount = plan.workstreams.reduce((total, stream) => total + (Array.isArray(stream.tasks) ? stream.tasks.length : 0), 0);
     if (plannedTaskCount > maxTasksPerRun) throw new Error("Le plan dépasse le plafond de tâches autorisé par les capacités COO.");
+    const validationIssues = validateCooPlan(plan, { maxWorkstreams, maxTasksPerWorkstream: maxTasks, maxTasksPerRun }, eligible.map(item => item.slug));
+    if (validationIssues.length) throw fail("Plan COO rejeté avant dispatch : " + validationIssues.map(issue => issue.code + " — " + issue.message).join(" | "), 422);
     const sensitiveItems = sensitiveItemsForPlan(plan);
     if (sensitiveItems.length) {
       plan.decisionsRequired = [...new Set([...(plan.decisionsRequired ?? []), "Approbation humaine obligatoire : le plan contient une action potentiellement sensible ou irréversible."])];
