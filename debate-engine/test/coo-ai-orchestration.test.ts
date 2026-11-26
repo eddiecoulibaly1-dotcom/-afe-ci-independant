@@ -132,3 +132,14 @@ test("E9.2-D6 DG decisions are owner-only, immutable, audited and resume approve
   assert.match(planning, /Une décision DG déjà enregistrée ne peut pas être inversée/);
   assert.match(planning, /hasRejectedRequiredCooDecisions/);
 });
+
+test("E9.2-D7 validates the plan shape and all delegation limits before dispatch", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const planning = await readFile(new URL("../src/coo-planning.ts", import.meta.url), "utf8");
+  assert.match(source, /Structure du plan COO invalide/);
+  assert.match(source, /validateCooPlan\(plan, \{ maxWorkstreams, maxTasksPerWorkstream: maxTasks, maxTasksPerRun \}, eligible\.map\(item => item\.slug\)\)/);
+  assert.match(source, /Plan COO rejeté avant dispatch/);
+  assert.match(source, /validationIssues\.length/);
+  for (const code of ["summary_invalid","priority_invalid","department_not_eligible","department_duplicate","workstream_deadline_invalid","task_deadline_invalid","task_priority_invalid","task_title_duplicate","total_task_limit","decisions_invalid","assumptions_invalid"]) assert.ok(planning.includes(code));
+  assert.match(planning, /export function validateCooPlan/);
+});
