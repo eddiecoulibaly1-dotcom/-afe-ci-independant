@@ -35,10 +35,13 @@ test("worker records deliverable evidence before task synchronization and COO re
 
 test("incomplete or blocked COO tasks cannot be silently marked as completed", async () => {
   const source = await readFile(workerUrl, "utf8");
+  const migrationUrl = new URL("../supabase/migrations/20261126100000_coo_orchestration_atomicity_and_resume.sql", import.meta.url);
+  const migration = await readFile(migrationUrl, "utf8");
   assert.match(source, /Le résultat de mission ne couvre pas toutes les tâches COO attendues/);
-  assert.match(source, /status:"paused"/);
-  assert.match(source, /coo\.tasks\.incomplete/);
-  assert.match(source, /result\.status!=="done"/);
+  assert.match(source, /rpc\/apply_coo_task_results_atomic/);
+  assert.match(migration, /status='paused'/);
+  assert.match(migration, /coo\.tasks\.incomplete/);
+  assert.match(migration, /v_status|st<>'done'/);
 });
 
 test("independent evidence review is recorded before task synchronization in both worker paths", async () => {
