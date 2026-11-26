@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { consolidateDepartmentWorkstreams } from "../src/coo-planning.js";
+import { consolidateDepartmentWorkstreams, reconcileCooRun } from "../src/coo-planning.js";
 
 test("COO planning consolidates duplicate department workstreams without losing tasks", () => {
   const result = consolidateDepartmentWorkstreams([
