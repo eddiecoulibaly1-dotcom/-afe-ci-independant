@@ -796,17 +796,25 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
   const maxTasksPerRun = Math.max(1, Math.min(30, Number(capabilityGrants[3].limits?.max_per_run) || 30));
   const idempotencyKey = clean(input.idempotencyKey, 160) || randomUUID();
   const prior = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
-  if (prior[0]) return { run: prior[0], replayed: true };
+  const priorRun = prior[0] ?? null;
+  if (priorRun && ["dispatched","approval_required","cancelled"].includes(priorRun.status)) return { run: priorRun, replayed: true };
   const dayStart = new Date(Date.now() - 86400000).toISOString();
-  const recentRuns = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&created_at=gte." + enc(dayStart) + "&select=id&limit=10");
-  if (recentRuns.length >= 10) throw fail("Plafond de sécurité atteint : maximum 10 orchestrations COO par 24 heures dans cet espace.", 429);
-  const runRows = await db<any[]>("afe_coo_runs", {
+  if (!priorRun) {
+    const recentRuns = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&created_at=gte." + enc(dayStart) + "&select=id&limit=10");
+    if (recentRuns.length >= 10) throw fail("Plafond de sécurité atteint : maximum 10 orchestrations COO par 24 heures dans cet espace.", 429);
+  }
+  const runRows = priorRun ? [priorRun] : await db<any[]>("afe_coo_runs", {
     method: "POST", headers: { Prefer: "return=representation" },
     body: JSON.stringify({ workspace_id: workspaceId, coo_agent_id: coo.id, initiated_by: user.id, instruction, idempotency_key: idempotencyKey, status: "planning" })
   });
-  const run = runRows[0];
-  if (!run) throw new Error("Impossible d'enregistrer l'exécution du COO.");
-  let generatedPlan: CooPlan | null = null;
+  let run = runRows[0];
+  if (!run && !priorRun) {
+    const raced = await db<any[]>("afe_coo_runs?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(idempotencyKey) + "&limit=1");
+    run = raced[0];
+  }
+  if (!run) throw new Error("Impossible d'enregistrer ou de récupérer l'exécution COO.");
+  if (priorRun) await db("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), { method:"PATCH", headers:{Prefer:"return=minimal"}, body:JSON.stringify({status:"planning",error_message:null,completed_at:null}) });
+  let generatedPlan: CooPlan | null = (priorRun?.plan?.workstreams?.length ? priorRun.plan : null);
   const createdMissions: Array<{missionId:string;departmentSlug:string;departmentName:string;directorAgent:string;taskCount:number}> = [];
   try {
     const [departments, agents] = await Promise.all([
@@ -829,7 +837,7 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
     const maxTasks = Math.max(1, Math.min(8, Number(cfg.coo_max_tasks_per_workstream) || 5));
     const provider = coo.model_provider === "gemini" ? "gemini" : "openai";
     const model = coo.model_id || (provider === "gemini" ? (process.env.GEMINI_MODEL || "gemini-3.8-flash") : (process.env.OPENAI_MODEL || "gpt-4.1-mini"));
-    const plan = generatedPlan = await callModel<CooPlan>({
+    const plan = generatedPlan = (generatedPlan ?? await callModel<CooPlan>({
       provider, model, schemaName: "afe_ci_coo_orchestration_plan",
       system: coo.mandate + "\n\n" + (coo.system_instructions ?? "") + "\n\nTu es le COO IA. Tu transformes une instruction de la Direction générale en plan de travail réaliste, distribué et vérifiable. Tu ne changes pas le mandat. Tu ne délègues jamais à la Direction générale, à l'Audit interne indépendant, à l'Arbitrage indépendant ou à l'Autorité de validation humaine. Tu ne demandes aucune action financière, publication, déploiement, changement d'accès ou action irréversible. Les directions et responsables disponibles ci-dessous sont la seule liste autorisée. Chaque chantier doit avoir un objectif mesurable et au moins une tâche exploitable. N'invente pas les capacités ni les délais; formule les hypothèses. Respecte strictement le schéma JSON.",
       prompt: "INSTRUCTION DE LA DG :\n" + instruction + "\n\nDIRECTIONS ET RESPONSABLES AUTORISÉS (JSON) :\n" + JSON.stringify(eligible.map(x => ({ departmentSlug: x.slug, department: x.name, mandate: x.mandate, directorAgentSlug: x.director.slug, directorAgentName: x.director.name, directorMandate: x.director.mandate, specialty: x.director.specialty, activeMissions: x.workload.activeMissions, openTasks: x.workload.openTasks }))) + "\n\nLimites: maximum " + maxWorkstreams + " chantiers; maximum " + maxTasks + " tâches par chantier et " + maxTasksPerRun + " tâches au total; délai relatif de 1 à 720 heures; priorité 1 à 5. Chaque directeur ne doit pas recevoir plus d'un nouveau chantier dans cette exécution. La charge existante doit être prise en compte. Ne propose que les chantiers nécessaires.",
@@ -857,7 +865,7 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
         },
         required: ["summary","priority","workstreams","decisionsRequired","assumptions"]
       }
-    });
+    }));
     const originalWorkstreamCount = plan.workstreams.length;
     const consolidation = consolidateDepartmentWorkstreams(plan.workstreams);
     if (consolidation.mergedDepartmentSlugs.length > 0) {
@@ -877,6 +885,11 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
     if (sensitiveItems.length) {
       plan.decisionsRequired = [...new Set([...(plan.decisionsRequired ?? []), "Approbation humaine obligatoire : le plan contient une action potentiellement sensible ou irréversible."])];
     }
+    // Persist the validated plan before dispatch so a timeout or crash can resume without regenerating it.
+    await db("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
+      method: "PATCH", headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ status: "planning", plan, error_message: null, completed_at: null })
+    });
     // Routine DG decisions are recorded for follow-up; only explicitly sensitive actions block dispatch.
     if (sensitiveItems.length > 0) {
       const updated = await db<any[]>("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
@@ -900,61 +913,31 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
     const used = new Set<string>();
     for (const stream of plan.workstreams) {
       const department = departments.find(d => d.slug === stream.departmentSlug && d.active && !d.is_independent && !d.human_only);
-      if (!department || ["direction-generale","direction-operations","audit-interne","arbitrage-independant","validation-humaine"].includes(department.slug)) {
-        throw new Error("Le COO a proposé une direction non délégable : " + stream.departmentSlug);
-      }
+      if (!department || ["direction-generale","direction-operations","audit-interne","arbitrage-independant","validation-humaine"].includes(department.slug)) throw new Error("Le COO a proposé une direction non délégable : " + stream.departmentSlug);
       if (used.has(stream.departmentSlug)) throw new Error("Le COO a proposé plusieurs chantiers pour la même direction; fusion requise.");
       used.add(stream.departmentSlug);
       const director = agentById.get(department.director_agent_id);
       if (!director || director.status !== "active" || director.department_id !== department.id) throw new Error("Responsable IA indisponible pour " + department.name);
       if (!textOk(stream.missionTitle, 220) || !textOk(stream.objective, 12000) || !Array.isArray(stream.tasks) || stream.tasks.length < 1 || stream.tasks.length > maxTasks) throw new Error("Chantier COO incomplet ou hors limites.");
+      for (const task of stream.tasks) if (!textOk(task.title, 220) || !textOk(task.description, 6000)) throw new Error("Tâche COO invalide dans " + department.name);
       const missionKey = run.id + ":" + department.slug;
-      const missionRows = await db<any[]>("afe_agent_missions?on_conflict=workspace_id%2Cidempotency_key", {
-        method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" },
-        body: JSON.stringify({
-          workspace_id: workspaceId, agent_id: director.id, department_id: department.id,
-          created_by: user.id, title: clean(stream.missionTitle, 220), objective: clean(stream.objective, 12000),
-          input_context: { cooRunId: run.id, cooAgentId: coo.id, instruction, cooSummary: plan.summary, assumptions: plan.assumptions, decisionsRequired: plan.decisionsRequired },
-          priority: Math.max(1, Math.min(5, Number(stream.priority) || plan.priority || 3)),
-          autonomy_level: Math.max(1, Math.min(2, Number(director.autonomy_level) || 1)),
-          due_at: new Date(Date.now() + Math.max(1, Math.min(720, Number(stream.dueInHours) || 24)) * 3600000).toISOString(),
-          progress_percent: 0, idempotency_key: missionKey, orchestration_mode: "leaf", orchestration_summary: { cooRunId: run.id }
-        })
+      const baseContext = { cooRunId: run.id, cooAgentId: coo.id, instruction, cooSummary: plan.summary, assumptions: plan.assumptions, decisionsRequired: plan.decisionsRequired };
+      const missionDueAt = new Date(Date.now() + Math.max(1, Math.min(720, Number(stream.dueInHours) || 24)) * 3600000).toISOString();
+      const rpcTasks = stream.tasks.map((task:any,index:number)=>({
+        task_key: missionKey + ":task:" + index, title: clean(task.title,220), description: clean(task.description,6000),
+        priority: Math.max(1,Math.min(5,Number(task.priority)||3)),
+        due_at: new Date(Date.now()+Math.max(1,Math.min(720,Number(task.dueInHours)||Number(stream.dueInHours)||24))*3600000).toISOString()
+      }));
+      const atomicResult = await db<any>("rpc/dispatch_coo_workstream_atomic", {
+        method:"POST", headers:{Prefer:"return=representation"},
+        body:JSON.stringify({p_workspace_id:workspaceId,p_run_id:run.id,p_department_id:department.id,p_director_id:director.id,p_created_by:user.id,
+          p_mission_title:clean(stream.missionTitle,220),p_objective:clean(stream.objective,12000),p_input_context:baseContext,
+          p_priority:Math.max(1,Math.min(5,Number(stream.priority)||plan.priority||3)),
+          p_autonomy_level:Math.max(1,Math.min(2,Number(director.autonomy_level)||1)),p_due_at:missionDueAt,p_mission_key:missionKey,p_tasks:rpcTasks})
       });
-      let mission = missionRows[0];
-      if (!mission) {
-        const priorMission = await db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(missionKey) + "&limit=1");
-        mission = priorMission[0];
-      }
-      if (!mission) throw new Error("Échec de création du chantier pour " + department.name);
-      const dispatchRecord = { missionId: mission.id, departmentSlug: department.slug, departmentName: department.name, directorAgent: director.name, taskCount: 0 };
-      createdMissions.push(dispatchRecord);
-      const createdTasks: Array<{id:string;title:string;description:string}> = [];
-      for (const task of stream.tasks) {
-        if (!textOk(task.title, 220) || !textOk(task.description, 6000)) throw new Error("Tâche COO invalide dans " + department.name);
-        const taskRows = await db<any[]>("afe_operational_tasks", {
-          method: "POST", headers: { Prefer: "return=representation" },
-          body: JSON.stringify({
-            workspace_id: workspaceId, mission_id: mission.id, department_id: department.id,
-            title: clean(task.title, 220), description: clean(task.description, 6000),
-            priority: Math.max(1, Math.min(5, Number(task.priority) || 3)),
-            assigned_agent_id: director.id,
-            due_at: new Date(Date.now() + Math.max(1, Math.min(720, Number(task.dueInHours) || Number(stream.dueInHours) || 24)) * 3600000).toISOString(),
-            created_by: user.id
-          })
-        });
-        if (!taskRows[0]?.id) throw new Error("La tâche n'a pas été persistée pour " + department.name);
-        createdTasks.push({ id: taskRows[0].id, title: clean(task.title, 220), description: clean(task.description, 6000) });
-        dispatchRecord.taskCount = createdTasks.length;
-      }
-      await db("afe_agent_missions?id=eq." + enc(mission.id) + "&workspace_id=eq." + enc(workspaceId), {
-        method: "PATCH", headers: { Prefer: "return=minimal" },
-        body: JSON.stringify({ input_context: { ...(mission.input_context ?? {}), cooTasks: createdTasks }, updated_at: nowIso() })
-      });
-      await db("afe_agent_events", {
-        method: "POST", headers: { Prefer: "return=minimal" },
-        body: JSON.stringify({ workspace_id: workspaceId, mission_id: mission.id, agent_id: coo.id, actor_type: "agent", actor_id: coo.id, event_type: "coo.delegation.dispatched", payload: { cooRunId: run.id, departmentSlug: department.slug, taskCount: stream.tasks.length } })
-      });
+      const atomicMission=atomicResult?.mission,atomicTasks=atomicResult?.cooTasks;
+      if(!atomicMission?.id||!Array.isArray(atomicTasks)||atomicTasks.length!==stream.tasks.length) throw new Error("La transaction atomique n'a pas retourné le chantier et toutes ses tâches pour "+department.name);
+      createdMissions.push({missionId:atomicMission.id,departmentSlug:department.slug,departmentName:department.name,directorAgent:director.name,taskCount:atomicTasks.length});
     }
     const status = "dispatched"; // Non-blocking DG decisions remain recorded in the plan; sensitive actions were gated above.
     const updated = await db<any[]>("afe_coo_runs?id=eq." + enc(run.id) + "&workspace_id=eq." + enc(workspaceId), {
