@@ -65,9 +65,9 @@ BEGIN
  IF jsonb_typeof(p_task_results)<>'array' THEN RAISE EXCEPTION 'Task results coverage mismatch';END IF;
  IF jsonb_array_length(p_task_results)<>jsonb_array_length(expected) THEN RAISE EXCEPTION 'Task results coverage mismatch';END IF;
  count_expected:=jsonb_array_length(expected);
- IF (SELECT count(DISTINCT x->>'taskId') FROM jsonb_array_elements(p_task_results) x)<>count_expected
+ IF (SELECT count(DISTINCT x.value->>'taskId') FROM jsonb_array_elements(p_task_results) AS x(value))<>count_expected
  OR EXISTS(SELECT 1 FROM jsonb_array_elements(expected) e WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(p_task_results) x WHERE x->>'taskId'=e->>'id'))
- OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_task_results) x WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(expected) e WHERE e->>'id'=x->>'taskId')) THEN RAISE EXCEPTION 'Task IDs do not match mission';END IF;
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_task_results) x WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(expected) e WHERE e.value->>'id'=x.value->>'taskId')) THEN RAISE EXCEPTION 'Task IDs do not match mission';END IF;
  FOR r IN SELECT value FROM jsonb_array_elements(p_task_results) LOOP
   tid:=(r->>'taskId')::uuid;st:=r->>'status';pr:=GREATEST(0,LEAST(100,COALESCE((r->>'progressPercent')::integer,0)));
   IF st IS NULL OR st NOT IN('done','in_progress','blocked') THEN RAISE EXCEPTION 'Invalid task status';END IF;
