@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const migrationUrl = new URL("../supabase/migrations/20261107220000_afe_ci_coo_ai_orchestration_engine.sql", import.meta.url);
 const platformUrl = new URL("../src/coo-platform.ts", import.meta.url);
 const indexesUrl = new URL("../supabase/migrations/20261107223000_afe_ci_coo_ai_foreign_key_indexes.sql", import.meta.url);
+const atomicityUrl = new URL("../supabase/migrations/20261126100000_coo_orchestration_atomicity_and_resume.sql", import.meta.url);
 
 test("COO AI schema binds a workspace-scoped agent and exposes bounded autonomy and emergency stop", async () => {
   const sql = await readFile(migrationUrl, "utf8");
@@ -62,4 +63,17 @@ test("COO missions carry task identifiers and workers reconcile task results and
   assert.match(worker, /syncCooTaskResults/);
   assert.match(worker, /status:"paused"/);
   assert.match(worker, /coo\.tasks\.incomplete/);
+});
+
+test("COO dispatch is transactional and task identities are unique for resumable retries", async () => {
+  const migration = await readFile(atomicityUrl, "utf8");
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(migration, /dispatch_coo_workstream_atomic/);
+  assert.match(migration, /UNIQUE INDEX IF NOT EXISTS afe_operational_tasks_coo_task_key_uq/);
+  assert.match(migration, /ON CONFLICT \(workspace_id,mission_id,coo_task_key\)/);
+  assert.match(source, /rpc\/dispatch_coo_workstream_atomic/);
+  assert.match(source, /task_key: missionKey \+ ":task:" \+ index/);
+  assert.match(source, /Persist the validated plan before dispatch/);
+  assert.match(source, /priorRun\?\.plan\?\.workstreams\?\.length/);
+  assert.match(source, /\["dispatched","approval_required","cancelled"\]/);
 });
