@@ -206,7 +206,7 @@ test("E9.2-D7 rejects invalid department, duplicate workstream/task, priorities,
     summary: "Plan",
     priority: 6,
     workstreams: [
-      { departmentSlug: "not-eligible", missionTitle: "Short", objective: "Too short", priority: 0, dueInHours: 0, tasks: [
+      { departmentSlug: "not-eligible", missionTitle: "Bad", objective: "Too short", priority: 0, dueInHours: 0, tasks: [
         { title: "Task", description: "Short", priority: 6, dueInHours: 0 },
         { title: "Task", description: "Short", priority: 2, dueInHours: 10 }
       ] },
@@ -217,9 +217,13 @@ test("E9.2-D7 rejects invalid department, duplicate workstream/task, priorities,
     decisionsRequired: ["x".repeat(1201)],
     assumptions: ["x".repeat(1201)]
   };
-  const issues = validateCooPlan(plan, { maxWorkstreams: 1, maxTasksPerWorkstream: 1, maxTasksPerRun: 1 }, ["finance-investissements"]);
+  const issues = validateCooPlan(plan, { maxWorkstreams: 3, maxTasksPerWorkstream: 2, maxTasksPerRun: 1 }, ["finance-investissements"]);
   const codes = new Set(issues.map(issue => issue.code));
-  for (const code of ["summary_invalid","priority_invalid","workstreams_limit","department_not_eligible","department_duplicate","mission_title_invalid","objective_invalid","workstream_priority_invalid","workstream_deadline_invalid","task_count_limit","task_title_invalid","task_description_invalid","task_priority_invalid","task_deadline_invalid","task_title_duplicate","total_task_limit","decisions_invalid","assumptions_invalid"]) assert.ok(codes.has(code), "Expected validation code " + code);
+  for (const code of ["summary_invalid","priority_invalid","department_not_eligible","department_duplicate","mission_title_invalid","objective_invalid","workstream_priority_invalid","workstream_deadline_invalid","task_title_invalid","task_description_invalid","task_priority_invalid","task_deadline_invalid","task_title_duplicate","total_task_limit","decisions_invalid","assumptions_invalid"]) assert.ok(codes.has(code), "Expected validation code " + code);
+  const oversized = { ...plan, workstreams: [{ ...plan.workstreams[0], tasks: [{title:"Task One",description:"Description long enough.",priority:2,dueInHours:5},{title:"Task Two",description:"Description long enough.",priority:2,dueInHours:5},{title:"Task Three",description:"Description long enough.",priority:2,dueInHours:5}] }] };
+  assert.ok(validateCooPlan(oversized, { maxWorkstreams: 2, maxTasksPerWorkstream: 2, maxTasksPerRun: 3 }, ["finance-investissements"]).some(issue => issue.code === "task_count_limit"));
+  const tooManyStreams = { ...plan, workstreams: [...plan.workstreams, ...plan.workstreams, ...plan.workstreams] };
+  assert.ok(validateCooPlan(tooManyStreams, { maxWorkstreams: 3, maxTasksPerWorkstream: 2, maxTasksPerRun: 5 }, ["finance-investissements"]).some(issue => issue.code === "workstreams_limit"));
 });
 
 test("E9.2-D7 rejects task-level and mission-level malformed shapes instead of clamping them", () => {
