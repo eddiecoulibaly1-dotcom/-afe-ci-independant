@@ -143,3 +143,49 @@ test("E9.2-D7 validates the plan shape and all delegation limits before dispatch
   for (const code of ["summary_invalid","priority_invalid","department_not_eligible","department_duplicate","workstream_deadline_invalid","task_deadline_invalid","task_priority_invalid","task_title_duplicate","total_task_limit","decisions_invalid","assumptions_invalid"]) assert.ok(planning.includes(code));
   assert.match(planning, /export function validateCooPlan/);
 });
+
+test("E9.2-D8 concurrency and duplicate-dispatch chaos controls are enforced structurally", async () => {
+  const migration = await readFile(atomicityUrl, "utf8");
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(migration, /SELECT \* INTO r FROM public\.afe_coo_runs WHERE id=p_run_id AND workspace_id=p_workspace_id FOR UPDATE/);
+  assert.match(migration, /UNIQUE INDEX IF NOT EXISTS afe_operational_tasks_coo_task_key_uq/);
+  assert.match(migration, /ON CONFLICT\(workspace_id,idempotency_key\) DO NOTHING/);
+  assert.match(migration, /ON CONFLICT\(workspace_id,mission_id,coo_task_key\) WHERE coo_task_key IS NOT NULL DO NOTHING/);
+  assert.match(migration, /SELECT \* INTO m FROM public\.afe_agent_missions WHERE workspace_id=p_workspace_id AND idempotency_key=p_mission_key FOR UPDATE/);
+  assert.match(migration, /coo\.delegation\.dispatched/);
+  assert.match(source, /stable mission key/);
+});
+
+test("E9.2-D8 interrupted retry keeps the persisted plan and stable dispatch identities", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const migration = await readFile(atomicityUrl, "utf8");
+  assert.match(source, /generatedPlan = \(priorRun\?\.plan\?\.workstreams\?\.length \? priorRun\.plan : null\)/);
+  assert.match(source, /run\.id \+ ":" \+ department\.slug/);
+  assert.match(source, /missionKey \+ ":task:" \+ index/);
+  assert.match(migration, /ON CONFLICT\(workspace_id,idempotency_key\) DO NOTHING/);
+  assert.match(migration, /coo_task_key/);
+});
+
+test("E9.2-D8 stale lease and task-result chaos cases are fenced and validated before updates", async () => {
+  const migration = await readFile(atomicityUrl, "utf8");
+  const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", import.meta.url), "utf8");
+  assert.match(migration, /status='running' AND lease_token=p_lease_token AND lease_expires_at>now\(\) FOR UPDATE/);
+  assert.match(migration, /jsonb_array_length\(p_task_results\)<>jsonb_array_length\(expected\)/);
+  assert.match(migration, /count\(DISTINCT x\.value->>'taskId'\)/);
+  assert.match(migration, /Task IDs do not match mission/);
+  assert.match(migration, /st NOT IN\('done','in_progress','blocked'\)/);
+  assert.match(migration, /Completed task requires full progress and deliverable/);
+  assert.match(migration, /Blocked task requires reason/);
+  assert.match(migration, /status='paused'/);
+  assert.match(worker, /rpc\/apply_coo_task_results_atomic/);
+  assert.doesNotMatch(worker, /afe_operational_tasks\?id=eq\./);
+});
+
+test("E9.2-D8 atomic RPCs remain private to service role and failure paths reject partial writes", async () => {
+  const migration = await readFile(atomicityUrl, "utf8");
+  assert.match(migration, /REVOKE ALL ON FUNCTION public\.dispatch_coo_workstream_atomic/);
+  assert.match(migration, /REVOKE ALL ON FUNCTION public\.apply_coo_task_results_atomic/);
+  assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.dispatch_coo_workstream_atomic/);
+  assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.apply_coo_task_results_atomic/);
+  for (const failure of ["Mission persistence failed","Task persistence failed","Lease lost","Task results coverage mismatch","Invalid task status","Completed task requires full progress and deliverable","Blocked task requires reason"]) assert.ok(migration.includes(failure), "Missing failure guard " + failure);
+});
