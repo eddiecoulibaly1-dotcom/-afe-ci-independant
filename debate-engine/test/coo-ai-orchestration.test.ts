@@ -81,3 +81,18 @@ test("COO dispatch is transactional and task identities are unique for resumable
   assert.match(source, /priorRun\?\.plan\?\.workstreams\?\.length/);
   assert.match(source, /\["dispatched","approval_required","cancelled"\]/);
 });
+
+
+test("E9.2-D4 retry resumes an interrupted orchestration with the persisted plan and stable mission/task keys", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const migration = await readFile(atomicityUrl, "utf8");
+  assert.match(source, /let generatedPlan: CooPlan \| null = \(priorRun\?\.plan\?\.workstreams\?\.length \? priorRun\.plan : null\)/);
+  assert.match(source, /generatedPlan \?\? await callModel<CooPlan>/);
+  assert.match(source, /priorRun\?\.plan\?\.dispatched \? \[\.\.\.priorRun\.plan\.dispatched\] : \[\]/);
+  assert.match(source, /run\.id \+ ":" \+ department\.slug/);
+  assert.match(source, /missionKey \+ ":task:" \+ index/);
+  assert.match(migration, /ON CONFLICT\(workspace_id,idempotency_key\) DO NOTHING/);
+  assert.match(migration, /ON CONFLICT\(workspace_id,mission_id,coo_task_key\) WHERE coo_task_key IS NOT NULL DO NOTHING/);
+  assert.match(migration, /SELECT id INTO tid FROM public\.afe_operational_tasks WHERE workspace_id=p_workspace_id AND mission_id=m\.id AND coo_task_key=tkey/);
+  assert.match(source, /existingDispatchIndex>=0\)createdMissions\[existingDispatchIndex\]=dispatchEntry;else createdMissions\.push\(dispatchEntry\)/);
+});
