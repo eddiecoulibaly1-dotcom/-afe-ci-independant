@@ -20,13 +20,14 @@ test("COO AI schema binds a workspace-scoped agent and exposes bounded autonomy 
 
 test("COO orchestrator calls a model, restricts delegation to active non-independent directors and persists run records", async () => {
   const source = await readFile(platformUrl, "utf8");
+  const migration = await readFile(atomicityUrl, "utf8");
   assert.match(source, /callModel<CooPlan>/);
   assert.match(source, /coo_kill_switch/);
   assert.match(source, /coo_autonomy_level/);
   assert.match(source, /afe_coo_runs/);
   assert.match(source, /!d\.is_independent && !d\.human_only/);
   assert.match(source, /department\.director_agent_id/);
-  assert.match(source, /coo\.delegation\.dispatched/);
+  assert.match(migration, /coo\.delegation\.dispatched/);
   assert.match(source, /coo\.orchestration\.completed/);
 });
 
@@ -55,14 +56,17 @@ test("COO AI foreign keys have covering indexes", async () => {
   }
 });
 
-test("COO missions carry task identifiers and workers reconcile task results and wait for COO validation before closure", async () => {
+test("COO missions carry task identifiers through atomic dispatch and workers synchronize results", async () => {
   const platform = await readFile(platformUrl, "utf8");
   const worker = await readFile(new URL("../src/autonomous-agents/worker.ts", import.meta.url), "utf8");
-  assert.match(platform, /cooTasks: createdTasks/);
+  const migration = await readFile(atomicityUrl, "utf8");
+  assert.match(platform, /rpc\/dispatch_coo_workstream_atomic/);
+  assert.match(migration, /'cooTasks',tasks/);
   assert.match(worker, /task_results/);
   assert.match(worker, /syncCooTaskResults/);
-  assert.match(worker, /status:"paused"/);
-  assert.match(worker, /coo\.tasks\.incomplete/);
+  assert.match(worker, /rpc\/apply_coo_task_results_atomic/);
+  assert.match(migration, /status='paused'/);
+  assert.match(migration, /coo\.tasks\.incomplete/);
 });
 
 test("COO dispatch is transactional and task identities are unique for resumable retries", async () => {
