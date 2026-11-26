@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { consolidateDepartmentWorkstreams, reconcileCooRun } from "../src/coo-planning.js";
+import { consolidateDepartmentWorkstreams, reconcileCooRun, createCooDecisionRegister, applyCooDecisionRegister, hasPendingRequiredCooDecisions, hasRejectedRequiredCooDecisions } from "../src/coo-planning.js";
 
 test("COO planning consolidates duplicate department workstreams without losing tasks", () => {
   const result = consolidateDepartmentWorkstreams([
@@ -142,4 +142,38 @@ test("E9.2-D5 approval-required runs do not report intentionally undispatched wo
   const result = reconcileCooRun(run, [], []);
   assert.equal(result.status, "consistent");
   assert.deepEqual(result.issues, []);
+});
+
+test("E9.2-D6 creates stable DG decision registers with required sensitive approvals and non-blocking follow-ups", () => {
+  const register = createCooDecisionRegister("run-d6", ["Revoir la politique de contrôle.", "Approbation humaine obligatoire : plan sensible."], ["Signer un contrat fournisseur"]);
+  assert.equal(register.length, 2);
+  assert.equal(register[0].id, "run-d6:dg:0");
+  assert.equal(register[0].required, false);
+  assert.equal(register[0].status, "pending");
+  assert.equal(register[1].id, "run-d6:dg:sensitive");
+  assert.equal(register[1].required, true);
+  assert.match(register[1].detail, /Signer un contrat fournisseur/);
+  assert.equal(hasPendingRequiredCooDecisions(register), true);
+});
+
+test("E9.2-D6 approving the last required DG decision clears the gate; rejection remains terminal", () => {
+  const register = createCooDecisionRegister("run-d6b", ["Suivi DG"], ["Publier un contenu"]);
+  const approved = applyCooDecisionRegister(register, "run-d6b:dg:sensitive", "approve", "Autorisation accordée après revue.", "dg-user", "2026-11-26T20:00:00Z");
+  assert.equal(approved.changed, true);
+  assert.equal(approved.target?.status, "approved");
+  assert.equal(hasPendingRequiredCooDecisions(approved.entries), false);
+  assert.equal(hasRejectedRequiredCooDecisions(approved.entries), false);
+  const rejected = applyCooDecisionRegister(register, "run-d6b:dg:sensitive", "reject", "Action refusée après examen.", "dg-user", "2026-11-26T20:00:00Z");
+  assert.equal(rejected.target?.status, "rejected");
+  assert.equal(hasRejectedRequiredCooDecisions(rejected.entries), true);
+  assert.throws(() => applyCooDecisionRegister(rejected.entries, "run-d6b:dg:sensitive", "approve", "Tentative de renversement.", "dg-user", "2026-11-26T20:01:00Z"), /ne peut pas être inversée/);
+});
+
+test("E9.2-D6 decision replay is idempotent and cannot alter a recorded decision", () => {
+  const register = createCooDecisionRegister("run-d6c", ["Validation à suivre"], []);
+  const first = applyCooDecisionRegister(register, "run-d6c:dg:0", "approve", "Validation documentée.", "dg", "2026-11-26T20:00:00Z");
+  const replay = applyCooDecisionRegister(first.entries, "run-d6c:dg:0", "approve", "Autre note ignorée.", "dg", "2026-11-26T20:01:00Z");
+  assert.equal(replay.changed, false);
+  assert.equal(replay.target?.note, "Validation documentée.");
+  assert.throws(() => applyCooDecisionRegister(first.entries, "run-d6c:dg:0", "reject", "Décision différente.", "dg", "2026-11-26T20:01:00Z"), /ne peut pas être inversée/);
 });
