@@ -153,13 +153,13 @@ test("E9.2-D8 concurrency and duplicate-dispatch chaos controls are enforced str
   assert.match(migration, /ON CONFLICT\(workspace_id,mission_id,coo_task_key\) WHERE coo_task_key IS NOT NULL DO NOTHING/);
   assert.match(migration, /SELECT \* INTO m FROM public\.afe_agent_missions WHERE workspace_id=p_workspace_id AND idempotency_key=p_mission_key FOR UPDATE/);
   assert.match(migration, /coo\.delegation\.dispatched/);
-  assert.match(source, /stable mission key/);
+  assert.match(source, /const missionKey = run\.id \+ ":" \+ department\.slug/);
 });
 
 test("E9.2-D8 interrupted retry keeps the persisted plan and stable dispatch identities", async () => {
   const source = await readFile(platformUrl, "utf8");
   const migration = await readFile(atomicityUrl, "utf8");
-  assert.match(source, /generatedPlan = \(priorRun\?\.plan\?\.workstreams\?\.length \? priorRun\.plan : null\)/);
+  assert.match(source, /let generatedPlan: CooPlan \| null = \(priorRun\?\.plan\?\.workstreams\?\.length \? priorRun\.plan : null\)/);
   assert.match(source, /run\.id \+ ":" \+ department\.slug/);
   assert.match(source, /missionKey \+ ":task:" \+ index/);
   assert.match(migration, /ON CONFLICT\(workspace_id,idempotency_key\) DO NOTHING/);
