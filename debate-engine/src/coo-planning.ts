@@ -178,7 +178,7 @@ export function createCooDecisionRegister(
   sensitiveItems: string[] = []
 ): CooDecisionRegisterEntry[] {
   const routine = decisionsRequired.filter(text => !/approbation humaine obligatoire/i.test(String(text ?? "")));
-  const register: CooDecisionRegisterEntry[] = routine.map((label, index) => ({
+  const register: CooDecisionRegisterEntry[] = routine.map((label, index): CooDecisionRegisterEntry => ({
     id: runId + ":dg:" + index,
     label: String(label).trim().slice(0, 1200),
     detail: "",
