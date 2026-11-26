@@ -96,3 +96,19 @@ test("E9.2-D4 retry resumes an interrupted orchestration with the persisted plan
   assert.match(migration, /SELECT id INTO tid FROM public\.afe_operational_tasks WHERE workspace_id=p_workspace_id AND mission_id=m\.id AND coo_task_key=tkey/);
   assert.match(source, /existingDispatchIndex>=0\)createdMissions\[existingDispatchIndex\]=dispatchEntry;else createdMissions\.push\(dispatchEntry\)/);
 });
+
+test("E9.2-D5 orchestration history exposes a read-only Run-Mission-Task reconciliation API and UI", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  const planning = await readFile(new URL("../src/coo-planning.ts", import.meta.url), "utf8");
+  assert.match(source, /reconcileCooRun\(run, missions, tasks, departmentSlugs\)/);
+  assert.match(source, /input_context->>cooRunId=eq\./);
+  assert.match(source, /coo_task_key/);
+  assert.match(source, /reconciliationSummary/);
+  assert.match(source, /data-tab="orchestrations">Historique COO/);
+  assert.match(source, /async function renderOrchestrations\(/);
+  assert.match(source, /Rapprochement en lecture seule/);
+  for (const code of ["missing_dispatch","missing_mission","mission_run_mismatch","orphan_mission","task_count_mismatch","missing_task_key","task_key_missing","unexpected_task_key","mission_task_context_mismatch","mission_count_mismatch"]) {
+    assert.ok(planning.includes(code), "Missing reconciliation detection " + code);
+  }
+  assert.match(planning, /export function reconcileCooRun/);
+});
