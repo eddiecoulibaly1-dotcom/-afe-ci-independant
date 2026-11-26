@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { consolidateDepartmentWorkstreams, reconcileCooRun, createCooDecisionRegister, applyCooDecisionRegister, hasPendingRequiredCooDecisions, hasRejectedRequiredCooDecisions } from "../src/coo-planning.js";
+import { consolidateDepartmentWorkstreams, reconcileCooRun, createCooDecisionRegister, applyCooDecisionRegister, hasPendingRequiredCooDecisions, hasRejectedRequiredCooDecisions, validateCooPlan } from "../src/coo-planning.js";
 
 test("COO planning consolidates duplicate department workstreams without losing tasks", () => {
   const result = consolidateDepartmentWorkstreams([
@@ -176,4 +176,70 @@ test("E9.2-D6 decision replay is idempotent and cannot alter a recorded decision
   assert.equal(replay.changed, false);
   assert.equal(replay.target?.note, "Validation documentée.");
   assert.throws(() => applyCooDecisionRegister(first.entries, "run-d6c:dg:0", "reject", "Décision différente.", "dg", "2026-11-26T20:01:00Z"), /ne peut pas être inversée/);
+});
+
+test("E9.2-D7 accepts a bounded plan with eligible departments and actionable task fields", () => {
+  const plan = {
+    summary: "Plan de contrôle opérationnel",
+    priority: 3,
+    workstreams: [{
+      departmentSlug: "finance-investissements",
+      missionTitle: "Diagnostic financier",
+      objective: "Analyser les hypothèses financières et documenter les constats vérifiables.",
+      priority: 3,
+      dueInHours: 24,
+      tasks: [{
+        title: "Collecter données financières",
+        description: "Rassembler les sources financières et documenter leur provenance.",
+        priority: 3,
+        dueInHours: 24
+      }]
+    }],
+    decisionsRequired: [],
+    assumptions: []
+  };
+  assert.deepEqual(validateCooPlan(plan, { maxWorkstreams: 2, maxTasksPerWorkstream: 2, maxTasksPerRun: 3 }, ["finance-investissements"]), []);
+});
+
+test("E9.2-D7 rejects invalid department, duplicate workstream/task, priorities, deadlines and limits", () => {
+  const plan = {
+    summary: "Plan",
+    priority: 6,
+    workstreams: [
+      { departmentSlug: "not-eligible", missionTitle: "Short", objective: "Too short", priority: 0, dueInHours: 0, tasks: [
+        { title: "Task", description: "Short", priority: 6, dueInHours: 0 },
+        { title: "Task", description: "Short", priority: 2, dueInHours: 10 }
+      ] },
+      { departmentSlug: "not-eligible", missionTitle: "Duplicate title", objective: "An objective long enough to pass the objective length check.", priority: 2, dueInHours: 10, tasks: [
+        { title: "Another task", description: "A task description long enough for validation.", priority: 2, dueInHours: 10 }
+      ] }
+    ],
+    decisionsRequired: ["x".repeat(1201)],
+    assumptions: ["x".repeat(1201)]
+  };
+  const issues = validateCooPlan(plan, { maxWorkstreams: 1, maxTasksPerWorkstream: 1, maxTasksPerRun: 1 }, ["finance-investissements"]);
+  const codes = new Set(issues.map(issue => issue.code));
+  for (const code of ["summary_invalid","priority_invalid","workstreams_limit","department_not_eligible","department_duplicate","mission_title_invalid","objective_invalid","workstream_priority_invalid","workstream_deadline_invalid","task_count_limit","task_title_invalid","task_description_invalid","task_priority_invalid","task_deadline_invalid","task_title_duplicate","total_task_limit","decisions_invalid","assumptions_invalid"]) assert.ok(codes.has(code), "Expected validation code " + code);
+});
+
+test("E9.2-D7 rejects task-level and mission-level malformed shapes instead of clamping them", () => {
+  const plan = {
+    summary: "Plan de contrôle valide",
+    priority: 2,
+    workstreams: [{
+      departmentSlug: "finance-investissements",
+      missionTitle: "Diagnostic financier",
+      objective: "Analyser et documenter des éléments financiers vérifiables.",
+      priority: 2,
+      dueInHours: 24,
+      tasks: [{ title: "Collecter données", description: "Collecter et tracer les données de référence.", priority: 2, dueInHours: 24 }]
+    }],
+    decisionsRequired: [],
+    assumptions: []
+  };
+  plan.workstreams[0].tasks[0].dueInHours = 721;
+  plan.workstreams[0].tasks[0].priority = 0;
+  const codes = new Set(validateCooPlan(plan, { maxWorkstreams: 2, maxTasksPerWorkstream: 2, maxTasksPerRun: 2 }, ["finance-investissements"]).map(issue => issue.code));
+  assert.ok(codes.has("task_deadline_invalid"));
+  assert.ok(codes.has("task_priority_invalid"));
 });
