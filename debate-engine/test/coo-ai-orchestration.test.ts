@@ -119,7 +119,7 @@ test("E9.2-D6 DG decisions are owner-only, immutable, audited and resume approve
   const planning = await readFile(new URL("../src/coo-planning.ts", import.meta.url), "utf8");
   assert.match(source, /resource === "orchestrations" && p\[6\] && p\[7\] === "decisions"/);
   assert.match(source, /requireAccess\(workspaceId, user, "owner"\)/);
-  assert.match(source, /decision === "approve" \? "approved" : "rejected"/);
+  assert.match(planning, /status: decision === "approve"/);
   assert.match(source, /coo\.orchestration\.dg_decision/);
   assert.match(source, /orchestrateCooInstruction\(workspaceId, user, \{ instruction: run\.instruction, idempotencyKey: run\.idempotency_key \}\)/);
   assert.match(source, /status: rejectedRequired \? "cancelled" : run\.status/);
