@@ -3,7 +3,7 @@
 **Statut : implémentation sur branche de développement uniquement.** Aucun déploiement Production ni migration distante n'est effectué dans ce chantier.
 
 ## E10.1 Health & Performance Engine
-Calcul déterministe à partir du portefeuille COO : volumes, missions actives/terminées/échouées/bloquées/en retard, tâches ouvertes/terminées/bloquées/en retard, alertes, approvals en attente, ratios et performance par direction. Les dénominateurs nuls retournent `null`; les axes sans données sont exclus du score global. Un portefeuille sans mission/tâche retourne `insufficient_data` (score de maturité null), et non une note arbitraire. Le score 0–100 est un indicateur de tendance et ne constitue pas une certification.
+Calcul déterministe à partir du portefeuille COO : volumes, missions actives/terminées/échouées/bloquées/en retard, tâches ouvertes/terminées/bloquées/en retard, alertes, approvals en attente, ratios et performance par direction. Les dénominateurs nuls retournent `null`; les axes sans données sont exclus du score global; governance reste non scoré sans dénominateur, et le score global exige au moins deux axes mesurables (sinon `insufficient_data`). Un portefeuille sans mission/tâche retourne `insufficient_data` (score de maturité null), et non une note arbitraire. Le score 0–100 est un indicateur de tendance et ne constitue pas une certification.
 
 Axes : delivery, reliability, flow, quality, governance. Bandes : advanced ≥85, managed ≥70, developing ≥50, fragile <50.
 
@@ -42,7 +42,7 @@ Tests dédiés couvrent : données vides, métriques/rates, axes non disponibles
 
 ## Sécurité / limites
 - Branche `feature/autonomous-organization-v1` uniquement.
-- Pas de migration Supabase exécutée.
+- Migrations E10 appliquées uniquement au projet Supabase TEST `afe-ci-test`; Production n'a pas été migrée.
 - Pas de Production deploy.
 - Pas d'auto-modification de l'organisation/agents; toute proposition reste gouvernée.
 - Maturity scores ne doivent pas être présentés comme une preuve causale ou une certification.
