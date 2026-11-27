@@ -19,4 +19,4 @@ Scénarios base, stress et recovery. Hypothèses explicites et impacts indicatif
 ## E11.6 Strategic Options & Governance
 Options priorisées et conditionnelles, actions, impact, niveau de risque. Elles restent des propositions; aucune exécution automatique. Gouvernance indique DG approval required.
 
-API: GET /team/api/workspaces/:workspaceId/coo/strategy?days=30|60|90 ; POST /team/api/workspaces/:workspaceId/coo/strategy/snapshots (snapshot de stratégie). Auth workspace; editor requis pour snapshot; persistence test only.
+API: GET /team/api/workspaces/:workspaceId/coo/strategy?days=30|60|90 ; POST /team/api/workspaces/:workspaceId/coo/strategy/snapshots (snapshot de stratégie); POST /team/api/workspaces/:workspaceId/coo/strategy/proposals avec optionId transforme une option conditionnelle en draft E10, idempotent, soumise au workflow DG (submit/approve/reject/implement/evaluate). Auth workspace; editor requis pour snapshot; persistence test only.
