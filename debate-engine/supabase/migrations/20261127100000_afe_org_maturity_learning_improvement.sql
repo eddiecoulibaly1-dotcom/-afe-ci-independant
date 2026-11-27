@@ -47,6 +47,6 @@ alter table public.afe_org_improvement_proposals enable row level security;
 alter table public.afe_org_improvement_proposal_events enable row level security;
 revoke all on public.afe_org_health_snapshots,public.afe_org_learning_memory,public.afe_org_improvement_proposals,public.afe_org_improvement_proposal_events from anon,authenticated;
 grant select,insert,update,delete on public.afe_org_health_snapshots,public.afe_org_learning_memory,public.afe_org_improvement_proposals,public.afe_org_improvement_proposal_events to service_role;
-create or replace function public.afe_org_proposal_events_immutable() returns trigger language plpgsql as $$ begin raise exception 'Organizational proposal events are immutable'; end $$;
+create or replace function public.afe_org_proposal_events_immutable() returns trigger language plpgsql set search_path = '' as $ begin raise exception 'Organizational proposal events are immutable'; end $$;
 drop trigger if exists afe_org_proposal_events_immutable on public.afe_org_improvement_proposal_events;
 create trigger afe_org_proposal_events_immutable before update or delete on public.afe_org_improvement_proposal_events for each row execute function public.afe_org_proposal_events_immutable();
