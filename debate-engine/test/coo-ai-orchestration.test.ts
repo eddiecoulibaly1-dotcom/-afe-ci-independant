@@ -211,3 +211,15 @@ test("E9.2-D9 final audit: orchestration, governance, validation, reconciliation
   assert.match(worker, /syncCooTaskResults/);
   assert.doesNotMatch(worker, /afe_operational_tasks\?id=eq\./);
 });
+
+test("E13.2 recovers ambiguous atomic dispatch by stable mission and task keys without blind redispatch", async () => {
+  const source = await readFile(platformUrl, "utf8");
+  assert.match(source, /recoverAmbiguousCooDispatch/);
+  assert.match(source, /idempotency_key=eq\." \+ enc\(missionKey)/);
+  assert.match(source, /missionKey \+ ":task:" \+ index/);
+  assert.match(source, /mission retrouvée mais tâches incomplètes/);
+  assert.match(source, /catch \(dispatchError\)/);
+  assert.match(source, /if \(!recovered\) throw dispatchError/);
+  assert.match(source, /recovered\.missionId/);
+  assert.match(source, /recovered\.taskCount/);
+});
