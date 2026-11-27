@@ -20,7 +20,7 @@ Risques dérivés uniquement des warning triggers observés. Likelihood/impact 1
 Scénarios base, stress et recovery, hypothèses explicites et forecasts comparables. Comparaison requiert au moins deux scénarios. Scénarios purement analytiques, sans écriture dans le portefeuille.
 
 ## E11.6 — Strategic Options & Governance
-Options conditionnelles et classées, actions, impact et risque. Gouvernance exposée : DG approval required, auto-execution=false. Options ne modifient pas agents, prompts, permissions, missions ou paramètres.
+Options conditionnelles et classées, actions, impact et risque. Gouvernance exposée : DG approval required, auto-execution=false. Chaque option peut être convertie par bouton/API en proposition Draft E10 idempotente, workspace-scoped, puis suivre submit → DG approve/reject → implement → evaluate. Options ne modifient pas agents, prompts, permissions, missions ou paramètres.
 
 ## API et interface
 - GET `/coo/strategy` — dashboard stratégique
@@ -34,7 +34,7 @@ Migration `20261127130000_afe_org_strategic_intelligence.sql` appliquée uniquem
 
 ## Validation CI
 Commit final de code E11: `6223b74e8b530ead158cbacaf15dd98e1540b676`.
-Commit de branche après fix/assertions: `d428b912cc3dc8063bcf58367c133941299edd33` (à vérifier/CI final en cours si les commits de rapport sont ajoutés après).
+Commit de test ajusté: `d428b912cc3dc8063bcf58367c133941299edd33`; code horizon final `6223b74e8b530ead158cbacaf15dd98e1540b676`; rapports et intégration option→DG ajoutés ensuite, CI final à confirmer.
 Tests E11 dédiés: warning/risk/scenarios/options/capacity, trend forecast, comparison guards, empty-data, migration/API/UI syntax.
 Typecheck: success. Unit/integration: success. Autonomous checks: success. Debate Engine CI: success.
 
