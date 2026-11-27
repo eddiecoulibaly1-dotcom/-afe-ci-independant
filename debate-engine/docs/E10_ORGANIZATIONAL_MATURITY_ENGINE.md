@@ -3,7 +3,7 @@
 **Statut : implémentation sur branche de développement uniquement.** Aucun déploiement Production ni migration distante n'est effectué dans ce chantier.
 
 ## E10.1 Health & Performance Engine
-Calcul déterministe à partir du portefeuille COO : volumes, missions actives/terminées/échouées/bloquées/en retard, tâches ouvertes/terminées/bloquées/en retard, alertes, approvals en attente, ratios et performance par direction. Les dénominateurs nuls retournent `null`; un portefeuille sans mission/tâche retourne `insufficient_data` (score de maturité null), et non une note arbitraire. Le score 0–100 est un indicateur de tendance et ne constitue pas une certification.
+Calcul déterministe à partir du portefeuille COO : volumes, missions actives/terminées/échouées/bloquées/en retard, tâches ouvertes/terminées/bloquées/en retard, alertes, approvals en attente, ratios et performance par direction. Les dénominateurs nuls retournent `null`; les axes sans données sont exclus du score global. Un portefeuille sans mission/tâche retourne `insufficient_data` (score de maturité null), et non une note arbitraire. Le score 0–100 est un indicateur de tendance et ne constitue pas une certification.
 
 Axes : delivery, reliability, flow, quality, governance. Bandes : advanced ≥85, managed ≥70, developing ≥50, fragile <50.
 
@@ -38,7 +38,7 @@ Toutes les routes passent par authentication et contrôle d'appartenance workspa
 Page `/coo/maturity`, accessible depuis le COO. Réutilise la session existante et le choix workspace. Affiche score/axes, portefeuille, direction, causes racines, mémoire, propositions et actions gouvernées.
 
 ## Validation
-Tests dédiés couvrent : données vides, métriques/rates, découpage par direction, causes avec preuves, normalisation/agrégation memory, génération proposals, auto-arbitrage interdit, DG gating, implémentation contrôlée, évaluation baseline/after et tests statiques de migration/API. Exécution typecheck + suite complète + CI à consigner dans le rapport E10 final.
+Tests dédiés couvrent : données vides, métriques/rates, axes non disponibles exclus du score, découpage par direction, causes avec preuves, normalisation/agrégation memory, génération proposals, auto-arbitrage interdit, DG gating, implémentation contrôlée, évaluation baseline/after, sécurité migrations et syntaxe UI/API. Exécution typecheck + suite complète + CI à consigner dans le rapport E10 final.
 
 ## Sécurité / limites
 - Branche `feature/autonomous-organization-v1` uniquement.
