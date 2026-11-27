@@ -49,3 +49,18 @@ L'application Preview reste protégée par Vercel SSO. Les scénarios authentifi
 - Aucun déploiement Production, aucune migration Production, aucune variable Production modifiée.
 
 **Conclusion : E10.1–E10.6 sont achevés côté code, tests, CI, Preview et schéma test. La validation métier runtime authentifiée reste le seul point non réalisé, bloqué par SSO.**
+
+
+## Final QA après audit correctif
+
+À SHA ed588017769bd366f14b876ce5a61e2b30521c14 :
+- Correction du dispatch GET de la route de base /team/api/workspaces/:workspaceId/coo/maturity (la longueur minimale de segments empêchait son dispatch).
+- Score global exige désormais au moins deux axes mesurables; governance est null faute de dénominateur fiable. Portefeuille partiel à un seul axe = insufficient_data.
+- Tests ajoutés/ajustés pour le dispatch de route et le score incomplet.
+- CI Typecheck and tests #46073776398 : success; typecheck + unit/integration tests.
+- Autonomous agents checks #46073781742 et #46073776481 : success; strict typecheck + unit/integration tests.
+- Preview final READY : dpl_HyTVCN1ykvFb8EvwKbR2Ewktmtm7, URL https://afe-ci-independant-g8dwmy2ot-eddiecoulibaly1-dotcom.vercel.app.
+- Vérification directe Supabase TEST wmvycdoebpvihexcdkdw : 3 migrations E10 enregistrées; 4 tables présentes, RLS activée, 0 policy client, droits client anon/authenticated révoqués, tables E10 vides. Droits service_role présents; trigger d'immuabilité du ledger confirmé dans migration.
+- main reste d3b9e1bde8058e5e1168d64153a1135b05ff066d; Production deployment dpl_4wo4MJfBegTmVoyfqcCBGzEvLBmE reste READY sur le même SHA. Aucun déploiement ou migration Production.
+
+Limite maintenue : validation runtime authentifiée de l'UI et des transitions métier reste bloquée par Vercel SSO.
