@@ -13,9 +13,9 @@ export function buildIntegratedPlan(items:PlanItem[]){
  return {items:items.map(x=>({...x,dependsOn:[...(x.dependsOn??[])]})),topologicalOrder:order,criticalPathCandidates:order.filter(id=>items.find(x=>x.id===id)?.dependsOn?.length),status:"draft" as const,executionAuthorized:false};
 }
 const transitions:Record<DecisionStatus,DecisionStatus[]>={draft:["submitted"],submitted:["approved","rejected","returned-for-revision"],approved:["execution-authorized","returned-for-revision"],rejected:[], "returned-for-revision":["draft","submitted"],"execution-authorized":["evaluating"],evaluating:["closed"],closed:[]};
-export function transitionDecision(decision:GovernedDecision,action:"submit"|"approve"|"reject"|"return"|"authorize-execution"|"start-evaluation"|"close",actor:DecisionActor,rationale:string,at=new Date().toISOString()){
+export function transitionDecision(decision:GovernedDecision,action:"submit"|"approve"|"reject"|"return"|"revise"|"authorize-execution"|"start-evaluation"|"close,actor:DecisionActor,rationale:string,at=new Date().toISOString()){
  if(!rationale.trim())throw new Error("Justification obligatoire");
- const map:Record<typeof action,DecisionStatus>={submit:"submitted",approve:"approved",reject:"rejected",return:"returned-for-revision","authorize-execution":"execution-authorized","start-evaluation":"evaluating",close:"closed"};
+ const map:Record<typeof action,DecisionStatus>={submit:"submitted",approve:"approved",reject:"rejected",return:"returned-for-revision",revise:"draft","authorize-execution":"execution-authorized","start-evaluation":"evaluating",close:"closed"};
  const to=map[action];if(!transitions[decision.status].includes(to))throw new Error("Transition non autorisée: "+decision.status+" → "+to);
  if(action==="approve"||action==="reject"||action==="return"){if(actor.role!=="DG")throw new Error("Arbitrage réservé au DG");if(decision.executingAgentId&&actor.id===decision.executingAgentId)throw new Error("Séparation des fonctions: agent exécutant ne peut arbitrer sa propre décision");}
  if(action==="authorize-execution"&&actor.role!=="DG")throw new Error("Autorisation d'exécution réservée au DG");
