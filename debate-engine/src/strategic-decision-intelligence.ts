@@ -23,7 +23,7 @@ const DEFAULT_WEIGHTS:DecisionWeights={impact:0.25,risk:0.2,urgency:0.2,effort:0
 export function scoreAlternatives(alternatives:DecisionAlternative[],weights:Partial<DecisionWeights>={}){
  if(alternatives.length<2)throw new Error("Comparer au moins deux alternatives");
  const w={...DEFAULT_WEIGHTS,...weights};const sum=Object.values(w).reduce((a,b)=>a+b,0);if(!finite(sum)||sum<=0||Object.values(w).some(v=>!finite(v)||v<0))throw new Error("Pondérations invalides");
- const normalized=Object.fromEntries(Object.entries(w).map(([k,v])=>[k,v/sum])) as Array<[keyof DecisionWeights,number]>);
+ const normalized=Object.fromEntries(Object.entries(w).map(([k,v])=>[k,v/sum]) as Array<[keyof DecisionWeights,number]>);
  return alternatives.map(a=>{const values={impact:bounded(a.impact),risk:bounded(a.risk),urgency:bounded(a.urgency),effort:bounded(a.effort),reversibility:bounded(a.reversibility),confidence:bounded(a.confidence)};let numerator=0,denominator=0;for(const[k,weight]of Object.entries(normalized) as Array<[keyof DecisionWeights,number]>){const v=values[k];if(v===null)continue;const utility=k==="risk"||k==="effort"?5-v:v;numerator+=utility*weight;denominator+=weight;}const score=denominator?Math.round((numerator/denominator)*20):null;return{id:a.id,title:a.title,score,coverage:Math.round(denominator*100),missing:Object.entries(values).filter(([,v])=>v===null).map(([k])=>k),values,rank:null as number|null};}).sort((a,b)=>(b.score??-1)-(a.score??-1)).map((x,i)=>({...x,rank:x.score===null?null:i+1}));
 }
 export function compareDecisionScenarios(pack:ReturnType<typeof buildDecisionPack>,scenarioIds?:string[]){
