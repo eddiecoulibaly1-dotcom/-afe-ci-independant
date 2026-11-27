@@ -1,5 +1,6 @@
 import type {IncomingMessage,ServerResponse} from "node:http";
-import {buildOrganizationalHealth,analyzeOrganizationalRootCauses,aggregateOrganizationalLearning,buildImprovementProposals,normalizeLearningItem,transitionProposal} from "./organizational-maturity.js";\nimport {buildStrategicIntelligence,compareStrategicScenarios} from "./strategic-intelligence.js";
+import {buildOrganizationalHealth,analyzeOrganizationalRootCauses,aggregateOrganizationalLearning,buildImprovementProposals,normalizeLearningItem,transitionProposal} from "./organizational-maturity.js";
+import {buildStrategicIntelligence,compareStrategicScenarios} from "./strategic-intelligence.js";
 type User={id:string};
 const enc=(s:string)=>encodeURIComponent(s);
 const cfg=()=>{const url=process.env.SUPABASE_URL?.replace(/\/$/,""),key=process.env.SUPABASE_SECRET_KEY??process.env.SUPABASE_SERVICE_ROLE_KEY;if(!url||!key)throw Error("Supabase persistence not configured");return{url,key};};
