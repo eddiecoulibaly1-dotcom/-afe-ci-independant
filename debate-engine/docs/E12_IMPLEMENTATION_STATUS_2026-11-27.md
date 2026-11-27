@@ -1,0 +1,29 @@
+# E12 — Implementation status (2026-11-27)
+
+## Implemented on development branch
+- E12.1 Decision Pack Builder: evidence references, assumptions, constraints, unknowns, freshness, stable IDs, workspace scope.
+- E12.2 Alternative trade-off scoring: deterministic normalized weights, bounded score, missing-data coverage.
+- E12.3 Scenario comparison: read-only comparison, scenario assumptions and missing-impact limitations.
+- E12.4 Integrated plan engine: required owner/deliverable fields, dependency validation, topological order, cycle detection.
+- E12.5 Decision lifecycle: DG arbitration, rationale, immutable approval snapshot, separation of duty.
+- E12.6 Governance gates: approval separate from execution authorization; no autonomous dispatch.
+- E12.7 Outcome evaluation engine: baseline/expected/actual, variance, evidence requirement, unknowns preserved.
+- E12.8 UI/API foundation: decision dashboard route, list/create packs, score view, governed actions, plan/evaluation API endpoints.
+
+## Database
+Migration `20261127223000_afe_org_decision_packs.sql` applied to TEST Supabase project only.
+- workspace scoped unique key
+- RLS enabled
+- zero client policies
+- privileges revoked from anon/authenticated
+- service_role granted
+- no production migration.
+
+## CI
+CI validation includes TypeScript typecheck and unit/integration tests. Final validation must be reported against the latest commit SHA only.
+
+## Not yet fully completed / caveats
+- E12.6 does not dispatch missions: it stores authorization only; conversion into E10 proposals and controlled mission dispatch remains an integration deliverable.
+- Authenticated Preview runtime and real user workflow remain unverified if SSO prevents access.
+- E12.8 dashboard is a first functional interface; scenario authoring, integrated-plan authoring, outcome form UX and deeper audit presentation require further integration.
+- No Production branch, deployment, database, credentials, or permissions were changed.
