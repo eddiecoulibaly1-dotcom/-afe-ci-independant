@@ -17,6 +17,7 @@ import { TEAM_HTML, handleTeamRequest } from "./team-platform.js";
 import { handleAutonomousAgentsRequest } from "./autonomous-agents/platform.js";
 import { COO_HTML, handleCooRequest, handleCooReportWorker } from "./coo-platform.js";
 import { handleMaturityRequest } from "./coo-maturity-api.js";
+import { handleStrategicDecisionRequest } from "./strategic-decision-api.js";
 import { COO_MATURITY_HTML } from "./coo-maturity-ui.js";
 import { COO_STRATEGY_HTML } from "./coo-strategy-ui.js";
 import { handleCooDependencyRequest, handleCooDependencyWorker } from "./coo-dependency-engine.js";
@@ -70,7 +71,7 @@ return;
 if(path==="/internal/coo-report-worker"){if(await handleCooReportWorker(req,res))return;}
 if(path==="/internal/coo-dependency-worker"){if(await handleCooDependencyWorker(req,res))return;}
 const user=await authenticateRequest(req);if(!user){send(res,401,{error:"Authentication required"});return;}
-if(path.startsWith("/team/api/")){if(await handleCooDependencyRequest(req,res,path,user))return;if(await handleMaturityRequest(req,res,path,user))return;if(await handleCooRequest(req,res,path,user))return;if(await handleAutonomousAgentsRequest(req,res,path,user))return;if(await handleTeamRequest(req,res,path,user))return;}
+if(path.startsWith("/team/api/")){if(await handleCooDependencyRequest(req,res,path,user))return;if(await handleStrategicDecisionRequest(req,res,path,user))return;if(await handleMaturityRequest(req,res,path,user))return;if(await handleCooRequest(req,res,path,user))return;if(await handleAutonomousAgentsRequest(req,res,path,user))return;if(await handleTeamRequest(req,res,path,user))return;}
 if(path.startsWith("/decision-cases")){if(!supabasePersistenceEnabled()){send(res,503,{error:"La plateforme V2 exige la persistance Supabase configurée."});return;}if(await handleV2Request(req,res,path,user))return;}
 // Market Intelligence is an optional subsystem. Keep its HTTP surface disabled unless explicitly enabled.
 if(path.startsWith("/market-prices")&&process.env.MARKET_INTELLIGENCE_ENABLED!=="true"){send(res,404,{error:"Le module Market Intelligence est désactivé sur cet environnement."});return;}
