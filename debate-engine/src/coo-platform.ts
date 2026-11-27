@@ -45,6 +45,19 @@ function send(res: ServerResponse, status: number, data: unknown) {
 }
 function fail(message: string, status = 400) { return Object.assign(new Error(message), { status }); }
 
+/** Read back a workstream after an ambiguous atomic-dispatch RPC outcome. */
+async function recoverAmbiguousCooDispatch(workspaceId: string, missionKey: string, expectedTaskCount: number): Promise<{ missionId: string; taskCount: number } | null> {
+  const missions = await db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(missionKey) + "&select=id,input_context&limit=1");
+  if (!missions.length) return null;
+  const mission = missions[0];
+  const expectedKeys = Array.from({ length: expectedTaskCount }, (_, index) => missionKey + ":task:" + index);
+  const tasks = await db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(mission.id) + "&select=id,coo_task_key");
+  const actualKeys = tasks.map(task => String(task.coo_task_key ?? ""));
+  const complete = expectedKeys.every(key => actualKeys.includes(key)) && actualKeys.length === expectedTaskCount && new Set(actualKeys).size === expectedTaskCount;
+  if (!complete) throw new Error("Résultat RPC ambigu : mission retrouvée mais tâches incomplètes. Aucun redispatch automatique; récupération requise.");
+  return { missionId: String(mission.id), taskCount: tasks.length };
+}
+
 const DEPARTMENTS = [
   { slug: "direction-generale", name: "Direction générale", kind: "executive", reportsTo: null, independent: false, humanOnly: true, mandate: "Autorité humaine de gouvernance. Définit la stratégie, les priorités, les délégations, les arbitrages de ressources et les décisions réservées. Reçoit les rapports du COO." },
   { slug: "direction-operations", name: "Direction des Opérations (COO)", kind: "operational", reportsTo: "direction-generale", independent: false, humanOnly: false, mandate: "COO IA rattaché à la DG. Orchestre les directions opérationnelles, missions, ressources, tâches, délais, alertes et reporting. N'altère pas les conclusions techniques, l'audit indépendant, l'arbitrage ou la validation humaine." },
@@ -942,16 +955,23 @@ async function orchestrateCooInstruction(workspaceId: string, user: AuthUser, in
         priority: Math.max(1,Math.min(5,Number(task.priority)||3)),
         due_at: new Date(Date.now()+Math.max(1,Math.min(720,Number(task.dueInHours)||Number(stream.dueInHours)||24))*3600000).toISOString()
       }));
-      const atomicResult = await db<any>("rpc/dispatch_coo_workstream_atomic", {
-        method:"POST", headers:{Prefer:"return=representation"},
-        body:JSON.stringify({p_workspace_id:workspaceId,p_run_id:run.id,p_department_id:department.id,p_director_id:director.id,p_created_by:user.id,
-          p_mission_title:clean(stream.missionTitle,220),p_objective:clean(stream.objective,12000),p_input_context:baseContext,
-          p_priority:Math.max(1,Math.min(5,Number(stream.priority)||plan.priority||3)),
-          p_autonomy_level:Math.max(1,Math.min(2,Number(director.autonomy_level)||1)),p_due_at:missionDueAt,p_mission_key:missionKey,p_tasks:rpcTasks})
-      });
-      const atomicMission=atomicResult?.mission,atomicTasks=atomicResult?.cooTasks;
-      if(!atomicMission?.id||!Array.isArray(atomicTasks)||atomicTasks.length!==stream.tasks.length) throw new Error("La transaction atomique n'a pas retourné le chantier et toutes ses tâches pour "+department.name);
-      const dispatchEntry={missionId:atomicMission.id,departmentSlug:department.slug,departmentName:department.name,directorAgent:director.name,taskCount:atomicTasks.length};
+      let dispatchEntry: {missionId:string;departmentSlug:string;departmentName:string;directorAgent:string;taskCount:number};
+      try {
+        const atomicResult = await db<any>("rpc/dispatch_coo_workstream_atomic", {
+          method:"POST", headers:{Prefer:"return=representation"},
+          body:JSON.stringify({p_workspace_id:workspaceId,p_run_id:run.id,p_department_id:department.id,p_director_id:director.id,p_created_by:user.id,
+            p_mission_title:clean(stream.missionTitle,220),p_objective:clean(stream.objective,12000),p_input_context:baseContext,
+            p_priority:Math.max(1,Math.min(5,Number(stream.priority)||plan.priority||3)),
+            p_autonomy_level:Math.max(1,Math.min(2,Number(director.autonomy_level)||1)),p_due_at:missionDueAt,p_mission_key:missionKey,p_tasks:rpcTasks})
+        });
+        const atomicMission=atomicResult?.mission,atomicTasks=atomicResult?.cooTasks;
+        if(!atomicMission?.id||!Array.isArray(atomicTasks)||atomicTasks.length!==stream.tasks.length) throw new Error("La transaction atomique n'a pas retourné le chantier et toutes ses tâches pour "+department.name);
+        dispatchEntry={missionId:atomicMission.id,departmentSlug:department.slug,departmentName:department.name,directorAgent:director.name,taskCount:atomicTasks.length};
+      } catch (dispatchError) {
+        const recovered = await recoverAmbiguousCooDispatch(workspaceId, missionKey, stream.tasks.length);
+        if (!recovered) throw dispatchError;
+        dispatchEntry={missionId:recovered.missionId,departmentSlug:department.slug,departmentName:department.name,directorAgent:director.name,taskCount:recovered.taskCount};
+      }
       const existingDispatchIndex=createdMissions.findIndex(x=>x.departmentSlug===department.slug);
       if(existingDispatchIndex>=0)createdMissions[existingDispatchIndex]=dispatchEntry;else createdMissions.push(dispatchEntry);
     }
