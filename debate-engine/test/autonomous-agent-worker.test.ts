@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const root=new URL("../",import.meta.url);
 const migration=await readFile(new URL("supabase/migrations/20261105233000_autonomous_agents_p1_p6_controls.sql",root),"utf8");
 const worker=await readFile(new URL("src/autonomous-agents/worker.ts",root),"utf8");
+const retryPolicy=await readFile(new URL("src/autonomous-agents/retry-policy.ts",root),"utf8");
 const config=JSON.parse(await readFile(new URL("vercel.json",root),"utf8"));
 
 test("mission claims are serialized with SKIP LOCKED and expiring leases",()=>{
@@ -30,7 +31,8 @@ test("worker retries are bounded and use increasing delay",()=>{
  assert.match(worker,/attempt>=maxAttempts/);
  assert.match(worker,/select=attempt_count,max_attempts/);
  assert.ok(worker.includes("lease_expires_at=gt."));
- assert.match(worker,/Math\.pow\(2/);
+ assert.match(retryPolicy,/Math\.pow\(2/);
+ assert.match(worker,/computeRetryDelaySeconds\(attempt,900,classification\.retryAfterSeconds\)/);
  assert.match(worker,/status:terminal\?"failed":"queued"/);
 });
 
