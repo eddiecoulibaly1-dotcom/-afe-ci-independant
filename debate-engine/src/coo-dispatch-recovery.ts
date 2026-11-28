@@ -8,7 +8,7 @@ export function validateAmbiguousCooDispatchRecovery(
   tasks: CooDispatchRecoveryTask[]
 ): { missionId: string; taskCount: number } | null {
   if (missionId == null || missionId === "") return null;
-  if (!Number.isSafeInteger(expectedTaskCount) || expectedTaskCount < 0) {
+  if (!Number.isSafeInteger(expectedTaskCount) || expectedTaskCount < 1) {
     throw new Error("Invalid expected task count for dispatch recovery.");
   }
   const expectedKeys = Array.from({ length: expectedTaskCount }, (_, index) => missionKey + ":task:" + index);
