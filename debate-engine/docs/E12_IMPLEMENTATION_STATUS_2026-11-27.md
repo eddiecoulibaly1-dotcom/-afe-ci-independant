@@ -23,7 +23,7 @@ Migration `20261127223000_afe_org_decision_packs.sql` applied to TEST Supabase p
 CI validation includes TypeScript typecheck and unit/integration tests. Final validation must be reported against the latest commit SHA only.
 
 ## Not yet fully completed / caveats
-- E12.6 does not dispatch missions: it stores authorization only; conversion into E10 proposals and controlled mission dispatch remains an integration deliverable.
+- E12.6 bridge hardened: a DG-authorized integrated plan can be converted idempotently into E10 proposal drafts. The bridge is editor-gated, requires the immutable approval record and execution-authorization event, handles concurrent unique-key conflicts by read-back, and never dispatches missions. The proposal drafts still require the existing E10 governance/dispatch workflow.
 - Authenticated Preview runtime and real user workflow remain unverified if SSO prevents access.
 - E12.8 dashboard is a first functional interface; scenario authoring, integrated-plan authoring, outcome form UX and deeper audit presentation require further integration.
 - No Production branch, deployment, database, credentials, or permissions were changed.
