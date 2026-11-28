@@ -40,7 +40,7 @@ test("reconciliation detects missing department allocation without treating it a
       { id: "unassigned", status: "queued", effective_department_id: null }
     ],
     [],
-    [{ missionCount: 1 }]
+    [{ id: "d1", missionCount: 1 }]
   );
   assert.equal(result.missionCount, 2);
   assert.equal(result.assignedMissionCount, 1);
