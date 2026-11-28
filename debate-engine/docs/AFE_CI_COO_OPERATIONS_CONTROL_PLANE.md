@@ -1,0 +1,247 @@
+# AFE-CI — COO Operations Control Plane
+
+**Version:** 1.0.0  
+**Branch:** `feature/autonomous-organization-v1`  
+**Status:** Code added; validation and isolated database application still required  
+**Production:** Not deployed, not migrated, not approved
+
+## 1. Purpose
+
+The COO Control Plane is the operational command surface for the Direction des Opérations. It extends the existing AFE-CI TypeScript/Vercel and Supabase architecture. It does not create a second application runtime or database.
+
+Entry point: `/coo`  
+API prefix: `/team/api/workspaces/:workspaceId/coo`
+
+The existing Team & Governance page links to the COO page. Authentication uses the existing Supabase session stored by the application and the existing server-side bearer-token validation.
+
+## 2. Functional modules
+
+### 2.1 Central dashboard
+
+The dashboard consolidates:
+- total, active, completed, failed and overdue missions;
+- open, blocked and overdue operational tasks;
+- active departments;
+- open and critical alerts;
+- pending human approvals;
+- performance by department;
+- missions at risk and recent operational work.
+
+No synthetic productivity score is generated. Completion rates are shown only when there is a meaningful denominator.
+
+### 2.2 Institutional departments
+
+The first access seeds the workspace with the institutional catalogue:
+- Direction générale;
+- Direction des Opérations (COO);
+- Stratégie & Développement;
+- Finance & Investissements;
+- Risques & Contrôle;
+- Gouvernance & Conformité;
+- Evidence Intelligence;
+- Secrétariat général des missions;
+- Opérations de mission;
+- Audit qualité;
+- Documentation & Reporting;
+- Infrastructure & Sécurité;
+- Arbitrage indépendant;
+- Autorité de validation humaine.
+
+The two independent functions are marked `is_independent`; human validation is also marked `human_only`. The COO interface cannot modify their mandates, deactivate them or assign their work. Their reporting line is not placed under the COO.
+
+Existing agents are associated with their matching departments when the catalogue is initialized. Operational departments can designate an accountable human lead and/or an active agent lead. The Direction des Opérations lead is synchronized with the COO designated by the Direction générale. Agents remain subject to their existing draft/active lifecycle and authorization rules.
+
+### 2.3 Mission portfolio
+
+The COO can register a mission against:
+- an operational department;
+- an active specialist agent in the same workspace;
+- an optional operational owner who is a member of the workspace;
+- priority, objective, context and due date.
+
+Missions are persisted in the existing `afe_agent_missions` queue. New operational metadata includes department, operational owner, due date, progress percentage and blocked reason. Existing worker lifecycle, retries, leases and mission results remain the execution source of truth.
+
+The COO can update operational progress, due date and blocked reason. The COO cannot force a worker status to completed or bypass approval gates.
+
+### 2.4 Task assignment
+
+The new `afe_operational_tasks` register supports:
+- department and optional mission;
+- assignment to a workspace member and/or an active agent;
+- priority, due date, status and progress;
+- blocked reason and completion timestamp.
+
+A task linked to a mission must belong to the same department. User and agent assignments are checked server-side against the workspace. The COO cannot assign work to independent arbitration or human validation.
+
+### 2.5 Alerts
+
+The alert register deduplicates operational signals by workspace and stable key. Current rules:
+- overdue active mission;
+- paused or blocked mission;
+- failed mission;
+- human approval waiting for more than 24 hours;
+- overdue task;
+- blocked task.
+
+Alerts can be acknowledged or resolved by an authorized operator. When the underlying condition clears, the next refresh automatically resolves the alert; if the same condition persists after a manual resolution, the alert is reopened.
+
+Alerts are refreshed when the dashboard, alert centre or report generation is read. A separate continuous alert daemon is not claimed.
+
+### 2.6 Reporting to the Direction générale
+
+The report generator snapshots:
+- portfolio indicators;
+- performance by department;
+- missions at risk;
+- priority alerts;
+- pending human approvals and critical escalations.
+
+The report is stored in `afe_coo_reports` and an in-app notification is sent to the workspace owner, who represents the Direction générale by default. A daily report is scheduled at 08:00 UTC (Abidjan local time) for workspaces where `daily_report_enabled` is true (default true).
+
+The Vercel Cron configuration invokes `/internal/coo-report-worker` once daily at 08:00 UTC. The worker generates the daily report for every workspace with automatic reporting enabled. The report key is idempotent for the daily period. The worker requires `CRON_SECRET` or `COO_REPORT_WORKER_SECRET`.
+
+Vercel Cron is not active on Preview deployments. The presence of the schedule in this branch does not mean a report has been delivered or that Production is enabled.
+
+## 3. Data model
+
+The additive migration is:
+
+`supabase/migrations/20261107190000_afe_ci_coo_operations_control_plane.sql`
+
+It introduces:
+- `afe_org_departments`
+- `afe_operational_tasks`
+- `afe_coo_alerts`
+- `afe_coo_reports`
+- `afe_coo_settings`
+
+The foreign-key index companion migration is `supabase/migrations/20261107200000_afe_ci_coo_foreign_key_indexes.sql`; accountable department heads are added by `supabase/migrations/20261107210000_afe_ci_coo_department_heads.sql`.
+
+It extends:
+- `afe_agents.department_id`
+- `afe_agent_missions.department_id`
+- `afe_agent_missions.operational_owner_user_id`
+- `afe_agent_missions.due_at`
+- `afe_agent_missions.progress_percent`
+- `afe_agent_missions.blocked_reason`
+
+Composite foreign keys bind department, task, mission, agent and alert relationships to the same workspace. All new tables are RLS-enabled, browser roles have no direct table privileges, and server-side access uses the existing Supabase secret credential.
+
+## 4. API surface
+
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/dashboard` | Central indicators and consolidated views |
+| GET | `/departments` | Institutional directory |
+| PATCH | `/departments/:id` | Update operational mandate or active state |
+| GET / POST / PATCH | `/missions`, `/missions/:id` | Portfolio and operational progress |
+| GET / POST / PATCH | `/tasks`, `/tasks/:id` | Assignment and task lifecycle |
+| GET / POST | `/alerts`, `/alerts/:id` | Alert inbox, acknowledge and resolve |
+| GET / POST | `/reports`, `/reports/generate` | Reporting history and immediate report |
+| GET / PATCH | `/settings` | COO designation and reporting schedule |
+
+Mutations require the workspace owner, an admin, or the designated COO. The COO must be a workspace member. Only the workspace owner can designate the COO and change automatic reporting settings.
+
+## 5. Separation of powers
+
+The COO is responsible for operational coordination and execution discipline, not analytical conclusions.
+
+The application explicitly prevents the COO from:
+- assigning work to independent arbitration or human validation;
+- changing the mandates of those independent functions;
+- deciding the content or outcome of an arbitration;
+- marking a mission completed through the operational progress endpoint;
+- approving a human decision or bypassing an agent approval.
+
+The workspace owner remains the Direction générale recipient for executive reports. Human approval remains a separate workflow.
+
+## 6. Validation status
+
+| Gate | Result |
+|---|---|
+| Additive schema migrations | <strong>Applied</strong> to isolated Supabase project `afe-ci-test` on 2026-11-07 (control plane, FK indexes and accountable department heads) |
+| Table security | <strong>Verified</strong>: five new tables have RLS enabled; no direct grants to `anon` or `authenticated`; server `service_role` grants verified |
+| Foreign-key performance | <strong>Verified</strong>: no remaining unindexed-FK findings on COO tables or modified agent/mission relations after the companion index migration |
+| TypeScript strict typecheck | <strong>Passed</strong> in GitHub Actions |
+| Unit and integration test suite | <strong>Passed</strong> in GitHub Actions (131 tests in the recorded run) |
+| Authenticated API runtime and cross-workspace negative tests | Pending |
+| End-to-end mission/task creation, assignment, alert lifecycle and notifications | Pending |
+| Daily report worker invocation and idempotency in Preview | Pending |
+| Vercel Preview build | <strong>Ready</strong> for commit `7b1b92fb27ff17e581083b2ba523ed717c3d22b7`; project access is SSO-protected |
+| Browser acceptance of the SSO-protected Preview | Pending |
+| Production migration/deployment | Not performed; requires separate explicit approval |
+
+### Advisor notes
+
+The Supabase Security Advisor reports informational `RLS enabled, no policy` findings for the five new server-managed tables. This is intentional: direct browser-role table grants are revoked and the application accesses these tables only through the authenticated server and its service credential. The broader project also has a pre-existing leaked-password-protection warning.
+
+The Supabase Performance Advisor still reports 34 unindexed foreign keys elsewhere in the existing database. None of those findings refer to the new COO tables or the agent/mission relations modified by this increment.
+
+### Remaining operational gates
+
+1. Exercise the authenticated `/coo` page with a workspace owner, designated COO, editor and viewer.
+2. Verify cross-workspace IDs are rejected for every read and mutation route.
+3. Verify the independent arbitration and human-validation departments cannot be assigned, deactivated or have their mandates changed by the COO.
+4. Exercise mission/task creation, task reassignment, progress updates, alert acknowledgement/resolution/reopening, report generation and notification delivery.
+5. Invoke `/internal/coo-report-worker` manually in an authorized Preview/test context with the configured secret and verify idempotency. Vercel Cron itself does not run on Preview deployments.
+6. Complete browser acceptance on the SSO-protected Preview.
+7. Obtain explicit approval before any Production migration, merge to `main` or Production deployment.
+
+The implementation is CI-validated and its schema exists only in `afe-ci-test`. It is not yet declared live in Production or fully operational until the remaining runtime gates pass.
+
+
+## 7. COO IA — moteur d'orchestration et autonomie de niveau 2
+
+Le COO IA dédié est configuré comme agent actif du workspace de test, désigné dans `afe_coo_settings.coo_agent_id`, avec `coo_enabled=true`, `coo_autonomy_level=2` et arrêt d'urgence inactif. La Direction des Opérations pointe vers cet agent et aucun COO utilisateur humain n'est utilisé.
+
+Le moteur d'orchestration reçoit une instruction de la DG humaine, consulte les directions et leurs responsables IA actifs, lit leur charge réelle (missions et tâches non clôturées), construit un plan structuré, puis crée les missions et tâches dans le même workspace. Il exclut la DG, l'Audit interne indépendant, l'Arbitrage indépendant et l'Autorité de validation humaine des cibles de délégation.
+
+### Capacités explicitement autorisées
+
+La migration additive `20261107212500_afe_ci_coo_scoped_operational_grants.sql` attribue au seul agent COO désigné quatre capacités :
+- `coo.organization.read` — lecture de l'organigramme ;
+- `coo.workload.read` — lecture de la charge des directions ;
+- `coo.missions.create` — création de six missions au maximum par exécution ;
+- `coo.tasks.create` — création de trente tâches au maximum par exécution.
+
+Chaque capacité est limitée au workspace, aux opérations réversibles, sans approbation préalable seulement pour ces actions de faible risque. Le serveur vérifie chaque grant actif, sa permission, son scope et son drapeau d'approbation avant toute orchestration. L'agent ne reçoit aucune clé Supabase, aucun accès SQL et aucun privilège service-role.
+
+### Contrôles de capacité et d'approbation
+
+- Un directeur IA n'est proposé que s'il est actif, rattaché à sa direction et possède moins de deux missions actives et moins de dix tâches ouvertes.
+- Une exécution est limitée à six chantiers et trente tâches au maximum, avec une seule mission nouvelle par direction et par exécution.
+- Les actions potentiellement sensibles ou irréversibles sont bloquées avant dispatch et le plan est placé en `approval_required`.
+- Le plafond reste de dix orchestrations par workspace sur 24 heures.
+- Les erreurs après création partielle sont conservées avec statut `partial`, nombre de missions déjà créées et événement d'audit explicite. Elles ne sont pas présentées comme des échecs sans effet.
+- Le kill switch bloque les nouvelles orchestrations.
+- Le niveau 3 reste verrouillé ; aucune autonomie supérieure n'est activée.
+
+### État de validation du moteur
+
+- [x] COO IA désigné et actif dans l'environnement de test.
+- [x] Autonomie configurée au niveau 2 et moteur activé.
+- [x] Quatre grants de capacité appliqués et vérifiés dans Supabase de test.
+- [x] Contrôles serveur, charge des directions, plafonds et détection déterministe des actions sensibles ajoutés.
+- [x] Traçabilité des dispatchs partiels renforcée.
+- [ ] CI complète du commit contenant ces changements.
+- [ ] Essai réel via session DG authentifiée sur Preview : planification, création des missions et tâches.
+- [ ] Vérification du worker et de l'exécution des missions par les agents directeurs.
+- [ ] Test négatif des capacités absentes, du kill switch, des directions indépendantes et des actions sensibles.
+- [ ] Recette de bout en bout avant toute augmentation au niveau 3.
+
+L'activation du niveau 2 est une délégation opérationnelle limitée, pas une autorisation de production. Les environnements Production et la baseline V1.0.7 restent inchangés.
+
+
+## 8. Exécution opérationnelle contrôlée — niveau 2
+
+Le runtime d’agents existant est désormais raccordé au poste COO via une action Preview dédiée :
+- Route POST /team/api/workspaces/:workspaceId/coo/execute-next.
+- Accès réservé au propriétaire de l’espace, uniquement sur Vercel Preview.
+- Vérification côté serveur de coo_enabled et du kill switch avant tout déclenchement.
+- Un appel prend en charge au plus une mission via le worker existant (claim atomique avec lease), l’interface limite une vague à cinq appels.
+- Arrêt de la vague dès qu’aucune mission n’est éligible.
+- Les résultats, livrables, événements et états de tâches sont persistés dans les tables existantes.
+- Si des tâches restent bloquées/incomplètes, la mission est mise en pause et le résultat partiel est conservé ; aucune tâche inachevée n’est artificiellement déclarée terminée.
+- Le portefeuille affiche le résumé, les livrables et les motifs de blocage lorsqu’ils sont disponibles.
+
+Le worker existant reste aussi déclenchable par cron dans l’environnement de production ; cette livraison ne modifie pas la production ni la configuration de ses secrets. La vague manuelle demeure Preview-only. La qualité du résultat doit être vérifiée sur des exécutions réelles avant toute hausse d’autonomie.

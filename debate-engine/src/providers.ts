@@ -155,3 +155,16 @@ export async function callModel<T>(args: ModelArgs): Promise<T> {
     }
   }
 }
+
+/** Call exactly one provider/model. Used by independent review gates that must not
+ * silently fall back to the executor's provider or model. */
+export async function callModelExact<T>(args: ModelArgs): Promise<T> {
+  const provider = args.provider;
+  const model = modelFor(provider, args.model);
+  const prepared = {
+    ...args,
+    system: `${args.system}\\n\\n${FRENCH_OUTPUT_CONTRACT}`,
+    prompt: `${args.prompt}\\n\\n${FRENCH_OUTPUT_CONTRACT}`
+  };
+  return callProvider<T>(prepared, provider, model, requestTimeoutFor(args.schemaName));
+}

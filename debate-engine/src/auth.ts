@@ -7,9 +7,23 @@ export interface AuthUser {
 }
 
 function config() {
-  const url = process.env.SUPABASE_URL?.replace(/\/$/, "");
+  const rawUrl = process.env.SUPABASE_URL?.trim();
   const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.SUPABASE_ANON_KEY;
-  if (!url || !publishableKey) return null;
+  if (!rawUrl || !publishableKey) return null;
+
+  // SUPABASE_URL must be the project base URL, not an Auth/REST endpoint.
+  // Normalize accidental suffixes such as /auth/v1 or /rest/v1 so callers
+  // can safely append /auth/v1/... without producing an invalid request path.
+  let url: string;
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    if (!parsed.hostname || parsed.username || parsed.password) return null;
+    url = parsed.origin;
+  } catch {
+    return null;
+  }
+
   return { url, publishableKey };
 }
 
