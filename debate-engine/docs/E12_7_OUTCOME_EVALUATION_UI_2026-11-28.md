@@ -5,7 +5,7 @@
 - API rejects evaluation submissions without evidence IDs or at least one substantive lesson.
 - Outcome metrics display baseline, expected, actual, variance and improvement-from-baseline.
 - Decision closure is refused until an evidence-backed outcome evaluation and lessons are saved.
-- The UI hides the close action until an evaluation exists, and allows revision before closure.
+- The UI hides the close action until an evaluation exists.
 
 ## Safety
 - No migration or remote DB write.
@@ -14,6 +14,5 @@
 - Authenticated runtime remains blocked by SSO.
 
 ## Validation
-- Strict TypeScript check and 350/350 tests passed in the isolated sandbox.
-- Git diff check passed.
-- GitHub CI and Preview build will be checked on the PR.
+- Strict typecheck and full test suite will be run in the isolated sandbox.
+- GitHub CI and Preview deployment will be checked on the PR.
