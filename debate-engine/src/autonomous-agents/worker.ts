@@ -101,8 +101,9 @@ async function recordMissionReview(claim:Claim,mission:any,output:MissionResult,
  const combined = {...report, reviewerAgentId:semanticReview.reviewerId, verdict, semanticReview,
   findings:[...report.findings,...semanticReview.findings.map(f=>({code:"AI_"+f.code,severity:f.severity==="blocking"?"blocking":f.severity,message:f.message,citations:f.citations}))],
   closureEligible:false as const};
- await db("afe_agent_events",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify({
-  workspace_id:claim.workspace_id,mission_id:claim.mission_id,agent_id:claim.agent_id,
+ const idempotencyKey="mission:"+claim.mission_id+":attempt:"+claim.attempt_count+":evidence-review";
+ await db("afe_agent_events?on_conflict=workspace_id,idempotency_key",{method:"POST",headers:{"Prefer":"resolution=ignore-duplicates,return=minimal"},body:JSON.stringify({
+  workspace_id:claim.workspace_id,mission_id:claim.mission_id,agent_id:claim.agent_id,idempotency_key:idempotencyKey,
   actor_type:"worker",event_type:"mission.evidence.reviewed",
   payload:{...combined,reviewerType:"deterministic_independent_evidence_gate",semanticReviewerType:"independent_ai_semantic_reviewer",deterministicGate:report}
  })});
@@ -110,8 +111,9 @@ async function recordMissionReview(claim:Claim,mission:any,output:MissionResult,
  return combined;
 }
 async function recordMissionDeliverables(claim:Claim,output:MissionResult){
- await db("afe_agent_events",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify({
-  workspace_id:claim.workspace_id,mission_id:claim.mission_id,agent_id:claim.agent_id,actor_type:"worker",
+ const idempotencyKey="mission:"+claim.mission_id+":attempt:"+claim.attempt_count+":deliverables";
+ await db("afe_agent_events?on_conflict=workspace_id,idempotency_key",{method:"POST",headers:{"Prefer":"resolution=ignore-duplicates,return=minimal"},body:JSON.stringify({
+  workspace_id:claim.workspace_id,mission_id:claim.mission_id,agent_id:claim.agent_id,idempotency_key:idempotencyKey,actor_type:"worker",
   event_type:"mission.deliverables.submitted",
   payload:{summary:output.summary,analysis:output.analysis,deliverables:output.deliverables,taskDeliverables:(output.task_results??[]).map(x=>({taskId:x.taskId,status:x.status,deliverable:x.deliverable,summary:x.summary})),risks:output.risks??[],assumptions:output.assumptions??[]}
  })});
