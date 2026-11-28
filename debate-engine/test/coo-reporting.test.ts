@@ -17,7 +17,7 @@ test("agent department is the fallback when the task and mission have no effecti
 test("completed mission is verified only when it has at least one task and every task is done", () => {
   const result = buildCooDataQuality(
     [
-      { id: "verified", status: "completed", effective_department_id: "d1" },
+      { id: "verified", status: "completed", effective_department_id: "d1", result: { task_results: [{ taskId: "t1", status: "done", progressPercent: 100, deliverable: "Livrable concret vérifiable de plus de vingt caractères." }] } },
       { id: "no-task", status: "completed", effective_department_id: "d1" },
       { id: "incomplete", status: "completed", effective_department_id: "d2" }
     ],
@@ -31,6 +31,19 @@ test("completed mission is verified only when it has at least one task and every
   assert.equal(result.completedVerifiedMissionCount, 1);
   assert.deepEqual(result.completedWithoutTasks.map(x => x.id), ["no-task"]);
   assert.deepEqual(result.completedWithIncompleteTasks.map(x => x.id), ["incomplete"]);
+});
+
+
+test("completed missions with done task statuses but missing task deliverables are not verified", () => {
+  const result = buildCooDataQuality(
+    [{ id: "m-no-evidence", status: "completed", effective_department_id: "d1", result: { task_results: [] } }],
+    [{ id: "t-no-evidence", mission_id: "m-no-evidence", status: "done", effective_department_id: "d1" }],
+    [{ id: "d1", missionCount: 1, taskCount: 1 }]
+  );
+  assert.equal(result.completedVerifiedMissionCount, 0);
+  assert.equal(result.completedWithoutEvidenceCount, 1);
+  assert.deepEqual(result.completedWithoutEvidence.map(x => x.id), ["m-no-evidence"]);
+  assert.ok(result.findings.some(x => x.includes("livrables de tâches ne sont pas entièrement enregistrés ou vérifiables")));
 });
 
 test("reconciliation detects missing department allocation without treating it as zero activity", () => {
