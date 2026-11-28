@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const workerUrl = new URL("../src/autonomous-agents/worker.ts", import.meta.url);
-const migrationUrl = new URL("../supabase/migrations/20261128170000_coo_task_incomplete_event_idempotency.sql", import.meta.url);
+const migrationUrl = new URL("../supabase/migrations/20261128170218_coo_task_incomplete_event_idempotency.sql", import.meta.url);
 
 test("worker failure, incomplete deliberation and COO validation events use retry-safe per-attempt keys", async () => {
   const worker = await readFile(workerUrl, "utf8");
