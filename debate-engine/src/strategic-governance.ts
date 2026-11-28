@@ -1,4 +1,4 @@
-export type PlanItem={id:string;title:string;owner:string;deliverable:string;metric?:string;dueAt?:string;dependsOn?:string[];stopCondition?:string;fallback?:string};
+export type PlanItem={id:string;title:string;description?:string;owner:string;deliverable:string;metric?:string;dueAt?:string;dependsOn?:string[];stopCondition?:string;fallback?:string};
 export type DecisionStatus="draft"|"submitted"|"approved"|"rejected"|"returned-for-revision"|"execution-authorized"|"evaluating"|"closed";
 export type DecisionActor={id:string;role:"DG"|"owner"|"editor"|"agent";};
 export type DecisionEvent={at:string;actorId:string;action:string;from:DecisionStatus;to:DecisionStatus;rationale:string};
@@ -12,6 +12,74 @@ export function buildIntegratedPlan(items:PlanItem[]){
  for(const x of items)visit(x.id);
  return {items:items.map(x=>({...x,dependsOn:[...(x.dependsOn??[])]})),topologicalOrder:order,criticalPathCandidates:order.filter(id=>items.find(x=>x.id===id)?.dependsOn?.length),status:"draft" as const,executionAuthorized:false};
 }
+export type E10BridgeProposalRecord = { proposalId: string; proposal: any; sourceItemId: string };
+
+/** Convert an explicitly DG-authorized integrated plan into stable, non-executing E10 proposal drafts. */
+export function buildE10BridgeProposals(
+  decisionPackId: string,
+  payload: any,
+  createdBy: string,
+  createdAt = new Date().toISOString()
+): E10BridgeProposalRecord[] {
+  if (typeof decisionPackId !== "string" || !decisionPackId.trim() || typeof createdBy !== "string" || !createdBy.trim()) throw new Error("Decision pack ID and creator are required.");
+  const decision = payload?.decision;
+  if (decision?.status !== "execution-authorized") throw new Error("DG execution authorization required before E10 bridge.");
+  if (decision.id !== decisionPackId || !decision?.immutableApprovedRecord || decision.immutableApprovedRecord.decisionId !== decisionPackId || decision.immutableApprovedRecord.approvedStatus !== "approved" ||
+      !decision.immutableApprovedRecord.approvedBy || !decision.approvedAt || decision.immutableApprovedRecord.approvedAt !== decision.approvedAt || !decision.executionAuthorizedAt) {
+    throw new Error("Immutable DG approval and execution authorization snapshot required.");
+  }
+  const approvedBy = decision.immutableApprovedRecord.approvedBy;
+  if (!Array.isArray(decision.immutableApprovedRecord.events) || !decision.immutableApprovedRecord.events.some((event: any) =>
+    event?.action === "approve" && event?.to === "approved" && event?.actorId === approvedBy && Boolean(String(event?.rationale ?? "").trim())
+  )) throw new Error("Immutable DG approval event required.");
+  if (!Array.isArray(decision.events) || !decision.events.some((event: any) =>
+    event?.action === "authorize-execution" && event?.from === "approved" && event?.to === "execution-authorized" &&
+    Boolean(event?.actorId) && Boolean(String(event?.rationale ?? "").trim())
+  )) throw new Error("Recorded DG execution authorization event required.");
+  const plan = payload?.integratedPlan;
+  if (!Array.isArray(plan?.items) || !plan.items.length) throw new Error("Integrated plan is empty; create and validate it first.");
+  const validatedPlan = buildIntegratedPlan(plan.items);
+  const question = typeof payload.question === "string" && payload.question.trim() ? payload.question.trim() : "Dossier stratégique";
+  const expectedImpact = typeof payload.decisionSummary === "string" && payload.decisionSummary.trim()
+    ? payload.decisionSummary.trim()
+    : "Impact attendu à préciser à partir du dossier stratégique.";
+  return validatedPlan.items.map(item => {
+    const proposalId = "e12:" + decisionPackId + ":" + item.id;
+    const proposal = {
+      id: proposalId,
+      title: item.title,
+      problem: "Action issue du dossier E12 autorisé par le DG: " + question,
+      rootCauseIds: ["e12:" + decisionPackId],
+      actions: [{
+        id: item.id,
+        title: item.title,
+        description: item.description ?? "",
+        owner: item.owner,
+        deliverable: item.deliverable,
+        dueAt: item.dueAt ?? null,
+        dependsOn: [...(item.dependsOn ?? [])],
+        metric: item.metric ?? null,
+        stopCondition: item.stopCondition ?? null,
+        fallback: item.fallback ?? null
+      }],
+      expectedImpact,
+      riskLevel: "medium",
+      status: "draft",
+      createdBy,
+      createdAt,
+      source: {
+        type: "E12",
+        decisionPackId,
+        approvedBy: decision.immutableApprovedRecord.approvedBy,
+        approvedAt: decision.approvedAt,
+        authorizedBy: decision.events.find((event: any) => event?.action === "authorize-execution")?.actorId ?? null,
+        authorizedAt: decision.executionAuthorizedAt
+      }
+    };
+    return { proposalId, proposal, sourceItemId: item.id };
+  });
+}
+
 const transitions:Record<DecisionStatus,DecisionStatus[]>={draft:["submitted"],submitted:["approved","rejected","returned-for-revision"],approved:["execution-authorized","returned-for-revision"],rejected:[], "returned-for-revision":["draft","submitted"],"execution-authorized":["evaluating"],evaluating:["closed"],closed:[]};
 export function transitionDecision(decision:GovernedDecision,action:"submit"|"approve"|"reject"|"return"|"revise"|"authorize-execution"|"start-evaluation"|"close",actor:DecisionActor,rationale:string,at=new Date().toISOString()){
  if(!rationale.trim())throw new Error("Justification obligatoire");
