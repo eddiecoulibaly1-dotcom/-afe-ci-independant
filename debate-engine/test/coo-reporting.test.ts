@@ -49,6 +49,20 @@ test("reconciliation detects missing department allocation without treating it a
   assert.equal(result.findings.length, 1);
 });
 
+
+test("an empty department catalog still flags assigned missions as unknown", () => {
+  const result = buildCooDataQuality(
+    [
+      { id: "assigned", status: "running", effective_department_id: "missing-department" },
+      { id: "unassigned", status: "queued", effective_department_id: null }
+    ],
+    [],
+    []
+  );
+  assert.equal(result.unknownDepartmentMissionCount, 1);
+  assert.ok(result.findings.some(x => x.includes("direction absente du référentiel")));
+});
+
 test("reconciliation detects department performance totals that do not match assigned missions", () => {
   const result = buildCooDataQuality(
     [{ id: "m1", status: "running", effective_department_id: "d1" }],
