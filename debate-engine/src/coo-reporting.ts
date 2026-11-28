@@ -74,6 +74,8 @@ export function buildCooDataQuality(
     const linked = tasksByMission.get(m.id) ?? [];
     return linked.length > 0 && linked.every(t => t.status === "done");
   });
+  const missionIds = new Set(missions.map(m => m.id));
+  const orphanMissionTasks = tasks.filter(t => Boolean(t.mission_id) && !missionIds.has(t.mission_id as string));
   const assignedMissionCount = missions.filter(m => Boolean(m.effective_department_id)).length;
   const unassignedMissions = missions.filter(m => !m.effective_department_id);
   const knownDepartmentIds = new Set(departmentPerformance.map(d => d.id).filter((id): id is string => typeof id === "string" && id.length > 0));
@@ -93,6 +95,7 @@ export function buildCooDataQuality(
   const findings: string[] = [];
   if (completedWithoutTasks.length) findings.push(completedWithoutTasks.length + " mission(s) terminée(s) sans tâche opérationnelle associée : exécution non démontrée par le registre des tâches.");
   if (completedWithIncompleteTasks.length) findings.push(completedWithIncompleteTasks.length + " mission(s) terminée(s) possèdent des tâches non terminées : clôture incohérente.");
+  if (orphanMissionTasks.length) findings.push(orphanMissionTasks.length + " tâche(s) référencent une mission absente du portefeuille.");
   if (unassignedMissions.length) findings.push(unassignedMissions.length + " mission(s) sans direction identifiable après rapprochement avec le responsable IA.");
   if (missionsWithUnknownDepartment.length) findings.push(missionsWithUnknownDepartment.length + " mission(s) référencent une direction absente du référentiel du workspace.");
   if (tasksWithUnknownDepartment.length) findings.push(tasksWithUnknownDepartment.length + " tâche(s) référencent une direction absente du référentiel du workspace.");
@@ -113,6 +116,7 @@ export function buildCooDataQuality(
     departmentTaskCount,
     taskDepartmentMismatchCount: taskDepartmentMismatches.length,
     completedVerifiedMissionCount: completedVerified.length,
+    orphanMissionTaskCount: orphanMissionTasks.length,
     completedWithoutTasks: completedWithoutTasks.map(m => ({ id: m.id, title: m.title ?? "", department: m.department_name ?? "Non affectée" })),
     completedWithIncompleteTasks: completedWithIncompleteTasks.map(m => ({ id: m.id, title: m.title ?? "", department: m.department_name ?? "Non affectée" })),
     findings
