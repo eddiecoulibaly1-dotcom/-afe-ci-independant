@@ -143,7 +143,7 @@ test("worker heartbeat history is durable, server-only and records idle cron tic
 test("worker task and final mission writes are fenced by an unexpired running lease",async()=>{
  const worker=await readFile(workerUrl,"utf8");
  assert.ok((worker.match(/&status=eq\.running&lease_expires_at=gt\./g)||[]).length>=5);
- assert.match(worker,/validateMissionDeliverables\(output\);await heartbeat\.assertOwned\(\);await recordMissionDeliverables/);
+ assert.match(worker,/validateMissionDeliverables\(output\);await heartbeat\.assertOwned\(\);assertCooPublicationFence\(claim,/);
 });
 
 test("COO supervision uses real worker heartbeats and distinguishes failed cross-direction prerequisites",async()=>{
