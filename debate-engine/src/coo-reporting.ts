@@ -80,6 +80,7 @@ export function buildCooDataQuality(
   // An empty catalog is not evidence that assigned department IDs are valid.
   // Flag every assigned mission when no matching department is present.
   const missionsWithUnknownDepartment = missions.filter(m => Boolean(m.effective_department_id) && !knownDepartmentIds.has(m.effective_department_id as string));
+  const tasksWithUnknownDepartment = tasks.filter(t => Boolean(t.effective_department_id) && !knownDepartmentIds.has(t.effective_department_id as string));
   const departmentMissionCount = departmentPerformance.reduce((n, d) => n + (Number.isFinite(d.missionCount) ? d.missionCount : 0), 0);
   const assignedTaskCount = tasks.filter(t => Boolean(t.effective_department_id)).length;
   const unassignedTaskCount = tasks.length - assignedTaskCount;
@@ -94,6 +95,7 @@ export function buildCooDataQuality(
   if (completedWithIncompleteTasks.length) findings.push(completedWithIncompleteTasks.length + " mission(s) terminée(s) possèdent des tâches non terminées : clôture incohérente.");
   if (unassignedMissions.length) findings.push(unassignedMissions.length + " mission(s) sans direction identifiable après rapprochement avec le responsable IA.");
   if (missionsWithUnknownDepartment.length) findings.push(missionsWithUnknownDepartment.length + " mission(s) référencent une direction absente du référentiel du workspace.");
+  if (tasksWithUnknownDepartment.length) findings.push(tasksWithUnknownDepartment.length + " tâche(s) référencent une direction absente du référentiel du workspace.");
   if (assignedMissionCount + unassignedMissions.length !== missions.length) findings.push("Le total des missions affectées et non affectées ne réconcilie pas le portefeuille.");
   if (departmentMissionCount !== assignedMissionCount) findings.push("La ventilation des missions par direction (" + departmentMissionCount + ") ne correspond pas au nombre de missions affectées (" + assignedMissionCount + ").");
   if (departmentTaskCount !== assignedTaskCount) findings.push("La ventilation des tâches par direction (" + departmentTaskCount + ") ne correspond pas au nombre de tâches affectées (" + assignedTaskCount + ").");
@@ -104,6 +106,7 @@ export function buildCooDataQuality(
     departmentMissionCount,
     unassignedMissionCount: unassignedMissions.length,
     unknownDepartmentMissionCount: missionsWithUnknownDepartment.length,
+    unknownDepartmentTaskCount: tasksWithUnknownDepartment.length,
     taskCount: tasks.length,
     assignedTaskCount,
     unassignedTaskCount,
