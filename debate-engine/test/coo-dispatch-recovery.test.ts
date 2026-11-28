@@ -26,5 +26,6 @@ test("E13.2 runtime: unexpected or missing stable task key is rejected", () => {
 
 test("E13.2 runtime: invalid expected task count is rejected before recovery", () => {
   assert.throws(() => validateAmbiguousCooDispatchRecovery("mission-42", "run:dept", -1, []), /Invalid expected task count/);
+  assert.throws(() => validateAmbiguousCooDispatchRecovery("mission-42", "run:dept", 0, []), /Invalid expected task count/);
   assert.throws(() => validateAmbiguousCooDispatchRecovery("mission-42", "run:dept", 1.5, []), /Invalid expected task count/);
 });
