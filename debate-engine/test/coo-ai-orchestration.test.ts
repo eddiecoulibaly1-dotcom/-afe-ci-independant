@@ -217,7 +217,7 @@ test("E13.2 recovers ambiguous atomic dispatch by stable mission and task keys w
   assert.match(source, /recoverAmbiguousCooDispatch/);
   assert.match(source, /idempotency_key=eq\." \+ enc\(missionKey\)/);
   assert.match(source, /missionKey \+ ":task:" \+ index/);
-  assert.match(source, /mission retrouvée mais tâches incomplètes/);
+  assert.match(source, /validateAmbiguousCooDispatchRecovery/);
   assert.match(source, /catch \(dispatchError\)/);
   assert.match(source, /if \(!recovered\) throw dispatchError/);
   assert.match(source, /recovered\.missionId/);
