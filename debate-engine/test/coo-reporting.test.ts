@@ -40,13 +40,27 @@ test("reconciliation detects missing department allocation without treating it a
       { id: "unassigned", status: "queued", effective_department_id: null }
     ],
     [],
-    [{ missionCount: 1 }]
+    [{ id: "d1", missionCount: 1 }]
   );
   assert.equal(result.missionCount, 2);
   assert.equal(result.assignedMissionCount, 1);
   assert.equal(result.unassignedMissionCount, 1);
   assert.equal(result.departmentMissionCount, 1);
   assert.equal(result.findings.length, 1);
+});
+
+
+test("an empty department catalog still flags assigned missions as unknown", () => {
+  const result = buildCooDataQuality(
+    [
+      { id: "assigned", status: "running", effective_department_id: "missing-department" },
+      { id: "unassigned", status: "queued", effective_department_id: null }
+    ],
+    [],
+    []
+  );
+  assert.equal(result.unknownDepartmentMissionCount, 1);
+  assert.ok(result.findings.some(x => x.includes("direction absente du référentiel")));
 });
 
 test("reconciliation detects department performance totals that do not match assigned missions", () => {
@@ -65,7 +79,7 @@ test("task totals reconcile between assigned, unassigned and department buckets"
       { id: "t1", mission_id: "m1", status: "done", effective_department_id: "d1" },
       { id: "t2", mission_id: null, status: "todo", effective_department_id: null }
     ],
-    [{ missionCount: 1, taskCount: 1 }]
+    [{ id: "d1", missionCount: 1, taskCount: 1 }]
   );
   assert.equal(result.taskCount, 2);
   assert.equal(result.assignedTaskCount, 1);
