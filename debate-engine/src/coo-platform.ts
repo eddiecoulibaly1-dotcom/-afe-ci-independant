@@ -560,7 +560,7 @@ async function generateReport(workspaceId: string, reportType: "daily" | "weekly
   const data = fullData;
   const dashboard = computeDashboard(data);
   const dataQuality = buildCooDataQuality(fullData.missions, fullData.tasks, dashboard.departmentPerformance);
-  const { completedVerifiedMissionCount, completedWithoutTasks, completedWithIncompleteTasks } = dataQuality;
+  const { completedVerifiedMissionCount, completedWithoutTasks, completedWithIncompleteTasks, completedWithoutEvidence } = dataQuality;
   const reportContent = {
     schemaVersion: 2,
     scopeDescription: "Les indicateurs décrivent le portefeuille au moment de la génération. Les volumes de création décrivent l'activité comprise dans la période.",
@@ -568,12 +568,12 @@ async function generateReport(workspaceId: string, reportType: "daily" | "weekly
     generatedAt: nowIso(), period: { start: periodStart, end: periodEnd }, periodActivity, indicators: {
       ...dashboard.indicators,
       completedVerifiedMissions: completedVerifiedMissionCount,
-      completedUnverifiedMissions: completedWithoutTasks.length + completedWithIncompleteTasks.length
+      completedUnverifiedMissions: completedWithoutTasks.length + completedWithIncompleteTasks.length + completedWithoutEvidence.length
     },
     departmentPerformance: dashboard.departmentPerformance, missionsAtRisk: dashboard.missionsAtRisk, priorityAlerts: dashboard.priorityAlerts,
     dataQuality: { ...dataQuality },
     decisionsRequired: { humanApprovals: data.approvals, escalations: dashboard.priorityAlerts.filter(x => x.severity === "critical") },
-    governanceNote: "Ce rapport décrit l'exécution opérationnelle. Une mission terminée sans tâches opérationnelles toutes achevées est signalée comme non vérifiée. Il ne modifie aucun constat technique, arbitrage indépendant ou décision soumise à validation humaine."
+    governanceNote: "Ce rapport décrit l'exécution opérationnelle. Une mission terminée est considérée vérifiée uniquement si toutes ses tâches sont terminées et si les livrables de chaque tâche sont enregistrés et vérifiables. Les missions sans tâches, avec tâches incomplètes ou sans preuves complètes sont signalées. Il ne modifie aucun constat technique, arbitrage indépendant ou décision soumise à validation humaine."
   };
   const key = buildCooReportIdempotencyKey(reportType, periodStart, periodEnd);
   const existing = await db<any[]>("afe_coo_reports?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(key) + "&limit=1");
