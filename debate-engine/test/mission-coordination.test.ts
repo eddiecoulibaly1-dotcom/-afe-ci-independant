@@ -30,6 +30,7 @@ const strictWorkspaceClaimMigrationUrl=new URL("../supabase/migrations/202611091
 const dependencyIndexMigrationUrl=new URL("../supabase/migrations/20261109104547_coo_dependency_fk_index_alignment.sql",import.meta.url);
 const cooPlatformUrl=new URL("../src/coo-platform.ts",import.meta.url);
 const workerTickMigrationUrl=new URL("../supabase/migrations/20261109120420_coo_worker_heartbeat_monitoring.sql",import.meta.url);
+const serverUrl=new URL("../src/server.ts",import.meta.url);
 test("mission dependency API is workspace-scoped, auditable and restricted to non-running missions",async()=>{
  const source=await readFile(platformUrl,"utf8");
  assert.match(source,/p\[6\]==="dependencies"/);
@@ -78,10 +79,11 @@ test("automatic dependency and lease trigger functions have pinned search paths"
  assert.match(sql,/sync_afe_agent_mission_dependency_gate\(\) SET search_path = public/);
  assert.match(sql,/release_afe_agent_mission_dependents\(\) SET search_path = public/);
 });
-test("both worker paths fence incomplete and final writes with the active lease",async()=>{
+test("both global and workspace worker paths fence all mission side effects with the active lease",async()=>{
  const source=await readFile(workerUrl,"utf8");
- assert.equal((source.match(/await heartbeat\.assertOwned\(\);await recordIncompleteDeliberation/g)||[]).length,2);
- assert.equal((source.match(/await heartbeat\.assertOwned\(\);const pendingResult/g)||[]).length,2);
+ assert.equal((source.match(/await heartbeat.assertOwned\(\);assertCooPublicationFence\(claim,/g)||[]).length,10);
+ assert.equal((source.match(/await heartbeat.assertOwned\(\);assertCooPublicationFence\(claim,[^;]+;await recordIncompleteDeliberation/g)||[]).length,2);
+ assert.equal((source.match(/assertCooPublicationFence\(claim,[^;]+;const pendingResult/g)||[]).length,2);
 });
 
 test("global and workspace claim functions require successful prerequisite completion",async()=>{
@@ -158,4 +160,12 @@ test("COO supervision consumes durable worker ticks returned by its sixth query"
  assert.match(platform,/workerEvents, workerTicks\] = await Promise\.all/);
  assert.match(platform,/afe_coo_worker_ticks\?environment=eq\./);
  assert.match(platform,/const lastWorkerTick = workerTicks\[0\]/);
+});
+test("health endpoints identify the platform and expose dedicated COO health/readiness",async()=>{
+ const source=await readFile(serverUrl,"utf8");
+ assert.ok(source.includes('path==="/coo/health"'));
+ assert.ok(source.includes('path==="/coo/ready"'));
+ assert.ok(source.includes('service:"afe-ci-autonomous-organization-coo"'));
+ assert.ok(source.includes('service:"afe-ci-platform"'));
+ assert.ok(source.includes("VERCEL_GIT_COMMIT_SHA"));
 });
