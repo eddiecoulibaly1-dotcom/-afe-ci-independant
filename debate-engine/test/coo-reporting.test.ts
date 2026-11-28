@@ -90,6 +90,17 @@ test("reconciliation detects department performance totals that do not match ass
   assert.ok(result.findings.some(x => x.includes("ventilation des missions par direction")));
 });
 
+
+test("data quality flags tasks that reference missions missing from the portfolio", () => {
+  const result = buildCooDataQuality(
+    [],
+    [{ id: "orphan-task", mission_id: "missing-mission", status: "todo", effective_department_id: null }],
+    []
+  );
+  assert.equal(result.orphanMissionTaskCount, 1);
+  assert.ok(result.findings.some(x => x.includes("tâche(s) référencent une mission absente du portefeuille")));
+});
+
 test("task totals reconcile between assigned, unassigned and department buckets", () => {
   const result = buildCooDataQuality(
     [{ id: "m1", status: "running", effective_department_id: "d1" }],
