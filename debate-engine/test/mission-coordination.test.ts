@@ -168,4 +168,7 @@ test("health endpoints identify the platform and expose dedicated COO health/rea
  assert.ok(source.includes('service:"afe-ci-autonomous-organization-coo"'));
  assert.ok(source.includes('service:"afe-ci-platform"'));
  assert.ok(source.includes("VERCEL_GIT_COMMIT_SHA"));
+ assert.ok(source.includes("function cooWorkerConfigured"));
+ assert.ok(source.includes("AGENT_WORKER_SECRET"));
+ assert.ok(source.includes("workerConfigured"));
 });
