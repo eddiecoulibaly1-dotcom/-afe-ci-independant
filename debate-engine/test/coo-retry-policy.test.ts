@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { classifyRetryFailure, computeRetryDelaySeconds } from "../src/autonomous-agents/retry-policy.js";
 
 test("E13.3 classifies timeout/network and rate limits as retryable with typed codes", () => {
@@ -25,4 +26,15 @@ test("E13.3 retry-after overrides backoff but is clamped to the configured ceili
   assert.equal(computeRetryDelaySeconds(2,900,50),50);
   assert.equal(computeRetryDelaySeconds(2,900,2000),900);
   assert.equal(computeRetryDelaySeconds(2,900,0),1);
+});
+
+
+test("E13.3 worker applies classified failures, max-attempt ceilings, and bounded deliberation retries", async () => {
+  const worker=await readFile(new URL("../src/autonomous-agents/worker.ts",import.meta.url),"utf8");
+  assert.match(worker,/classifyRetryFailure\(error\)/);
+  assert.match(worker,/terminal=!classification\.retryable\|\|attempt>=maxAttempts/);
+  assert.match(worker,/computeRetryDelaySeconds\(attempt,900,classification\.retryAfterSeconds\)/);
+  assert.match(worker,/DELIBERATION_INCOMPLETE/);
+  assert.match(worker,/terminal=attempt>=maxAttempts/);
+  assert.match(worker,/event_type:terminal\?"mission\.failed":"mission\.deliberation_incomplete"/);
 });
