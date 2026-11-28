@@ -77,9 +77,9 @@ export function buildCooDataQuality(
   const assignedMissionCount = missions.filter(m => Boolean(m.effective_department_id)).length;
   const unassignedMissions = missions.filter(m => !m.effective_department_id);
   const knownDepartmentIds = new Set(departmentPerformance.map(d => d.id).filter((id): id is string => typeof id === "string" && id.length > 0));
-  const missionsWithUnknownDepartment = knownDepartmentIds.size
-    ? missions.filter(m => Boolean(m.effective_department_id) && !knownDepartmentIds.has(m.effective_department_id as string))
-    : [];
+  // An empty catalog is not evidence that assigned department IDs are valid.
+  // Flag every assigned mission when no matching department is present.
+  const missionsWithUnknownDepartment = missions.filter(m => Boolean(m.effective_department_id) && !knownDepartmentIds.has(m.effective_department_id as string));
   const departmentMissionCount = departmentPerformance.reduce((n, d) => n + (Number.isFinite(d.missionCount) ? d.missionCount : 0), 0);
   const assignedTaskCount = tasks.filter(t => Boolean(t.effective_department_id)).length;
   const unassignedTaskCount = tasks.length - assignedTaskCount;
