@@ -79,7 +79,7 @@ test("task totals reconcile between assigned, unassigned and department buckets"
       { id: "t1", mission_id: "m1", status: "done", effective_department_id: "d1" },
       { id: "t2", mission_id: null, status: "todo", effective_department_id: null }
     ],
-    [{ missionCount: 1, taskCount: 1 }]
+    [{ id: "d1", missionCount: 1, taskCount: 1 }]
   );
   assert.equal(result.taskCount, 2);
   assert.equal(result.assignedTaskCount, 1);
