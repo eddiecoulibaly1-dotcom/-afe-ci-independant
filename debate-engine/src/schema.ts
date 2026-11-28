@@ -20,14 +20,15 @@ const evidenceAuditSchema = {
   properties: {
     records: { type: "array", items: { type: "object", additionalProperties: false, properties: {
       claimId: { type: "string" }, classification: { type: "string", enum: ["fact", "hypothesis", "opinion"] },
-      status: { type: "string", enum: ["supported", "unsupported", "not_required"] }, evidenceRefs: { type: "array", items: { type: "string" } },
+      status: { type: "string", enum: ["supported", "pending_verification", "unsupported", "not_required"] }, evidenceRefs: { type: "array", items: { type: "string" } },
       rationale: { type: "string" }, confidence: { type: "number", minimum: 0, maximum: 1 }, impact: { type: "string", enum: ["low", "medium", "high", "critical"] }
     }, required: ["claimId", "classification", "status", "evidenceRefs", "rationale", "confidence", "impact"] } },
     unsupportedCriticalClaims: { type: "array", items: { type: "string" } },
     unsupportedHighImpactClaims: { type: "array", items: { type: "string" } },
+    pendingVerificationClaims: { type: "array", items: { type: "string" } },
     confidence: { type: "number", minimum: 0, maximum: 1 }, blocking: { type: "boolean" }, nextTests: { type: "array", items: { type: "string" } }
   },
-  required: ["records", "unsupportedCriticalClaims", "unsupportedHighImpactClaims", "confidence", "blocking", "nextTests"]
+  required: ["records", "unsupportedCriticalClaims", "unsupportedHighImpactClaims", "pendingVerificationClaims", "confidence", "blocking", "nextTests"]
 } as const;
 
 const nullableNumber = { anyOf: [{ type: "number" }, { type: "null" }] } as const;
