@@ -6,6 +6,7 @@ import { runAgentWorkerForWorkspace } from "./autonomous-agents/worker.js";
 import { buildCooDataQuality, buildCooReportActivity, buildCooReportIdempotencyKey, resolveTaskDepartmentId } from "./coo-reporting.js";
 import { consolidateDepartmentWorkstreams, reconcileCooRun, createCooDecisionRegister, applyCooDecisionRegister, hasPendingRequiredCooDecisions, hasRejectedRequiredCooDecisions, validateCooPlan, type CooDecisionRegisterEntry } from "./coo-planning.js";
 import { assertDependencyAddition, evaluateDependencyReadiness } from "./mission-coordination.js";
+import { validateAmbiguousCooDispatchRecovery } from "./coo-dispatch-recovery.js";
 
 type Role = "owner" | "admin" | "editor" | "viewer";
 const rank: Record<Role, number> = { owner: 4, admin: 3, editor: 2, viewer: 1 };
@@ -50,12 +51,8 @@ async function recoverAmbiguousCooDispatch(workspaceId: string, missionKey: stri
   const missions = await db<any[]>("afe_agent_missions?workspace_id=eq." + enc(workspaceId) + "&idempotency_key=eq." + enc(missionKey) + "&select=id,input_context&limit=1");
   if (!missions.length) return null;
   const mission = missions[0];
-  const expectedKeys = Array.from({ length: expectedTaskCount }, (_, index) => missionKey + ":task:" + index);
   const tasks = await db<any[]>("afe_operational_tasks?workspace_id=eq." + enc(workspaceId) + "&mission_id=eq." + enc(mission.id) + "&select=id,coo_task_key");
-  const actualKeys = tasks.map(task => String(task.coo_task_key ?? ""));
-  const complete = expectedKeys.every(key => actualKeys.includes(key)) && actualKeys.length === expectedTaskCount && new Set(actualKeys).size === expectedTaskCount;
-  if (!complete) throw new Error("Résultat RPC ambigu : mission retrouvée mais tâches incomplètes. Aucun redispatch automatique; récupération requise.");
-  return { missionId: String(mission.id), taskCount: tasks.length };
+  return validateAmbiguousCooDispatchRecovery(mission.id, missionKey, expectedTaskCount, tasks);
 }
 
 const DEPARTMENTS = [
