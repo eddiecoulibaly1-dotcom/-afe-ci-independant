@@ -38,3 +38,15 @@ test("E13.3 worker applies classified failures, max-attempt ceilings, and bounde
   assert.match(worker,/terminal=attempt>=maxAttempts/);
   assert.match(worker,/event_type:terminal\?"mission\.failed":"mission\.deliberation_incomplete"/);
 });
+
+
+test("E13.3 provider and Supabase calls have explicit timeout budgets and SDK retries are disabled", async () => {
+  const providers=await readFile(new URL("../src/providers.ts",import.meta.url),"utf8");
+  const worker=await readFile(new URL("../src/autonomous-agents/worker.ts",import.meta.url),"utf8");
+  assert.match(providers,/PROVIDER_TIMEOUT_MS\s*=\s*Number\(process\.env\.PROVIDER_TIMEOUT_MS\s*\?\?\s*30_000\)/);
+  assert.match(providers,/FALLBACK_TIMEOUT_MS\s*=\s*Number\(process\.env\.FALLBACK_TIMEOUT_MS\s*\?\?\s*25_000\)/);
+  assert.match(providers,/timeout:\s*timeoutMs/);
+  assert.match(providers,/maxRetries:\s*0/);
+  assert.match(providers,/httpOptions:\s*\{\s*timeout:\s*effectiveTimeout/);
+  assert.match(worker,/AbortSignal\.timeout\(20000\)/);
+});
