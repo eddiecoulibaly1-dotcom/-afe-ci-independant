@@ -5,6 +5,7 @@ export type ReportingMission = {
   effective_department_id?: string | null;
   title?: string;
   department_name?: string;
+  result?: { task_results?: Array<{ taskId?: string; status?: string; progressPercent?: number; deliverable?: string }> } | null;
 };
 export type ReportingTask = {
   id: string;
@@ -14,6 +15,23 @@ export type ReportingTask = {
   effective_department_id?: string | null;
 };
 export type DepartmentPerformance = { id?: string; missionCount: number; taskCount?: number };
+
+
+function hasCompleteTaskEvidence(mission: ReportingMission, tasks: ReportingTask[]): boolean {
+  const taskResults = mission.result?.task_results;
+  if (!Array.isArray(taskResults) || taskResults.length !== tasks.length) return false;
+  const evidenceById = new Map<string, { status?: string; progressPercent?: number; deliverable?: string }>();
+  for (const result of taskResults) {
+    const id = typeof result?.taskId === "string" ? result.taskId.trim() : "";
+    if (!id || evidenceById.has(id)) return false;
+    evidenceById.set(id, result);
+  }
+  return tasks.every(task => {
+    const evidence = evidenceById.get(task.id);
+    return evidence?.status === "done" && Number(evidence.progressPercent) === 100 &&
+      typeof evidence.deliverable === "string" && evidence.deliverable.trim().length >= 20;
+  });
+}
 
 export function buildCooReportActivity(
   missions: Array<{ created_at?: string | null }>,
@@ -72,7 +90,11 @@ export function buildCooDataQuality(
   });
   const completedVerified = completed.filter(m => {
     const linked = tasksByMission.get(m.id) ?? [];
-    return linked.length > 0 && linked.every(t => t.status === "done");
+    return linked.length > 0 && linked.every(t => t.status === "done") && hasCompleteTaskEvidence(m, linked);
+  });
+  const completedWithoutEvidence = completed.filter(m => {
+    const linked = tasksByMission.get(m.id) ?? [];
+    return linked.length > 0 && linked.every(t => t.status === "done") && !hasCompleteTaskEvidence(m, linked);
   });
   const missionIds = new Set(missions.map(m => m.id));
   const orphanMissionTasks = tasks.filter(t => Boolean(t.mission_id) && !missionIds.has(t.mission_id as string));
@@ -95,6 +117,7 @@ export function buildCooDataQuality(
   const findings: string[] = [];
   if (completedWithoutTasks.length) findings.push(completedWithoutTasks.length + " mission(s) terminée(s) sans tâche opérationnelle associée : exécution non démontrée par le registre des tâches.");
   if (completedWithIncompleteTasks.length) findings.push(completedWithIncompleteTasks.length + " mission(s) terminée(s) possèdent des tâches non terminées : clôture incohérente.");
+  if (completedWithoutEvidence.length) findings.push(completedWithoutEvidence.length + " mission(s) terminée(s) ont toutes leurs tâches marquées terminées, mais les livrables de tâches ne sont pas entièrement enregistrés ou vérifiables.");
   if (orphanMissionTasks.length) findings.push(orphanMissionTasks.length + " tâche(s) référencent une mission absente du portefeuille.");
   if (unassignedMissions.length) findings.push(unassignedMissions.length + " mission(s) sans direction identifiable après rapprochement avec le responsable IA.");
   if (missionsWithUnknownDepartment.length) findings.push(missionsWithUnknownDepartment.length + " mission(s) référencent une direction absente du référentiel du workspace.");
@@ -116,9 +139,11 @@ export function buildCooDataQuality(
     departmentTaskCount,
     taskDepartmentMismatchCount: taskDepartmentMismatches.length,
     completedVerifiedMissionCount: completedVerified.length,
+    completedWithoutEvidenceCount: completedWithoutEvidence.length,
     orphanMissionTaskCount: orphanMissionTasks.length,
     completedWithoutTasks: completedWithoutTasks.map(m => ({ id: m.id, title: m.title ?? "", department: m.department_name ?? "Non affectée" })),
     completedWithIncompleteTasks: completedWithIncompleteTasks.map(m => ({ id: m.id, title: m.title ?? "", department: m.department_name ?? "Non affectée" })),
+    completedWithoutEvidence: completedWithoutEvidence.map(m => ({ id: m.id, title: m.title ?? "", department: m.department_name ?? "Non affectée" })),
     findings
   };
 }
