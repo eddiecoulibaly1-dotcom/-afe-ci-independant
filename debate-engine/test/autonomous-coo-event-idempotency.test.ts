@@ -12,7 +12,7 @@ test("worker failure, incomplete deliberation and COO validation events use retr
   assert.ok(worker.includes('":attempt:"+claim.attempt_count+":awaiting-coo-validation'));
   assert.ok((worker.match(/afe_agent_events\?on_conflict=workspace_id,idempotency_key/g) ?? []).length >= 6);
   assert.ok((worker.match(/mission.awaiting_coo_validation/g) ?? []).length >= 2);
-  assert.match(worker, /resolution=ignore-duplicates,return-minimal/);
+  assert.match(worker, /resolution=ignore-duplicates,return=minimal/);
   assert.match(worker, /idempotency_key:idempotencyKey/);
   assert.match(worker, /idempotency_key:validationKey/);
 });
