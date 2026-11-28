@@ -63,6 +63,24 @@ test("an empty department catalog still flags assigned missions as unknown", () 
   assert.ok(result.findings.some(x => x.includes("direction absente du référentiel")));
 });
 
+
+test("an empty department catalog flags assigned tasks as unknown, but valid catalog tasks remain clean", () => {
+  const unknown = buildCooDataQuality(
+    [],
+    [{ id: "t-unknown", mission_id: null, status: "todo", effective_department_id: "missing-department" }],
+    []
+  );
+  assert.equal(unknown.unknownDepartmentTaskCount, 1);
+  assert.ok(unknown.findings.some(x => x.includes("tâche(s) référencent une direction absente du référentiel")));
+
+  const known = buildCooDataQuality(
+    [],
+    [{ id: "t-known", mission_id: null, status: "todo", effective_department_id: "d1" }],
+    [{ id: "d1", missionCount: 0, taskCount: 1 }]
+  );
+  assert.equal(known.unknownDepartmentTaskCount, 0);
+});
+
 test("reconciliation detects department performance totals that do not match assigned missions", () => {
   const result = buildCooDataQuality(
     [{ id: "m1", status: "running", effective_department_id: "d1" }],
